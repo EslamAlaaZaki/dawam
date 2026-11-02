@@ -221,6 +221,8 @@ class ChatMessage:
     """On a member's message: who sent it. None on the assistant's replies."""
     model: str | None = None
     """On a reply: the display name of the model that answered."""
+    fell_back: bool = False
+    """On a reply: a fallback model wrote it, not the model the run was given."""
 
 
 @dataclass(frozen=True)
@@ -251,9 +253,25 @@ class Completed:
     """The saved answer; none when there was no text."""
     model: str | None = None
     """The display name of the model that answered."""
+    model_id: uuid.UUID | None = None
+    fell_back: bool = False
+    """A fallback model answered."""
+    pick_moved: bool = False
+    """The conversation's pick is now that model (an agent answer, not the light model's)."""
 
 
 StreamEvent = Started | Text | Reasoning | ToolFinished | Completed
+
+
+@dataclass(frozen=True)
+class _Answerer:
+    """Which model wrote a run's answer."""
+
+    model_id: uuid.UUID | None
+    fell_back: bool
+    """A fallback model took over from the one the run was given."""
+    moves_pick: bool
+    """The conversation's pick becomes that model (an agent model, not the light one)."""
 
 
 def _not_found() -> ApiError:
@@ -491,6 +509,7 @@ class AssistantService:
                         runs.get(m.id),
                         senders.get(m.sender_user_id) if m.sender_user_id else None,
                         models.get(m.model_id) if m.model_id else None,
+                        m.fell_back,
                     )
                     for m in messages
                 ],
@@ -752,10 +771,20 @@ class AssistantService:
         answer = saved.get("answer") if saved and resume else None
         asked: Asked | None = None
         finished: Finished
+        took_over: list[str] = []
+
+        def handed_over(failed: str, error: LlmError, model: str) -> None:
+            line = f"{model} took over from {failed}, which failed: {error.message}"
+            took_over.append(line)
+            ctx.log(redact_text(line)[:500])
+
         try:
             gateway = self._roles.gateway_for_role(
                 "agent", workspace_id=workspace_id, user_id=user.id
             )
+            gateway.on_fall_back = handed_over  # the rest of the job stays on that model
+            if resume and saved:  # a model that took over before the pause serves on
+                gateway.resume_run(saved.get("models"))
             tools = self._tools.bind(
                 user, workspace_id, self._ai.policy(workspace_id), conversation_id, job=True
             )
@@ -772,6 +801,7 @@ class AssistantService:
                     "run": latest["run"],
                     "proposals": tools.saved_proposals(),
                     "plan": redact_json(tools.saved_plan()),
+                    "models": redact_json(gateway.run_state()),
                 }
                 if supervisor is not None:  # with the specialist in progress
                     data["supervisor"] = redact_json(supervisor.saved())
@@ -893,6 +923,8 @@ class AssistantService:
             raise RuntimeError(exc.message) from exc
         summary = redact_text(finished.text).strip() or "The job has finished."
         outcome = f"{JOB_FINISHED} {summary}"
+        if took_over:
+            outcome += "\n\n" + " ".join(redact_text(f"{line}.") for line in took_over)
         if proposed:
             ctx.log(f"Proposed one Change Set with {proposed} items.")
             outcome += f"\n\nIt proposed {proposed} changes for your review."
@@ -946,21 +978,33 @@ class AssistantService:
         calls: list[ToolCallRecord] = []
         retrieved: list[ToolCallRecord] = []
         saved = False
-        answered_by = model_id
+        gateway: Any = None
+        on_light = False
+
+        def answered_by() -> _Answerer:
+            """The model that answered (a fallback, once one took over) and whether the
+            conversation's pick follows it (not for an answer of the light model)."""
+            if gateway is None:
+                return _Answerer(model_id, False, False)
+            fell_back = bool(gateway.fell_back)
+            return _Answerer(gateway.model_id, fell_back, fell_back and not on_light)
+
         try:
             yield started
             try:
                 if model_id is None and _routes_to_light(light, history):
-                    gateway = light
-                    answered_by = self._ai.light_model_id(workspace_id)
+                    gateway, on_light = light, True
                 elif model_id is None:
                     gateway = self._roles.gateway_for_role(
                         "agent", workspace_id=workspace_id, user_id=user.id
                     )
-                    answered_by = self._ai.agent_model_id(workspace_id)
-                else:
+                else:  # the member's pick falls back like the default
                     gateway = self._roles.metered_gateway(
-                        model_id, "agent", workspace_id=workspace_id, user_id=user.id
+                        model_id,
+                        "agent",
+                        workspace_id=workspace_id,
+                        user_id=user.id,
+                        with_fallbacks=True,
                     )
                 tools = self._tools.bind(
                     user, workspace_id, self._ai.policy(workspace_id), conversation_id
@@ -1024,7 +1068,7 @@ class AssistantService:
                     "The assistant hit an unexpected error.",
                 )
             completed = self._finish(
-                user, workspace_id, started, finished, self._timer() - began, answered_by
+                user, workspace_id, started, finished, self._timer() - began, answered_by()
             )
             saved = True
             if light is not None and finished.status == "completed" and finished.text:
@@ -1038,7 +1082,9 @@ class AssistantService:
         finally:
             if not saved:  # the browser went away mid-answer
                 gone = Finished("cancelled", "".join(text), calls, 0, 0)
-                self._finish(user, workspace_id, started, gone, self._timer() - began, answered_by)
+                self._finish(
+                    user, workspace_id, started, gone, self._timer() - began, answered_by()
+                )
 
     def _retitle(self, conversation_id: uuid.UUID, question: str, answer: str, light: Any) -> None:
         """Replace the title taken from the first message with one the light model writes,
@@ -1075,8 +1121,10 @@ class AssistantService:
         started: Started,
         finished: Finished,
         seconds: float,
-        model_id: uuid.UUID | None = None,
+        answerer: _Answerer | None = None,
     ) -> Completed:
+        model_id = answerer.model_id if answerer else None
+        fell_back = answerer.fell_back if answerer else False
         now = self._clock()
         duration_ms = round(seconds * 1000)
         with Session(self._engine) as db, db.begin():
@@ -1098,10 +1146,13 @@ class AssistantService:
                         role="assistant",
                         content=redact_text(finished.text),
                         model_id=model_id,
+                        fell_back=fell_back,
                         created_at=now,
                     )
                 )
                 conversation.updated_at = now
+                if answerer is not None and answerer.moves_pick:  # the member may switch back
+                    conversation.last_model_id = model_id
             run.status = finished.status
             run.tool_calls = [
                 {
@@ -1137,7 +1188,8 @@ class AssistantService:
             },
         )
         name = self._ai.model_names({model_id}).get(model_id) if model_id else None
-        return Completed(view, answer_id, name)
+        moved = answer_id is not None and answerer is not None and answerer.moves_pick
+        return Completed(view, answer_id, name, model_id, fell_back, moved)
 
     def _cancel_requested(self, run_id: uuid.UUID) -> bool:
         with Session(self._engine) as db:

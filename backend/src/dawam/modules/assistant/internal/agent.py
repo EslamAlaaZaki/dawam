@@ -9,7 +9,9 @@ provider or a budget refused; the reason is kept).
 
 A model known to lack native tool calling runs in limited mode (``prompted.py``): the tools
 are described in the system prompt and a JSON reply is parsed strictly. Before every model
-call the conversation is fitted to the model's context window (``context.py``).
+call the conversation is fitted to the model's context window (``context.py``). When a
+model fails before it answers and a fallback takes over (``MeteredGateway``), the step is
+fitted again to the new model's window, streaming and tool calling.
 
 With ``verify`` (jobs) the loop checks its own work before it answers: after the model
 wrote something with one of the ``verify.after`` tools, it runs ``run_validation`` and
@@ -463,7 +465,12 @@ class Checkpoint:
 
 
 def _call_json(call: ToolCall) -> dict[str, Any]:
-    return {"id": call.id, "name": call.name, "arguments": call.arguments}
+    return {
+        "id": call.id,
+        "name": call.name,
+        "arguments": call.arguments,
+        "thought_signature": call.thought_signature,
+    }
 
 
 def _message_json(message: Message) -> dict[str, Any]:
@@ -573,6 +580,20 @@ def _started(events: Iterator[ChatEvent]) -> Iterator[ChatEvent]:
 def _prepend(first: ChatEvent, rest: Iterator[ChatEvent]) -> Iterator[ChatEvent]:
     yield first
     yield from rest
+
+
+def _prompted_form(message: Message) -> Message:
+    """``message`` as limited mode writes it, for a model without native tool calling that
+    took over: a tool call becomes its JSON reply, a tool result a user turn."""
+    if message.role == "tool":
+        return Message("user", message.content)
+    if message.role == "assistant" and message.tool_calls:
+        calls = "\n".join(
+            json.dumps({"tool": c.name, "arguments": c.arguments}, ensure_ascii=False)
+            for c in message.tool_calls
+        )
+        return Message("assistant", "\n\n".join(p for p in (message.content, calls) if p))
+    return message
 
 
 def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
@@ -697,6 +718,36 @@ def run_agent(
     retries = 0
     compaction_tried = summarize is None
     last_poll = timer()
+    hand_over: Callable[[LlmError], None] | None = getattr(gateway, "fall_back_from", None)
+    serving = getattr(gateway, "model_id", None)
+    """The model the steps are fitted to; another call of the run (a summary, a check on the
+    same gateway) may hand over too, and the next step then adopts the new model."""
+    """A ``MeteredGateway``'s: a model that fails before it answers hands over to the next
+    fallback, and the step is prepared again for that model."""
+
+    def ask(sent: list[Message], sent_tools: Sequence[ToolSpec]) -> Iterator[ChatEvent]:
+        if hand_over is None:
+            return _started(gateway.chat(sent, sent_tools, stream))
+        chat: Any = gateway.chat  # the loop hands over itself, once it has refitted the step
+        return _started(chat(sent, sent_tools, stream, fall_back=False))
+
+    def adopt() -> None:
+        """A fallback took over: its context window, streaming and tool calling apply from
+        now on (a model without native tool calling gets the run so far in limited mode)."""
+        nonlocal capabilities, window, stream, count, prompted, serving
+        serving = getattr(gateway, "model_id", None)
+        capabilities = gateway.capabilities()
+        window = capabilities.context_window
+        stream = capabilities.streaming is not False
+        count = _cached_counter(getattr(gateway, "count_tokens", None))
+        if capabilities.tool_calling is False and not prompted:
+            converted = {id(m): _prompted_form(m) for m in messages}
+            messages[:] = [converted[id(m)] for m in messages]
+            shortenable[:] = [
+                (converted.get(id(full), _prompted_form(full)), _prompted_form(short))
+                for full, short in shortenable
+            ]
+        prompted = capabilities.tool_calling is False
 
     def save() -> None:
         if checkpoint is not None:
@@ -839,6 +890,8 @@ def run_agent(
             if is_cancelled():
                 yield run.finish("cancelled")
                 return
+            if getattr(gateway, "model_id", None) != serving:
+                adopt()  # handed over outside this loop
             under_cap = _counted(run.calls) < max_tool_calls
             if searching:
                 visible = [s for s in all_specs if s.name in loaded] + [finder]
@@ -888,13 +941,21 @@ def run_agent(
             sent = prepare()
             sent_tools = () if prompted else offered
             try:
-                started = _started(gateway.chat(sent, sent_tools, stream))
+                try:
+                    started = ask(sent, sent_tools)
+                except LlmError as exc:
+                    # Too large for the provider (a per-request token limit can sit far below
+                    # the window): retried once with older results as digests; failing again
+                    # hands over to a fallback, or ends the run.
+                    if exc.code != CONTEXT_OVERFLOW or not shorten(size(sent), size):
+                        raise
+                    started = ask(prepare(), sent_tools)
             except LlmError as exc:
-                # Too large for the provider (a per-request token limit can sit far below the
-                # window): retried once with older results as digests; failing again ends it.
-                if exc.code != CONTEXT_OVERFLOW or not shorten(size(sent), size):
+                if hand_over is None:
                     raise
-                started = _started(gateway.chat(prepare(), sent_tools, stream))
+                hand_over(exc)  # raises when no model is left
+                adopt()
+                continue  # this step again, fitted to the model that took over
             with closing(started) as events:
                 for event in events:
                     # Reading the stop flag is a query: while text streams, not on every delta.

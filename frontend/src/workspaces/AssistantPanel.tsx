@@ -415,12 +415,14 @@ function hasNotes(run: Run | null | undefined): boolean {
 /**
  * One message. A member's message is a bubble on the right, under who sent it and when. The
  * assistant's reply (`email` null) flows beside the ✦ avatar, with its time, model and
- * `actions` (the rating) in a quiet row under it.
+ * `actions` (the rating) in a quiet row under it. A model that took over from the one picked
+ * is named `<model> (fallback)`.
  */
 function Bubble({
   email,
   at,
   model = null,
+  fellBack = false,
   busy = false,
   actions = null,
   children,
@@ -429,6 +431,8 @@ function Bubble({
   at: string;
   /** On a reply: the model that answered. */
   model?: string | null;
+  /** On a reply: `model` is a fallback that took over from the one picked. */
+  fellBack?: boolean;
   busy?: boolean;
   /** On a reply: what can be done with it, shown before its time. */
   actions?: ReactNode;
@@ -475,7 +479,7 @@ function Bubble({
                 monoClasses,
               )}
             >
-              {model}
+              {fellBack ? `${model} (fallback)` : model}
             </span>
           )}
         </div>
@@ -617,6 +621,7 @@ function Turn({
           email={null}
           at={answer?.created_at ?? message.created_at}
           model={answer?.model}
+          fellBack={answer?.fell_back ?? false}
           actions={
             answer &&
             run &&
@@ -778,8 +783,15 @@ export function AssistantPanel({
             setDraft((d) => d && { ...d, reasoning: d.reasoning + event.text });
           } else if (event.type === "tool") {
             setDraft((d) => d && { ...d, tools: [...d.tools, event.call] });
-          } else if (event.type === "done" && event.run.status === "failed") {
-            setFailed(event.run);
+          } else if (event.type === "done") {
+            if (event.run.status === "failed") {
+              setFailed(event.run);
+            }
+            // A fallback took over the agent pick: the picker follows it, and the member may
+            // switch back. A light model's fallback is never one to pick.
+            if (event.pickMoved && event.modelId) {
+              setPicked(event.modelId);
+            }
           }
         },
       });

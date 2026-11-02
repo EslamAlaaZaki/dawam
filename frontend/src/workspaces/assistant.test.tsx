@@ -203,6 +203,7 @@ describe("the assistant's chat panel", () => {
               run: run({ tool_calls: [TOOL] }),
               sender: ADA_SENDER,
               model: null,
+              fell_back: false,
             },
             {
               id: "m2",
@@ -212,6 +213,7 @@ describe("the assistant's chat panel", () => {
               run: null,
               sender: null,
               model: null,
+              fell_back: false,
             },
           ],
         },
@@ -271,6 +273,7 @@ describe("the assistant's chat panel", () => {
               run: run({ tool_calls: [search] }),
               sender: ADA_SENDER,
               model: null,
+              fell_back: false,
             },
             {
               id: "m2",
@@ -280,6 +283,7 @@ describe("the assistant's chat panel", () => {
               run: null,
               sender: null,
               model: null,
+              fell_back: false,
             },
           ],
         },
@@ -330,6 +334,7 @@ describe("the assistant's chat panel", () => {
               run: run({ tool_calls: [query] }),
               sender: ADA_SENDER,
               model: null,
+              fell_back: false,
             },
             {
               id: "m2",
@@ -339,6 +344,7 @@ describe("the assistant's chat panel", () => {
               run: null,
               sender: null,
               model: null,
+              fell_back: false,
             },
           ],
         },
@@ -407,6 +413,7 @@ describe("the assistant's chat panel", () => {
               run: run({ tool_calls: [search, fetched, throughJina, throughCrawl4ai] }),
               sender: ADA_SENDER,
               model: null,
+              fell_back: false,
             },
             {
               id: "m2",
@@ -416,6 +423,7 @@ describe("the assistant's chat panel", () => {
               run: null,
               sender: null,
               model: null,
+              fell_back: false,
             },
           ],
         },
@@ -471,6 +479,7 @@ describe("the assistant's chat panel", () => {
               run: run({ tool_calls: [start] }),
               sender: ADA_SENDER,
               model: null,
+              fell_back: false,
             },
           ],
         },
@@ -588,6 +597,7 @@ describe("the assistant's chat panel", () => {
               run: run({ tool_calls: [start] }),
               sender: ADA_SENDER,
               model: null,
+              fell_back: false,
             },
           ],
         },
@@ -665,6 +675,7 @@ describe("the assistant's chat panel", () => {
               run: run({ tool_calls: [start] }),
               sender: ADA_SENDER,
               model: null,
+              fell_back: false,
             },
           ],
         },
@@ -797,6 +808,7 @@ describe("the assistant's chat panel", () => {
               run: run(),
               sender: ADA_SENDER,
               model: null,
+              fell_back: false,
             },
           ],
         },
@@ -899,6 +911,7 @@ describe("feedback on answers", () => {
           run: run({ id: RUN_ID, feedback }),
           sender: ADA_SENDER,
           model: null,
+          fell_back: false,
         },
         {
           id: "m2",
@@ -908,6 +921,7 @@ describe("feedback on answers", () => {
           run: null,
           sender: null,
           model: null,
+          fell_back: false,
         },
       ],
     };
@@ -1019,6 +1033,7 @@ describe("the chat's messages, input and Conversation list", () => {
               run: run(),
               sender: { id: "g", email: "grace.hopper@example.com" },
               model: null,
+              fell_back: false,
             },
             {
               id: "m2",
@@ -1028,6 +1043,7 @@ describe("the chat's messages, input and Conversation list", () => {
               run: null,
               sender: null,
               model: null,
+              fell_back: false,
             },
           ],
         },
@@ -1470,6 +1486,7 @@ describe("picking the model of a message", () => {
               run: run(),
               sender: ADA_SENDER,
               model: null,
+              fell_back: false,
             },
             {
               id: "m2",
@@ -1479,6 +1496,7 @@ describe("picking the model of a message", () => {
               run: null,
               sender: null,
               model: "Small",
+              fell_back: false,
             },
           ],
         },
@@ -1490,6 +1508,121 @@ describe("picking the model of a message", () => {
     const reply = await screen.findByRole("listitem", { name: /DAWAM/ });
     expect(within(reply).getByLabelText("Answered by")).toHaveTextContent(
       "Small",
+    );
+  });
+
+  it("names a fallback model that took over as such", async () => {
+    renderApp(
+      backend({
+        ai: AI,
+        conversations: [NEW_CONVERSATION],
+        detail: {
+          conversation: NEW_CONVERSATION,
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "Hello",
+              created_at: "2026-01-05T10:00:00Z",
+              run: run(),
+              sender: ADA_SENDER,
+              model: null,
+              fell_back: false,
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: "Hi there.",
+              created_at: "2026-01-05T10:00:01Z",
+              run: null,
+              sender: null,
+              model: "openai/gpt-oss-120b",
+              fell_back: true,
+            },
+          ],
+        },
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    const reply = await screen.findByRole("listitem", { name: /DAWAM/ });
+    expect(within(reply).getByLabelText("Answered by")).toHaveTextContent(
+      "openai/gpt-oss-120b (fallback)",
+    );
+  });
+
+  it("keeps the picker when a light model's fallback answered", async () => {
+    const light = sse([
+      frame("started", { run_id: "r", message_id: "m" }),
+      frame("text", { text: "Done." }),
+      frame("done", {
+        run: run(),
+        message_id: "a",
+        model: "spare-light",
+        model_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        fell_back: true,
+        pick_moved: false,
+      }),
+    ]);
+    const requests = renderApp(
+      backend({ ai: AI, answer: () => light.clone() }),
+      PATH,
+    );
+    await openAssistant();
+    await screen.findByRole("button", { name: "Model for this message: Big" });
+
+    await ask("Hi");
+    await ask("Again");
+
+    await waitFor(() =>
+      expect(
+        requests.filter(
+          (r) => r.method === "POST" && r.path.endsWith("/messages"),
+        )[1]?.body,
+      ).toMatchObject({ content: "Again", model_id: null }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Model for this message: Big" }),
+    ).toBeInTheDocument();
+  });
+
+  it("switches the picker to the fallback that answered, and the member can switch back", async () => {
+    const fellBack = sse([
+      frame("started", { run_id: "r", message_id: "m" }),
+      frame("text", { text: "Done." }),
+      frame("done", {
+        run: run(),
+        message_id: "a",
+        model: "Small",
+        model_id: SMALL,
+        fell_back: true,
+        pick_moved: true,
+      }),
+    ]);
+    const requests = renderApp(
+      backend({ ai: AI, answer: () => fellBack.clone() }),
+      PATH,
+    );
+    await openAssistant();
+    await screen.findByRole("button", { name: "Model for this message: Big" });
+
+    await ask("Hi");
+
+    const picker = await screen.findByRole("button", {
+      name: "Model for this message: Small",
+    });
+    openMenu(picker);
+    fireEvent.click((await screen.findAllByRole("menuitemradio"))[0]!);
+    await screen.findByRole("button", { name: "Model for this message: Big" });
+    await ask("Again");
+
+    await waitFor(() =>
+      expect(
+        requests.filter(
+          (r) => r.method === "POST" && r.path.endsWith("/messages"),
+        )[1]?.body,
+      ).toMatchObject({ content: "Again", model_id: BIG }),
     );
   });
 

@@ -61,8 +61,13 @@ class ListingUnsupported(Exception):
 @dataclass(frozen=True)
 class ToolCall:
     id: str
+    """Non-empty, of ``[A-Za-z0-9_-]`` only (every adapter makes it so), so a history one
+    provider wrote is accepted by every other."""
     name: str
     arguments: dict[str, Any]
+    thought_signature: str | None = None
+    """Gemini's ``thoughtSignature`` for this call, sent back only to Gemini. ``None``: a call
+    Gemini did not make; ``""``: one it made without a signature."""
 
 
 @dataclass(frozen=True)
@@ -308,10 +313,13 @@ class Gateway:
         stream: bool = False,
         *,
         json_schema: dict[str, Any] | None = None,
+        max_retries: int | None = None,
     ) -> Iterator[ChatEvent]:
         """Send the conversation and yield events. A rate limit or an unavailable provider
         is retried with backoff, but only until the first event: a stream already begun
-        is never restarted. Token usage is estimated when the provider reports none."""
+        is never restarted. ``max_retries`` overrides the gateway's own for this call (``0``:
+        no retry and no wait, when another model can take over). Token usage is estimated
+        when the provider reports none."""
         extra: dict[str, Any] = (
             {"reasoning": self._reasoning} if self._reasoning and self._takes_reasoning else {}
         )
@@ -319,7 +327,8 @@ class Gateway:
             self._retrying(
                 lambda: self._adapter.chat(
                     self._model, messages, tools, stream, json_schema, **extra
-                )
+                ),
+                max_retries,
             ),
             messages,
         )
@@ -383,7 +392,10 @@ class Gateway:
         [vectors] = self._retrying(lambda: iter([self._adapter.embed(self._model, texts)]))
         return vectors
 
-    def _retrying[T](self, start: Callable[[], Iterator[T]]) -> Iterator[T]:
+    def _retrying[T](
+        self, start: Callable[[], Iterator[T]], max_retries: int | None = None
+    ) -> Iterator[T]:
+        limit = self._max_retries if max_retries is None else max_retries
         attempt = 0
         while True:
             try:
@@ -392,7 +404,7 @@ class Gateway:
             except StopIteration:
                 return iter(())
             except LlmError as exc:
-                if not exc.retryable or attempt >= self._max_retries:
+                if not exc.retryable or attempt >= limit:
                     raise
                 delay = exc.retry_after
                 if delay is None:

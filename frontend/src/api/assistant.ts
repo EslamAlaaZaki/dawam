@@ -232,7 +232,15 @@ export type AnswerEvent =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
   | { type: "tool"; call: ToolCall }
-  | { type: "done"; run: Run };
+  | {
+      type: "done";
+      run: Run;
+      /** The model that answered; with `fellBack`, a fallback that took over. */
+      modelId: string | null;
+      fellBack: boolean;
+      /** The conversation's pick is now `modelId` (an agent answer, never the light model's). */
+      pickMoved: boolean;
+    };
 
 interface Frame {
   event: string;
@@ -271,7 +279,13 @@ function toAnswerEvent({ event, data }: Frame): AnswerEvent | null {
     case "tool":
       return { type: "tool", call: body };
     case "done":
-      return { type: "done", run: body.run };
+      return {
+        type: "done",
+        run: body.run,
+        modelId: body.model_id ?? null,
+        fellBack: body.fell_back === true,
+        pickMoved: body.pick_moved === true,
+      };
     default:
       return null;
   }

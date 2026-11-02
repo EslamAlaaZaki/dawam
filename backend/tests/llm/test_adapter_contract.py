@@ -33,7 +33,7 @@ from dawam.modules.llm import (
 from dawam.modules.llm.internal.anthropic import AnthropicAdapter
 from dawam.modules.llm.internal.azure_openai import AzureOpenAIAdapter
 from dawam.modules.llm.internal.bedrock import BedrockAdapter
-from dawam.modules.llm.internal.gemini import GeminiAdapter
+from dawam.modules.llm.internal.gemini import PLACEHOLDER_SIGNATURE, GeminiAdapter
 from dawam.modules.llm.internal.openai_compatible import OpenAICompatibleAdapter
 from dawam.modules.llm.internal.transport import Transport, TransportError
 from tests.llm.replay import Recorded, ReplayTransport, load
@@ -170,7 +170,11 @@ def _gemini_round_trip(body: Any) -> None:
     sent = body["contents"]
     assert [m["role"] for m in sent] == ["user", "model", "user"]
     assert sent[1]["parts"] == [
-        {"functionCall": {"id": "call_abc", "name": "echo", "args": {"text": "ping"}}}
+        {
+            "functionCall": {"id": "call_abc", "name": "echo", "args": {"text": "ping"}},
+            # A call Gemini did not make carries Google's placeholder signature.
+            "thoughtSignature": PLACEHOLDER_SIGNATURE,
+        }
     ]
     assert sent[2]["parts"] == [
         {"functionResponse": {"id": "call_abc", "name": "echo", "response": {"result": "ping"}}}
@@ -332,12 +336,19 @@ def test_a_stream_without_usage_ends_with_done_and_no_usage(case):
     assert run(adapter, stream=True)[-1] == Done(None, "stop")
 
 
+def received(case: AdapterCase, call_id: str, name: str, arguments: dict[str, Any]) -> ToolCall:
+    """The call as the adapter reports it: Gemini marks its own calls as Gemini's (``""``:
+    made without a thought signature), the others carry none."""
+    signature = "" if case.name == "gemini" else None
+    return ToolCall(call_id, name, arguments, thought_signature=signature)
+
+
 def test_a_tool_call_arrives_complete_with_parsed_arguments(case):
     adapter, transport = case.replay("tool_call")
 
     events = run(adapter, tools=[ECHO])
 
-    assert events[0] == ToolCallEvent(ToolCall("call_abc", "echo", {"text": "ping"}))
+    assert events[0] == ToolCallEvent(received(case, "call_abc", "echo", {"text": "ping"}))
     assert events[-1] == Done(Usage(40, 9), "tool_calls")
     assert case.tool_names(transport.requests[0].json) == ["echo"]
 
@@ -348,7 +359,7 @@ def test_a_streamed_tool_call_is_assembled_from_its_fragments(case):
     events = run(adapter, stream=True, tools=[ECHO])
 
     assert events == [
-        ToolCallEvent(ToolCall("call_abc", "echo", {"text": "ping"})),
+        ToolCallEvent(received(case, "call_abc", "echo", {"text": "ping"})),
         Done(Usage(40, 9), "tool_calls"),
     ]
 

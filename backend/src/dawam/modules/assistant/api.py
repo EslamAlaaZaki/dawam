@@ -197,6 +197,11 @@ class MessageOut(BaseModel):
     model: str | None = Field(
         description="On a reply: the display name of the model that answered."
     )
+    fell_back: bool = Field(
+        default=False,
+        description="On a reply: a fallback model wrote it, because the model picked (or the "
+        "Workspace's default) failed. Shown as `<model> (fallback)`.",
+    )
 
 
 class ConversationDetailOut(BaseModel):
@@ -298,6 +303,7 @@ def _message(view: ChatMessage) -> MessageOut:
         run=_run(view.run) if view.run else None,
         sender=SenderOut(id=view.sender.id, email=view.sender.email) if view.sender else None,
         model=view.model,
+        fell_back=view.fell_back,
     )
 
 
@@ -442,6 +448,9 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
                     "run": json.loads(_run(event.run).model_dump_json()),
                     "message_id": str(event.message_id) if event.message_id else None,
                     "model": event.model,
+                    "model_id": str(event.model_id) if event.model_id else None,
+                    "fell_back": event.fell_back,
+                    "pick_moved": event.pick_moved,
                 },
             )
 
@@ -456,7 +465,9 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
             "`text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a "
             "model set to show it; never saved), `tool` (a finished tool call: name, arguments, "
             "status, duration), then one `done` with the run (status, tools, tokens, "
-            "duration and, when the run could not finish, `error_code` and `error_message`).",
+            "duration and, when the run could not finish, `error_code` and `error_message`), "
+            "the model that answered (`model`, `model_id`), `fell_back` (a fallback model "
+            "answered) and `pick_moved` (the conversation's pick is now that model).",
             "content": {"text/event-stream": {"schema": {"type": "string"}}},
         }
     },

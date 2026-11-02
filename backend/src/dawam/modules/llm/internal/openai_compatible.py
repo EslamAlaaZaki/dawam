@@ -34,7 +34,7 @@ from ..gateway import (
 from .local_tokens import local_counter
 from .think_tags import ThinkTagSplitter
 from .transport import HttpResponse, Transport, TransportError
-from .wire import detail, error_for, json_body
+from .wire import detail, error_for, json_body, received_call_id
 
 _CONTEXT_WINDOW_KEYS = ("max_model_len", "context_length", "context_window", "max_context_length")
 
@@ -335,7 +335,9 @@ def _tool_call(raw: Any) -> ToolCall:
         parsed = json.loads(arguments) if isinstance(arguments, str) else arguments
         if not isinstance(parsed, dict):
             raise ValueError("arguments are not an object")
-        return ToolCall(id=str(raw.get("id") or ""), name=str(function["name"]), arguments=parsed)
+        return ToolCall(
+            id=received_call_id(raw.get("id")), name=str(function["name"]), arguments=parsed
+        )
     except (KeyError, TypeError, ValueError, AttributeError):
         raise LlmError(INVALID_RESPONSE, "The model made a tool call that is not valid.") from None
 

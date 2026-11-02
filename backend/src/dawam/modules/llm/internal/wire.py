@@ -1,8 +1,12 @@
-"""What the adapters share: reading a JSON reply and mapping an HTTP error to ``LlmError``."""
+"""What the adapters share: reading a JSON reply, mapping an HTTP error to ``LlmError`` and
+keeping tool-call ids portable between providers."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -19,6 +23,10 @@ from .transport import HttpResponse
 
 MAX_DETAIL_CHARS = 300
 MAX_LIST_PAGES = 20
+MAX_CALL_ID_CHARS = 64
+"""Bedrock's limit on a ``toolUseId``."""
+_NOT_ID = re.compile(r"[^A-Za-z0-9_-]")
+_HASH_CHARS = 12
 """A cap on the pages read when listing a provider's models."""
 _CLOUDFLARE_BLOCK = "blocked access based on your browser's signature"
 _CONTEXT_MARKERS = (
@@ -33,6 +41,51 @@ _CONTEXT_MARKERS = (
     "exceeds the maximum number of tokens",  # Gemini
     "too long for requested model",  # Bedrock
 )
+
+
+def received_call_id(raw: Any) -> str:
+    """The id of a tool call a provider made, in the form every provider accepts
+    (``[A-Za-z0-9_-]``, non-empty): a history one provider wrote must be accepted by the next
+    model, whoever runs it. A provider that sent none (some OpenAI-compatible servers send
+    ``""``) gets a fresh id."""
+    cleaned = sent_call_id(str(raw)) if raw else ""
+    return cleaned or f"call_{uuid.uuid4().hex[:24]}"
+
+
+def sent_call_id(call_id: str | None) -> str:
+    """``call_id`` as sent back to a provider that checks the form (Anthropic, Bedrock). The
+    same id always maps to the same text, so a call and its result still match; an id that
+    had to change ends with a short hash of the original, so two ids never become one."""
+    raw = call_id or ""
+    if not raw:
+        return "call"
+    cleaned = _NOT_ID.sub("_", raw)
+    if cleaned == raw and len(raw) <= MAX_CALL_ID_CHARS:
+        return raw
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:_HASH_CHARS]
+    return f"{cleaned[: MAX_CALL_ID_CHARS - _HASH_CHARS - 1]}_{digest}"
+
+
+class SentCallIds:
+    """The tool-call ids of one history as sent (``sent_call_id``). An empty id (a history
+    saved before ids were portable) gets a distinct one by position: the n-th call with an
+    empty id and the n-th result with one share ``call_empty_<n>``, the same on every send."""
+
+    def __init__(self) -> None:
+        self._calls = 0
+        self._results = 0
+
+    def call(self, call_id: str | None) -> str:
+        if call_id:
+            return sent_call_id(call_id)
+        self._calls += 1
+        return f"call_empty_{self._calls}"
+
+    def result(self, call_id: str | None) -> str:
+        if call_id:
+            return sent_call_id(call_id)
+        self._results += 1
+        return f"call_empty_{self._results}"
 
 
 def json_body(response: HttpResponse) -> Any:

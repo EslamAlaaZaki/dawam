@@ -48,7 +48,14 @@ from ..gateway import (
     Usage,
 )
 from .transport import HttpResponse, Transport, TransportError
-from .wire import MAX_LIST_PAGES, detail, error_for, json_body
+from .wire import (
+    MAX_LIST_PAGES,
+    SentCallIds,
+    detail,
+    error_for,
+    json_body,
+    received_call_id,
+)
 
 DEFAULT_MAX_TOKENS = 4096
 """A cap on the reply that fits the Bedrock models' output limits."""
@@ -434,6 +441,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[list[str], list[dict[st
     """System messages become the top-level ``system``; a tool result is a ``user`` block,
     and consecutive ``user`` turns merge (Converse wants alternating roles)."""
     system: list[str] = []
+    ids = SentCallIds()
     wire: list[dict[str, Any]] = []
 
     def add(role: str, blocks: list[dict[str, Any]]) -> None:
@@ -464,7 +472,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[list[str], list[dict[st
             )
         elif message.role == "tool":
             result = {
-                "toolUseId": message.tool_call_id,
+                "toolUseId": ids.result(message.tool_call_id),
                 "content": [{"text": message.content or ""}],
             }
             add("user", [{"toolResult": result}])
@@ -473,7 +481,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[list[str], list[dict[st
             if message.content:
                 blocks.append({"text": message.content})
             blocks.extend(
-                {"toolUse": {"toolUseId": c.id, "name": c.name, "input": c.arguments}}
+                {"toolUse": {"toolUseId": ids.call(c.id), "name": c.name, "input": c.arguments}}
                 for c in message.tool_calls
             )
             add("assistant", blocks or [{"text": ""}])
@@ -504,7 +512,9 @@ def _tool_call(block: Any, arguments: Any) -> ToolCall:
         if not isinstance(arguments, dict):
             raise ValueError("arguments are not an object")
         return ToolCall(
-            id=str(block.get("toolUseId") or ""), name=str(block["name"]), arguments=arguments
+            id=received_call_id(block.get("toolUseId")),
+            name=str(block["name"]),
+            arguments=arguments,
         )
     except (KeyError, TypeError, ValueError, AttributeError):
         raise LlmError(INVALID_RESPONSE, "The model made a tool call that is not valid.") from None

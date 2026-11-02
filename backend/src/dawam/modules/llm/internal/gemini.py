@@ -10,6 +10,10 @@ the service account's JSON key: the adapter signs a JWT with its private key, ex
 for an access token through the same transport, caches the token until shortly before it
 expires and asks for a fresh one after a 401. Neither the key, the secret nor the token is
 ever logged or put into an error message.
+
+Gemini 3 signs each step's function calls (``thoughtSignature``) and wants the signature back
+with the call in later turns. It is kept on the ``ToolCall`` and sent back only here; a call
+Gemini did not make (another model's, before a fallback) gets Google's documented placeholder.
 """
 
 from __future__ import annotations
@@ -18,7 +22,6 @@ import base64
 import io
 import json
 import time
-import uuid
 from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 from urllib.parse import quote, urlencode, urlsplit
@@ -45,12 +48,15 @@ from ..gateway import (
     Usage,
 )
 from .transport import HttpResponse, Transport, TransportError
-from .wire import MAX_LIST_PAGES, detail, error_for, json_body
+from .wire import MAX_LIST_PAGES, detail, error_for, json_body, received_call_id
 
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 REFRESH_MARGIN_SECONDS = 300
 JWT_LIFETIME_SECONDS = 3600
+
+PLACEHOLDER_SIGNATURE = "skip_thought_signature_validator"
+"""What Google documents to send for a function call that has no signature of its own."""
 
 _FINISH_REASONS = {"STOP": "stop", "MAX_TOKENS": "length"}
 _FILTERED = {"SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY"}
@@ -453,9 +459,15 @@ def _wire_contents(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any
                 parts.append({"text": message.content})
             for call in message.tool_calls:
                 names[call.id] = call.name
-                parts.append(
-                    {"functionCall": {"id": call.id, "name": call.name, "args": call.arguments}}
-                )
+                part: dict[str, Any] = {
+                    "functionCall": {"id": call.id, "name": call.name, "args": call.arguments}
+                }
+                signature = call.thought_signature
+                if signature is None:  # not Gemini's own call
+                    signature = PLACEHOLDER_SIGNATURE
+                if signature:  # one Gemini made unsigned (a parallel call) is sent as it came
+                    part["thoughtSignature"] = signature
+                parts.append(part)
             add("model", parts or [{"text": ""}])
     return "\n\n".join(system), contents
 
@@ -489,13 +501,18 @@ def _finish(reason: Any, called_tools: bool) -> str | None:
     return _FINISH_REASONS.get(reason, reason.lower())
 
 
-def _tool_call(call: Any) -> ToolCall:
+def _tool_call(call: Any, signature: Any = None) -> ToolCall:
+    """``signature``: the part's ``thoughtSignature`` (kept as ``""`` when it has none)."""
     try:
         arguments = call.get("args") or {}
         if not isinstance(arguments, dict):
             raise ValueError("arguments are not an object")
-        call_id = call.get("id") or f"call_{uuid.uuid4().hex[:16]}"
-        return ToolCall(id=str(call_id), name=str(call["name"]), arguments=arguments)
+        return ToolCall(
+            id=received_call_id(call.get("id")),
+            name=str(call["name"]),
+            arguments=arguments,
+            thought_signature=signature if isinstance(signature, str) else "",
+        )
     except (KeyError, TypeError, ValueError, AttributeError):
         raise LlmError(INVALID_RESPONSE, "The model made a tool call that is not valid.") from None
 
@@ -526,7 +543,7 @@ def _part_events(parts: list[Any]) -> Iterator[ChatEvent]:
         if not isinstance(part, dict):
             raise LlmError(INVALID_RESPONSE, "The provider's chat reply was malformed.")
         if isinstance(part.get("functionCall"), dict):
-            yield ToolCallEvent(_tool_call(part["functionCall"]))
+            yield ToolCallEvent(_tool_call(part["functionCall"], part.get("thoughtSignature")))
         elif part.get("text") and not part.get("thought"):
             yield TextDelta(str(part["text"]))
 
