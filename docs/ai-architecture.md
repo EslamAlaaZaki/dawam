@@ -153,6 +153,8 @@ Shared helpers in `llm/internal/wire.py` map HTTP errors into `LlmError` (401/40
 
 These capabilities drive the agent: streaming on or off, native or prompted tool calling, and how much context to send.
 
+**Confirmed "no" for agent and light models (#552).** For a model with the `agent` or `light` role, `tool_calling` and `json_schema` are stored `false` only when that is confirmed: the provider rejects the request as a `bad_request`, or the model fails the check on both of two attempts (no `echo` call; no valid probe JSON). A temporary failure (rate limit, 5xx, timeout, network, auth) stores neither: the model keeps its previous value (`null` if never tested) and the test result carries a warning naming the feature and the real error, so the admin can test again. Other roles keep the single-attempt rule: any failure means "no".
+
 ```mermaid
 flowchart LR
     T["Admin clicks Test connection"] --> C1{"Short prompt OK?"}
@@ -223,6 +225,8 @@ Tools declare the level they need; the tool registry hides and refuses tools abo
 - `Reasoning(text)` — shown thinking from a reasoning model (§3.5);
 - `Asked(question)` — jobs only: the run saved its checkpoint and stopped to ask the member (§4.5);
 - one final `Finished(status, text, tool_calls, prompt_tokens, completion_tokens, error_code, error_message)` with status `completed`, `tool_limit`, `cancelled` or `failed`.
+
+**Empty replies are never silent (#552).** A model step with no text and no tool call (a Gemini reply of thought parts only counts as empty; the thought tokens are still billed and counted) is asked once more, in native and prompted mode alike. A second empty step ends the run `failed` with error code `empty_reply` ("The model returned an empty answer. Try again or pick another model."), which the chat shows like any run error. A step that is empty because the provider stopped it (`Done.finish_reason == "content_filter"`) fails at once with that reason. `AssistantService` also enforces that a `completed` run always has an answer message: a completed run without text is stored as `failed` / `empty_reply`.
 
 ### 4.1 The loop, step by step
 
