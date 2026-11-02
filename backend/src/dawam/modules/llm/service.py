@@ -536,6 +536,7 @@ class ProviderService:
             tested_provider_state = (provider.base_url, provider.secret_encrypted)
             gateway = self._gateway(provider, name)
         ollama = gateway.ollama_context() if "agent" in roles else None
+        confirmed_only = any(r in ("agent", "light") for r in roles)
         result: ProbeResult = probe(
             gateway,
             chat=not roles or any(r not in NON_CHAT_ROLES for r in roles),
@@ -543,9 +544,8 @@ class ProviderService:
             context_window=window,
             vision="vision" in roles,
             rerank="rerank" in roles,
-            confirmed_only=any(r in ("agent", "light") for r in roles),
+            confirmed_only=confirmed_only,
         )
-        confirmed_only = any(r in ("agent", "light") for r in roles)
         with Session(self._engine) as db, db.begin():
             record = self._load_model(db, model_id, lock=True)
             provider = self._load_provider(db, record.provider_id)
@@ -560,10 +560,10 @@ class ProviderService:
             record.test_error = result.error
             record.last_tested_at = self._clock()
             # An unconfirmed feature (a temporary error) keeps what the model had before.
-            if not (confirmed_only and result.ok and caps.tool_calling is None):
+            if not (confirmed_only and caps.tool_calling is None):
                 record.supports_tools = caps.tool_calling
             record.supports_streaming = caps.streaming
-            if not (confirmed_only and result.ok and caps.json_schema is None):
+            if not (confirmed_only and caps.json_schema is None):
                 record.supports_json_schema = caps.json_schema
             record.embedding_dimension = caps.embedding_dimension
             if record.context_window is None:

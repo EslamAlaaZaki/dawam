@@ -104,3 +104,16 @@ def test_test_connection_keeps_tool_calling_on_a_temporary_error_and_warns(admin
     assert again["test_ok"] is True
     assert again["tool_calling"] is True and again["json_schema"] is True
     assert any("key rejected" in w and "ool calling" in w for w in again["warnings"])
+
+
+def test_a_failed_test_never_overwrites_stored_tool_calling_or_json_schema(admin_client, fake_llm):
+    from dawam.modules.llm import LlmError
+
+    model = add_model(admin_client, add_provider(admin_client), roles=("agent",))
+    assert admin_client.post(f"{BASE}/models/{model['id']}/test").json()["tool_calling"] is True
+    fake_llm.script(*[LlmError("rate_limit", "slow down")] * 8)
+
+    failed = admin_client.post(f"{BASE}/models/{model['id']}/test").json()
+
+    assert failed["test_ok"] is False
+    assert failed["tool_calling"] is True and failed["json_schema"] is True

@@ -462,6 +462,26 @@ def test_a_completed_run_always_has_an_answer_message(roles, model, fake_llm):
     assert saved["messages"][-1]["content"] == "Now an answer"
 
 
+def test_the_service_turns_a_completed_run_without_text_into_empty_reply(
+    roles, model, fake_llm, monkeypatch
+):
+    from dawam.modules.assistant import service as service_module
+    from dawam.modules.assistant.internal.agent import Finished
+
+    def empty_run(*args, **kwargs):
+        yield Finished("completed", "", [], 3, 2, None, None)
+
+    monkeypatch.setattr(service_module, "run_agent", empty_run)
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    final = done(ask(owner, roles, cid, "hi"))
+
+    assert final["run"]["status"] == "failed" and final["run"]["error_code"] == "empty_reply"
+    saved = owner.get(f"{base(roles)}/conversations/{cid}").json()
+    assert [m["role"] for m in saved["messages"]] == ["user"]
+
+
 def test_a_provider_failure_is_shown_as_the_reason(roles, model, fake_llm):
     fake_llm.script(LlmError("auth", "The provider refused the API key."))
     owner = roles.client("owner")
