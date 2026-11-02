@@ -309,3 +309,16 @@ def test_an_external_fallback_is_skipped_for_an_internal_only_workspace(
 
     assert ask(role_service, setup) == "stayed internal"
     assert models_called(fake_llm) == ["big-model", "local-backup"]
+
+
+def test_once_a_model_failed_the_last_fallback_is_not_retried_either(
+    waiting_roles, setup, backup, fake_llm, slept
+):
+    fake_llm.script(LlmError(AUTH, "bad key"), LlmError(UNAVAILABLE, "down"), Reply(text="late"))
+
+    with pytest.raises(LlmError) as caught:
+        ask(waiting_roles, setup)
+
+    assert caught.value.message.startswith("No model could answer.")
+    assert models_called(fake_llm) == ["big-model", "backup"]
+    assert slept == []

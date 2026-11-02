@@ -346,14 +346,15 @@ class MeteredGateway:
 
         Any ``LlmError`` before the model produced anything hands over to the next
         candidate (``fall_back_from``) and the call is made again there; ``fall_back=False``
-        raises it instead, so the caller can fit the request to the next model first. While
-        a candidate is left the model is asked once, with no retry and no wait; the last one
-        gets the gateway's retries with backoff. A budget or policy refusal (``ApiError``) is
-        never a reason to fall back, and a reply already begun is never restarted."""
+        raises it instead, so the caller can fit the request to the next model first. Only a
+        model that never had a fallback gets the gateway's retries with backoff; once there
+        are candidates, each model is asked once, with no retry and no wait. A budget or
+        policy refusal (``ApiError``) is never a reason to fall back, and a reply already
+        begun is never restarted."""
         while True:
             model = self._current
             model._ensure_allowed()
-            retries = 0 if self._candidates() else None
+            retries = 0 if self._failed or self._candidates() else None
             events = model._metered(
                 lambda model=model, retries=retries: model._gateway.chat(
                     messages, tools, stream, json_schema=json_schema, max_retries=retries
