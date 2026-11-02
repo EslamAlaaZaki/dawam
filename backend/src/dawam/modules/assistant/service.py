@@ -32,6 +32,7 @@ from dawam.platform.pii_validators import redact_json, redact_text
 from .internal.agent import (
     DEFAULT_MAX_JOB_TOOL_CALLS,
     DEFAULT_MAX_TOOL_CALLS,
+    EMPTY_REPLY_MESSAGE,
     Asked,
     Checkpoint,
     Compacted,
@@ -1123,6 +1124,14 @@ class AssistantService:
         seconds: float,
         answerer: _Answerer | None = None,
     ) -> Completed:
+        if finished.status == "completed" and not finished.text.strip():
+            # Never a silent success: a completed run always has an answer message.
+            finished = replace(
+                finished,
+                status="failed",
+                error_code="empty_reply",
+                error_message=EMPTY_REPLY_MESSAGE,
+            )
         model_id = answerer.model_id if answerer else None
         fell_back = answerer.fell_back if answerer else False
         now = self._clock()

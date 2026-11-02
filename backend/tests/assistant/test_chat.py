@@ -437,6 +437,31 @@ def test_without_an_assigned_model_the_stream_says_why(roles, fake_llm):
     assert "no agent model" in final["run"]["error_message"]
 
 
+def test_an_empty_answer_fails_the_run_and_saves_no_message(roles, model, fake_llm):
+    fake_llm.script(Reply(text=""), Reply(text=""))
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    final = done(ask(owner, roles, cid, "hi"))
+
+    assert final["run"]["status"] == "failed" and final["run"]["error_code"] == "empty_reply"
+    assert "empty answer" in final["run"]["error_message"]
+    saved = owner.get(f"{base(roles)}/conversations/{cid}").json()
+    assert [m["role"] for m in saved["messages"]] == ["user"]
+
+
+def test_a_completed_run_always_has_an_answer_message(roles, model, fake_llm):
+    fake_llm.script(Reply(text=""), Reply(text="Now an answer"))
+    owner = roles.client("owner")
+    cid = conversation(owner, roles)
+
+    final = done(ask(owner, roles, cid, "hi"))
+
+    assert final["run"]["status"] == "completed"
+    saved = owner.get(f"{base(roles)}/conversations/{cid}").json()
+    assert saved["messages"][-1]["content"] == "Now an answer"
+
+
 def test_a_provider_failure_is_shown_as_the_reason(roles, model, fake_llm):
     fake_llm.script(LlmError("auth", "The provider refused the API key."))
     owner = roles.client("owner")
