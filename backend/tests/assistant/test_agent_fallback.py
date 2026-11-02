@@ -4,6 +4,7 @@ to the new model. Two scripted fake providers behind ``MeteredGateway``s; no dat
 from __future__ import annotations
 
 import itertools
+import uuid
 from collections.abc import Sequence
 from typing import Any
 
@@ -52,6 +53,7 @@ def metered(name: str, adapter: FakeAdapter, capabilities: Capabilities, **optio
         Budgets(),  # type: ignore[arg-type]
         role="agent",
         model_name=name,
+        model_id=uuid.uuid5(uuid.NAMESPACE_URL, name),
         workspace_id=None,
         user_id=None,
         **options,
@@ -128,3 +130,36 @@ def test_a_single_model_failing_still_fails_the_run():
     events = run(gateway, [Message("user", "Where is it?")])
 
     assert events[-1].status == "failed" and events[-1].error_code == AUTH
+
+
+def test_a_handover_outside_the_loop_is_adopted_at_the_next_step():
+    primary = FakeAdapter().script(
+        Reply(tool_calls=(ToolCall("c1", "lookup", {"id": 7}),)), LlmError(AUTH, "bad key")
+    )
+    backup = FakeAdapter().script(Reply(text="checked"), Reply(text="It is at row 7"))
+    no_tools = Capabilities(tool_calling=False, streaming=True, context_window=100_000)
+    gateway = chain(primary, backup, no_tools)
+
+    class Checking(Tools):
+        """A tool whose result is checked on the run's gateway (like the light model's
+        injection check): the primary fails there and the backup takes over."""
+
+        def execute(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
+            list(gateway.chat([Message("user", "Is this safe?")]))
+            return super().execute(name, arguments)
+
+    clock = itertools.count(0.0, 0.5)
+    events = list(
+        run_agent(
+            gateway,
+            Checking(),
+            system="SYSTEM",
+            history=[Message("user", "Where is it?")],
+            timer=lambda: next(clock),
+        )
+    )
+
+    assert events[-1].status == "completed" and events[-1].text == "It is at row 7"
+    step = backup.calls[1]
+    assert step.tools == () and "You have these tools" in (step.messages[0].content or "")
+    assert all(m.role != "tool" and not m.tool_calls for m in step.messages)

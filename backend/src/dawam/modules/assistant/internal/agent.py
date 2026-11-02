@@ -719,6 +719,9 @@ def run_agent(
     compaction_tried = summarize is None
     last_poll = timer()
     hand_over: Callable[[LlmError], None] | None = getattr(gateway, "fall_back_from", None)
+    serving = getattr(gateway, "model_id", None)
+    """The model the steps are fitted to; another call of the run (a summary, a check on the
+    same gateway) may hand over too, and the next step then adopts the new model."""
     """A ``MeteredGateway``'s: a model that fails before it answers hands over to the next
     fallback, and the step is prepared again for that model."""
 
@@ -731,7 +734,8 @@ def run_agent(
     def adopt() -> None:
         """A fallback took over: its context window, streaming and tool calling apply from
         now on (a model without native tool calling gets the run so far in limited mode)."""
-        nonlocal capabilities, window, stream, count, prompted
+        nonlocal capabilities, window, stream, count, prompted, serving
+        serving = getattr(gateway, "model_id", None)
         capabilities = gateway.capabilities()
         window = capabilities.context_window
         stream = capabilities.streaming is not False
@@ -886,6 +890,8 @@ def run_agent(
             if is_cancelled():
                 yield run.finish("cancelled")
                 return
+            if getattr(gateway, "model_id", None) != serving:
+                adopt()  # handed over outside this loop
             under_cap = _counted(run.calls) < max_tool_calls
             if searching:
                 visible = [s for s in all_specs if s.name in loaded] + [finder]
