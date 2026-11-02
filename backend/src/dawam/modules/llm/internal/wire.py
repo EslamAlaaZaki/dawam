@@ -1,8 +1,11 @@
-"""What the adapters share: reading a JSON reply and mapping an HTTP error to ``LlmError``."""
+"""What the adapters share: reading a JSON reply, mapping an HTTP error to ``LlmError`` and
+keeping tool-call ids portable between providers."""
 
 from __future__ import annotations
 
 import json
+import re
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -19,6 +22,9 @@ from .transport import HttpResponse
 
 MAX_DETAIL_CHARS = 300
 MAX_LIST_PAGES = 20
+MAX_CALL_ID_CHARS = 64
+"""Bedrock's limit on a ``toolUseId``."""
+_NOT_ID = re.compile(r"[^A-Za-z0-9_-]")
 """A cap on the pages read when listing a provider's models."""
 _CLOUDFLARE_BLOCK = "blocked access based on your browser's signature"
 _CONTEXT_MARKERS = (
@@ -33,6 +39,21 @@ _CONTEXT_MARKERS = (
     "exceeds the maximum number of tokens",  # Gemini
     "too long for requested model",  # Bedrock
 )
+
+
+def received_call_id(raw: Any) -> str:
+    """The id of a tool call a provider made, in the form every provider accepts
+    (``[A-Za-z0-9_-]``, non-empty): a history one provider wrote must be accepted by the next
+    model, whoever runs it. A provider that sent none (some OpenAI-compatible servers send
+    ``""``) gets a fresh id."""
+    cleaned = sent_call_id(str(raw)) if raw else ""
+    return cleaned or f"call_{uuid.uuid4().hex[:24]}"
+
+
+def sent_call_id(call_id: str | None) -> str:
+    """``call_id`` as sent back to a provider that checks the form (Anthropic, Bedrock). The
+    same id always maps to the same text, so a call and its result still match."""
+    return _NOT_ID.sub("_", call_id or "")[:MAX_CALL_ID_CHARS] or "call"
 
 
 def json_body(response: HttpResponse) -> Any:

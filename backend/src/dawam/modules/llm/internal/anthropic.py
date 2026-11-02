@@ -31,7 +31,14 @@ from ..gateway import (
     Usage,
 )
 from .transport import HttpResponse, Transport, TransportError
-from .wire import MAX_LIST_PAGES, detail, error_for, json_body
+from .wire import (
+    MAX_LIST_PAGES,
+    detail,
+    error_for,
+    json_body,
+    received_call_id,
+    sent_call_id,
+)
 
 API_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 4096
@@ -252,7 +259,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any
                 [
                     {
                         "type": "tool_result",
-                        "tool_use_id": message.tool_call_id,
+                        "tool_use_id": sent_call_id(message.tool_call_id),
                         "content": message.content or "",
                     }
                 ],
@@ -262,7 +269,12 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any
             if message.content:
                 blocks.append({"type": "text", "text": message.content})
             blocks.extend(
-                {"type": "tool_use", "id": c.id, "name": c.name, "input": c.arguments}
+                {
+                    "type": "tool_use",
+                    "id": sent_call_id(c.id),
+                    "name": c.name,
+                    "input": c.arguments,
+                }
                 for c in message.tool_calls
             )
             add("assistant", blocks or [{"type": "text", "text": ""}])
@@ -300,7 +312,9 @@ def _tool_call(block: Any, arguments: Any) -> ToolCall:
     try:
         if not isinstance(arguments, dict):
             raise ValueError("arguments are not an object")
-        return ToolCall(id=str(block.get("id") or ""), name=str(block["name"]), arguments=arguments)
+        return ToolCall(
+            id=received_call_id(block.get("id")), name=str(block["name"]), arguments=arguments
+        )
     except (KeyError, TypeError, ValueError, AttributeError):
         raise LlmError(INVALID_RESPONSE, "The model made a tool call that is not valid.") from None
 
