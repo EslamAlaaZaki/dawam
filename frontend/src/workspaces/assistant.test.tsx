@@ -1552,6 +1552,41 @@ describe("picking the model of a message", () => {
     );
   });
 
+  it("keeps the picker when a light model's fallback answered", async () => {
+    const light = sse([
+      frame("started", { run_id: "r", message_id: "m" }),
+      frame("text", { text: "Done." }),
+      frame("done", {
+        run: run(),
+        message_id: "a",
+        model: "spare-light",
+        model_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        fell_back: true,
+        pick_moved: false,
+      }),
+    ]);
+    const requests = renderApp(
+      backend({ ai: AI, answer: () => light.clone() }),
+      PATH,
+    );
+    await openAssistant();
+    await screen.findByRole("button", { name: "Model for this message: Big" });
+
+    await ask("Hi");
+    await ask("Again");
+
+    await waitFor(() =>
+      expect(
+        requests.filter(
+          (r) => r.method === "POST" && r.path.endsWith("/messages"),
+        )[1]?.body,
+      ).toMatchObject({ content: "Again", model_id: null }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Model for this message: Big" }),
+    ).toBeInTheDocument();
+  });
+
   it("switches the picker to the fallback that answered, and the member can switch back", async () => {
     const fellBack = sse([
       frame("started", { run_id: "r", message_id: "m" }),
@@ -1562,6 +1597,7 @@ describe("picking the model of a message", () => {
         model: "Small",
         model_id: SMALL,
         fell_back: true,
+        pick_moved: true,
       }),
     ]);
     const requests = renderApp(

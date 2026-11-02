@@ -16216,7 +16216,7 @@
         },
         "responses": {
           "200": {
-            "description": "A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a model set to show it; never saved), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`), the model that answered (`model`, `model_id`) and `fell_back`: a fallback model answered, and the conversation's pick is now that model.",
+            "description": "A Server-Sent Events stream: `started` (run and message ids), `text` (an answer fragment), `reasoning` (a piece of the model's thinking, only for a model set to show it; never saved), `tool` (a finished tool call: name, arguments, status, duration), then one `done` with the run (status, tools, tokens, duration and, when the run could not finish, `error_code` and `error_message`), the model that answered (`model`, `model_id`), `fell_back` (a fallback model answered) and `pick_moved` (the conversation's pick is now that model).",
             "content": {
               "text/event-stream": {
                 "schema": {

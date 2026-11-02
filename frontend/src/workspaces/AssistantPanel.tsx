@@ -787,8 +787,9 @@ export function AssistantPanel({
             if (event.run.status === "failed") {
               setFailed(event.run);
             }
-            // A fallback answered: the picker follows it, and the member may switch back.
-            if (event.fellBack && event.modelId) {
+            // A fallback took over the agent pick: the picker follows it, and the member may
+            // switch back. A light model's fallback is never one to pick.
+            if (event.pickMoved && event.modelId) {
               setPicked(event.modelId);
             }
           }

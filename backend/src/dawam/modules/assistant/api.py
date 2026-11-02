@@ -450,6 +450,7 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
                     "model": event.model,
                     "model_id": str(event.model_id) if event.model_id else None,
                     "fell_back": event.fell_back,
+                    "pick_moved": event.pick_moved,
                 },
             )
 
@@ -465,8 +466,8 @@ def _frames(events: Iterator[StreamEvent]) -> Iterator[str]:
             "model set to show it; never saved), `tool` (a finished tool call: name, arguments, "
             "status, duration), then one `done` with the run (status, tools, tokens, "
             "duration and, when the run could not finish, `error_code` and `error_message`), "
-            "the model that answered (`model`, `model_id`) and `fell_back`: a fallback model "
-            "answered, and the conversation's pick is now that model.",
+            "the model that answered (`model`, `model_id`), `fell_back` (a fallback model "
+            "answered) and `pick_moved` (the conversation's pick is now that model).",
             "content": {"text/event-stream": {"schema": {"type": "string"}}},
         }
     },

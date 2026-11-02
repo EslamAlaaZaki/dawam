@@ -255,7 +255,9 @@ class Completed:
     """The display name of the model that answered."""
     model_id: uuid.UUID | None = None
     fell_back: bool = False
-    """A fallback model answered: the conversation's pick is now that model."""
+    """A fallback model answered."""
+    pick_moved: bool = False
+    """The conversation's pick is now that model (an agent answer, not the light model's)."""
 
 
 StreamEvent = Started | Text | Reasoning | ToolFinished | Completed
@@ -1183,7 +1185,8 @@ class AssistantService:
             },
         )
         name = self._ai.model_names({model_id}).get(model_id) if model_id else None
-        return Completed(view, answer_id, name, model_id, fell_back)
+        moved = answer_id is not None and answerer is not None and answerer.moves_pick
+        return Completed(view, answer_id, name, model_id, fell_back, moved)
 
     def _cancel_requested(self, run_id: uuid.UUID) -> bool:
         with Session(self._engine) as db:

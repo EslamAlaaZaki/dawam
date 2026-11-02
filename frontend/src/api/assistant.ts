@@ -238,6 +238,8 @@ export type AnswerEvent =
       /** The model that answered; with `fellBack`, a fallback that took over. */
       modelId: string | null;
       fellBack: boolean;
+      /** The conversation's pick is now `modelId` (an agent answer, never the light model's). */
+      pickMoved: boolean;
     };
 
 interface Frame {
@@ -282,6 +284,7 @@ function toAnswerEvent({ event, data }: Frame): AnswerEvent | null {
         run: body.run,
         modelId: body.model_id ?? null,
         fellBack: body.fell_back === true,
+        pickMoved: body.pick_moved === true,
       };
     default:
       return null;
