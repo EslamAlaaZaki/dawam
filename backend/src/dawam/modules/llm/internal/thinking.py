@@ -7,6 +7,10 @@ there is deprecated (4.6) or rejected (4.7 and newer). Older models (Haiku 4.5, 
 Claude 3 family) take ``{"type": "enabled", "budget_tokens": N}`` and no effort. Some new models
 (Opus 5.5, Sonnet 5.5) refuse ``{"type": "disabled"}``, so no adapter ever sends it: thinking
 is switched off by leaving the field out.
+
+Claude's thinking blocks are sent back unchanged with the rest of a run (preserved thinking):
+each carries a ``signature`` bound to the conversation before it, so the run's history stays
+append-only, and ``block_binding`` drops (rather than refuses) a block whose prefix changed.
 """
 
 from __future__ import annotations
@@ -20,6 +24,10 @@ MIN_THINKING_BUDGET = 1024
 """The least thinking budget Anthropic (and Gemini 2.5's useful range) accepts."""
 EFFORT_BUDGETS = {"low": 1024, "medium": 4096, "high": 8192}
 DEFAULT_THINKING_EFFORT = "medium"
+THINKING_BINDING_BETA = "thinking-binding-controls-2026-08-01"
+"""The beta that ``thinking.block_binding`` needs (a header on the Anthropic API, the
+``anthropic_beta`` body field on Bedrock); without it the field is refused."""
+CLAUDE_THINKING_TYPES = ("thinking", "redacted_thinking")
 
 _CLAUDE = re.compile(r"claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{1,2})(?!\d))?")
 _LEGACY_CLAUDE = re.compile(r"claude-(\d|instant)")
@@ -79,24 +87,35 @@ def _supported(node: Any) -> bool:
 
 
 def claude_thinking_fields(
-    reasoning: ReasoningSettings, *, adaptive: bool, think: bool
+    reasoning: ReasoningSettings, *, adaptive: bool
 ) -> tuple[dict[str, Any], int]:
     """The request fields for Claude thinking (``thinking`` and ``output_config.effort``) and
-    the extra output tokens to reserve for it. ``think`` off (the run has called a tool, see
-    the Anthropic adapter's ``_can_think``): no ``thinking`` field. Adaptive models get the
-    effort on every turn all the same (a change mid-run would also reset the prompt cache)."""
-    fields: dict[str, Any] = {}
+    the extra output tokens to reserve for it. Thinking is asked for on every step of a run:
+    the thinking blocks of earlier steps are sent back with it (``Message.thinking``). The
+    ``block_binding`` makes a block whose conversation changed before it a dropped block
+    rather than a failed request; it needs the ``THINKING_BINDING_BETA``."""
     budget = thinking_budget(reasoning)
+    fields: dict[str, Any] = {}
     if adaptive:
         if reasoning.effort:
             fields["output_config"] = {"effort": reasoning.effort}
-        if think:
-            thinking: dict[str, Any] = {"type": "adaptive"}
-            if reasoning.show:
-                thinking["display"] = "summarized"  # 4.7 and newer omit the text by default
-            fields["thinking"] = thinking
-        return fields, budget
-    if think:
-        fields["thinking"] = {"type": "enabled", "budget_tokens": budget}
-        return fields, budget
-    return fields, 0
+        thinking: dict[str, Any] = {"type": "adaptive"}
+        if reasoning.show:
+            thinking["display"] = "summarized"  # 4.7 and newer omit the text by default
+    else:
+        thinking = {"type": "enabled", "budget_tokens": budget}
+    thinking["block_binding"] = {"prefix_mismatch_behavior": "drop_block"}
+    fields["thinking"] = thinking
+    return fields, budget
+
+
+def is_claude_thinking_block(block: Any) -> bool:
+    """A thinking block the Anthropic Messages API wrote (and reads back)."""
+    return isinstance(block, dict) and block.get("type") in CLAUDE_THINKING_TYPES
+
+
+def transformations(raw: Any) -> tuple[dict[str, Any], ...]:
+    """The well-formed entries of an ``input_transformations`` array."""
+    if not isinstance(raw, list):
+        return ()
+    return tuple(dict(entry) for entry in raw if isinstance(entry, dict))

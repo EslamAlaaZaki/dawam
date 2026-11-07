@@ -44,6 +44,10 @@ class Reply:
     finish_reason: str | None = None
     reasoning: str = ""
     """The model's thinking, sent before the text (a reasoning model)."""
+    thinking: tuple[dict[str, Any], ...] = ()
+    """The reply's opaque thinking blocks, handed over on ``Done`` (``Done.thinking``)."""
+    input_transformations: tuple[dict[str, Any], ...] = ()
+    """What the provider says it changed in the request (``Done.input_transformations``)."""
 
 
 @dataclass(frozen=True)
@@ -136,7 +140,7 @@ class FakeAdapter:
         for call in outcome.tool_calls:
             yield ToolCallEvent(call)
         finish = outcome.finish_reason or ("tool_calls" if outcome.tool_calls else "stop")
-        yield Done(outcome.usage, finish)
+        yield Done(outcome.usage, finish, outcome.thinking, outcome.input_transformations)
 
     def vision(
         self,

@@ -449,6 +449,7 @@ class Checkpoint:
                     m["content"],
                     tuple(ToolCall(**c) for c in m["tool_calls"]),
                     m["tool_call_id"],
+                    thinking=tuple(m.get("thinking") or ()),
                 )
                 for m in data["messages"]
             ),
@@ -482,6 +483,7 @@ def _message_json(message: Message) -> dict[str, Any]:
         "content": message.content,
         "tool_calls": [_call_json(c) for c in message.tool_calls],
         "tool_call_id": message.tool_call_id,
+        "thinking": list(message.thinking),
     }
 
 
@@ -597,6 +599,29 @@ def _prompted_form(message: Message) -> Message:
         )
         return Message("assistant", "\n\n".join(p for p in (message.content, calls) if p))
     return message
+
+
+def _without_thinking(messages: list[Message], start: int = 0) -> None:
+    """Drop the thinking blocks of ``messages[start:]``, in place. A block's signature is bound
+    to everything sent before it (system, tools, earlier messages): once that changed, the
+    block is no longer valid, and leaving out every block from a point on always is."""
+    for at in range(start, len(messages)):
+        if messages[at].thinking:
+            messages[at] = replace(messages[at], thinking=())
+
+
+def _log_transformations(entries: Sequence[dict[str, Any]], model: str | None) -> None:
+    """What the provider changed in a request (a thinking block dropped, say), for the log."""
+    for entry in entries:
+        logger.warning(
+            "model input transformed",
+            extra={
+                "model": model,
+                "transformation": str(entry.get("type")),
+                "reason": str(entry.get("reason")),
+                "path": str(entry.get("path")),
+            },
+        )
 
 
 def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
@@ -718,6 +743,8 @@ def run_agent(
         loaded = set(resume.loaded) & set(known_tools)
     shortenable: list[tuple[Message, Message]] = []
     """The run's tool results, oldest first, each with its digest form."""
+    last_tools: tuple[str, ...] | None = None
+    """The tools sent with the last step: thinking blocks are bound to them."""
     retries = 0
     empty_retried = False
     compaction_tried = summarize is None
@@ -813,6 +840,7 @@ def run_agent(
             at = next((i for i, m in enumerate(messages) if m is full), None)
             if at is not None:
                 messages[at] = short
+                _without_thinking(messages, at)  # the blocks after it saw the full result
                 swapped = True
         return swapped
 
@@ -904,6 +932,7 @@ def run_agent(
             offered = visible if under_cap else ()
             answer: list[str] = []
             finish: str | None = None
+            thinking: tuple[dict[str, Any], ...] = ()
             last_poll = float("-inf")  # always look at the flag when a model call begins
             extra = tools_prompt(offered) if prompted and offered else ""
             reserved = count(extra) if extra else schema_tokens(() if prompted else offered, count)
@@ -922,6 +951,7 @@ def run_agent(
                     del messages[1 : 1 + turns]
                     protect_from -= turns
                     messages[0] = Message("system", system + summary_block(summary))
+                    _without_thinking(messages)  # the kept turns' blocks saw another prefix
                     yield Compacted(summary, turns)
 
             def prepare(
@@ -933,6 +963,12 @@ def run_agent(
                 if extra:
                     head = sent[0]
                     sent[0] = replace(head, content=head.content + "\n\n" + extra)
+                # Trimmed to fit: the blocks from the first message that differs from the
+                # run's own are bound to what the model saw before, so they stay out.
+                same = 0
+                while same < min(len(sent), len(messages)) and sent[same] is messages[same]:
+                    same += 1
+                _without_thinking(sent, same)
                 return sent
 
             def size(
@@ -943,8 +979,12 @@ def run_agent(
                 messages_size = request_tokens(prepare() if sent is None else sent, count)
                 return messages_size + (0 if extra else reserved)
 
-            sent = prepare()
             sent_tools = () if prompted else offered
+            names = tuple(s.name for s in sent_tools)
+            if last_tools is not None and names != last_tools:
+                _without_thinking(messages)  # find_tools (or the cap) changed the tools
+            last_tools = names
+            sent = prepare()
             try:
                 try:
                     started = ask(sent, sent_tools)
@@ -983,6 +1023,8 @@ def run_agent(
                                 pending.append(event.call)
                     elif isinstance(event, Done):
                         finish = event.finish_reason
+                        thinking = event.thinking
+                        _log_transformations(event.input_transformations, serving)
                         if event.usage is not None:
                             run.prompt += event.usage.prompt_tokens
                             run.completion += event.usage.completion_tokens
@@ -1063,7 +1105,9 @@ def run_agent(
                                 f"tool:{PROPOSALS_CHECK}",
                                 shorten_result("\n".join(f"- {e}" for e in errors), window),
                             )
-                            messages.append(Message("assistant", "".join(answer) or None))
+                            messages.append(
+                                Message("assistant", "".join(answer) or None, thinking=thinking)
+                            )
                             messages.append(Message("user", f"{report}\n\n{VERIFY_REQUEST}"))
                             run.text.clear()  # the answer before the fix is not the summary
                             save()
@@ -1103,7 +1147,9 @@ def run_agent(
             if prompted:
                 messages.append(Message("assistant", "".join(answer)))
             else:
-                messages.append(Message("assistant", "".join(answer) or None, tuple(pending)))
+                messages.append(
+                    Message("assistant", "".join(answer) or None, tuple(pending), thinking=thinking)
+                )
             save()  # the model is not asked for this step again
     except LlmError as exc:
         yield run.finish("failed", exc.code, exc.message)

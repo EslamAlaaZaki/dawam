@@ -86,7 +86,11 @@ def test_anthropic_asks_for_extended_thinking_with_a_budget_inside_max_tokens():
     )
 
     body = transport.requests[0].json
-    assert body["thinking"] == {"type": "enabled", "budget_tokens": 2000}
+    assert body["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": 2000,
+        "block_binding": {"prefix_mismatch_behavior": "drop_block"},
+    }
     assert body["max_tokens"] == 2000 + DEFAULT_MAX_TOKENS
 
 
@@ -112,7 +116,7 @@ def test_anthropic_sends_no_thinking_without_settings():
     assert "thinking" not in transport.requests[0].json
 
 
-def test_anthropic_skips_thinking_once_the_run_has_called_a_tool():
+def test_anthropic_keeps_thinking_after_the_run_has_called_a_tool():
     from dawam.modules.llm import ToolCall
 
     history = [*ASK, Message("assistant", None, (ToolCall("t1", "echo", {}),))]
@@ -125,7 +129,7 @@ def test_anthropic_skips_thinking_once_the_run_has_called_a_tool():
         )
     )
 
-    assert "thinking" not in transport.requests[0].json
+    assert transport.requests[0].json["thinking"]["budget_tokens"] == 1024
 
 
 def test_anthropic_thinking_blocks_become_reasoning_deltas():
