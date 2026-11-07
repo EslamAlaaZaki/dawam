@@ -112,7 +112,7 @@ function ChatResizer({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       onKeyDown={onKeyDown}
-      className="absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize touch-none outline-none transition-colors duration-120 hover:bg-border-strong focus-visible:bg-primary lg:block"
+      className="absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize touch-none outline-primary transition-colors duration-120 hover:bg-border-strong focus-visible:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 lg:block"
     />
   );
 }
@@ -222,7 +222,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     <>
       <div
         style={chatStyle}
-        className={`flex flex-col gap-5 ${assistantOpen ? "lg:mr-[var(--chat-width,min(680px,55vw))]" : ""}`}
+        className={`flex flex-col gap-5 ${assistantOpen ? "lg:mr-[calc(var(--chat-width,min(680px,55vw)))]" : ""}`}
       >
         <PageHeader
           title={workspace.data.name}
