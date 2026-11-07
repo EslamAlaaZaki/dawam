@@ -31,6 +31,8 @@ from tests.llm.replay import ReplayTransport
 from tests.llm.stub_server import StubLlmServer
 
 ASK = [Message("user", "Why is the sky blue?")]
+OLD_CLAUDE = "claude-haiku-4-5"
+"""A model that takes a thinking budget (adaptive models: ``test_reasoning_effort.py``)."""
 
 
 def _json(body: Any) -> HttpResponse:
@@ -77,7 +79,11 @@ THINKING_REPLY = {
 def test_anthropic_asks_for_extended_thinking_with_a_budget_inside_max_tokens():
     adapter, transport = _anthropic(_json(THINKING_REPLY))
 
-    list(adapter.chat("m", ASK, [], False, None, reasoning=ReasoningSettings(budget_tokens=2000)))
+    list(
+        adapter.chat(
+            OLD_CLAUDE, ASK, [], False, None, reasoning=ReasoningSettings(budget_tokens=2000)
+        )
+    )
 
     body = transport.requests[0].json
     assert body["thinking"] == {"type": "enabled", "budget_tokens": 2000}
@@ -86,18 +92,22 @@ def test_anthropic_asks_for_extended_thinking_with_a_budget_inside_max_tokens():
 
 def test_anthropic_maps_an_effort_to_a_budget_and_never_goes_below_the_minimum():
     adapter, transport = _anthropic(_json(THINKING_REPLY))
-    list(adapter.chat("m", ASK, [], False, None, reasoning=ReasoningSettings(effort="high")))
+    list(adapter.chat(OLD_CLAUDE, ASK, [], False, None, reasoning=ReasoningSettings(effort="high")))
     assert transport.requests[0].json["thinking"]["budget_tokens"] == 8192
 
     adapter, transport = _anthropic(_json(THINKING_REPLY))
-    list(adapter.chat("m", ASK, [], False, None, reasoning=ReasoningSettings(budget_tokens=10)))
+    list(
+        adapter.chat(
+            OLD_CLAUDE, ASK, [], False, None, reasoning=ReasoningSettings(budget_tokens=10)
+        )
+    )
     assert transport.requests[0].json["thinking"]["budget_tokens"] == 1024
 
 
 def test_anthropic_sends_no_thinking_without_settings():
     adapter, transport = _anthropic(_json(THINKING_REPLY))
 
-    list(adapter.chat("m", ASK, [], False, None))
+    list(adapter.chat(OLD_CLAUDE, ASK, [], False, None))
 
     assert "thinking" not in transport.requests[0].json
 
@@ -109,7 +119,11 @@ def test_anthropic_skips_thinking_once_the_run_has_called_a_tool():
     history.append(Message("tool", "ok", tool_call_id="t1"))
     adapter, transport = _anthropic(_json(THINKING_REPLY))
 
-    list(adapter.chat("m", history, [], False, None, reasoning=ReasoningSettings(effort="low")))
+    list(
+        adapter.chat(
+            OLD_CLAUDE, history, [], False, None, reasoning=ReasoningSettings(effort="low")
+        )
+    )
 
     assert "thinking" not in transport.requests[0].json
 
@@ -117,7 +131,7 @@ def test_anthropic_skips_thinking_once_the_run_has_called_a_tool():
 def test_anthropic_thinking_blocks_become_reasoning_deltas():
     adapter, _ = _anthropic(_json(THINKING_REPLY))
 
-    events = list(adapter.chat("m", ASK, [], False, None, reasoning=ReasoningSettings()))
+    events = list(adapter.chat(OLD_CLAUDE, ASK, [], False, None, reasoning=ReasoningSettings()))
 
     assert events[0] == ReasoningDelta("Rayleigh scattering.")
     assert events[1] == TextDelta("Short wavelengths scatter more.")
@@ -163,7 +177,7 @@ def test_anthropic_streams_thinking_deltas():
         )
     )
 
-    events = list(adapter.chat("m", ASK, [], True, None, reasoning=ReasoningSettings()))
+    events = list(adapter.chat(OLD_CLAUDE, ASK, [], True, None, reasoning=ReasoningSettings()))
 
     assert [e for e in events if isinstance(e, ReasoningDelta)] == [
         ReasoningDelta("Rayleigh "),
@@ -174,7 +188,7 @@ def test_anthropic_streams_thinking_deltas():
 
 def test_gateway_hides_reasoning_by_default_but_counts_it():
     adapter, _ = _anthropic(_json(THINKING_REPLY))
-    gateway = Gateway(adapter, model="m", reasoning=ReasoningSettings(budget_tokens=2000))
+    gateway = Gateway(adapter, model=OLD_CLAUDE, reasoning=ReasoningSettings(budget_tokens=2000))
 
     events = list(gateway.chat(ASK))
 
@@ -187,7 +201,7 @@ def test_gateway_hides_reasoning_by_default_but_counts_it():
 
 def test_gateway_streams_reasoning_when_the_setting_shows_it():
     adapter, _ = _anthropic(_json(THINKING_REPLY))
-    gateway = Gateway(adapter, model="m", reasoning=ReasoningSettings(show=True))
+    gateway = Gateway(adapter, model=OLD_CLAUDE, reasoning=ReasoningSettings(show=True))
 
     events = list(gateway.chat(ASK))
 

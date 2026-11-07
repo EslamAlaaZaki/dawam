@@ -218,6 +218,82 @@ def test_json_on_the_second_schema_attempt_confirms_support():
     assert result.capabilities.json_schema is True
 
 
+# -- "Test connection" detects reasoning models (#555) -------------------------------------
+
+
+def reasoning_probe(fake: FakeAdapter, *, roles: bool = True):
+    llm, _ = gateway(fake)
+    return probe(llm, chat=True, embedding=False, confirmed_only=roles)
+
+
+def test_the_providers_metadata_ticks_reasoning():
+    fake = FakeAdapter()
+    fake.reasoning_flag = True
+
+    result = reasoning_probe(fake)
+
+    assert result.capabilities.reasoning is True and not result.warnings
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        Reply(text="OK", reasoning="The user wants OK."),  # reasoning_content, <think>, thoughts
+        Reply(text="OK", usage=Usage(10, 50, reasoning_tokens=40)),  # reasoning tokens only
+    ],
+)
+def test_a_reply_that_shows_reasoning_ticks_it(reply):
+    result = reasoning_probe(FakeAdapter().script(reply))
+
+    assert result.capabilities.reasoning is True
+
+
+def test_hidden_reasoning_is_still_seen_by_the_probe():
+    fake = FakeAdapter().script(Reply(text="OK", reasoning="thinking", usage=None))
+    llm = Gateway(fake, model="m")  # no reasoning settings: the chat would drop it
+
+    result = probe(llm, chat=True, embedding=False, confirmed_only=True)
+
+    assert result.capabilities.reasoning is True
+
+
+def test_no_sign_of_reasoning_leaves_it_unknown_never_false():
+    fake = FakeAdapter()
+    fake.reasoning_flag = False
+
+    assert reasoning_probe(fake).capabilities.reasoning is None
+    assert reasoning_probe(FakeAdapter()).capabilities.reasoning is None
+
+
+@pytest.mark.parametrize("error", [LlmError("rate_limit", "slow down"), LlmError("auth", "bad")])
+def test_a_temporary_metadata_error_leaves_reasoning_unknown_with_a_warning(error):
+    fake = FakeAdapter()
+    fake.reasoning_flag = error
+
+    result = reasoning_probe(fake)
+
+    assert result.ok and result.capabilities.reasoning is None
+    assert any("reasoning" in w.lower() and error.message in w for w in result.warnings)
+
+
+def test_a_metadata_error_does_not_hide_reasoning_the_reply_showed():
+    fake = FakeAdapter().script(Reply(text="OK", reasoning="hmm"))
+    fake.reasoning_flag = LlmError("unavailable", "down")
+
+    result = reasoning_probe(fake)
+
+    assert result.capabilities.reasoning is True and not result.warnings
+
+
+def test_a_refused_metadata_lookup_is_no_answer_and_no_warning():
+    fake = FakeAdapter()
+    fake.reasoning_flag = LlmError("bad_request", "not found")
+
+    result = reasoning_probe(fake)
+
+    assert result.capabilities.reasoning is None and not result.warnings
+
+
 def test_other_roles_still_store_no_on_a_temporary_error():
     llm, _ = gateway(FakeAdapter().script(PLAIN, PLAIN, LlmError("auth", "bad")))
 
