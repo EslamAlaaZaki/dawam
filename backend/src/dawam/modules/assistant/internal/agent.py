@@ -601,15 +601,6 @@ def _prompted_form(message: Message) -> Message:
     return message
 
 
-def _without_thinking(messages: list[Message], start: int = 0) -> None:
-    """Drop the thinking blocks of ``messages[start:]``, in place. A block's signature is bound
-    to everything sent before it (system, tools, earlier messages): once that changed, the
-    block is no longer valid, and leaving out every block from a point on always is."""
-    for at in range(start, len(messages)):
-        if messages[at].thinking:
-            messages[at] = replace(messages[at], thinking=())
-
-
 def _log_transformations(entries: Sequence[dict[str, Any]], model: str | None) -> None:
     """What the provider changed in a request (a thinking block dropped, say), for the log."""
     for entry in entries:
@@ -743,8 +734,6 @@ def run_agent(
         loaded = set(resume.loaded) & set(known_tools)
     shortenable: list[tuple[Message, Message]] = []
     """The run's tool results, oldest first, each with its digest form."""
-    last_tools: tuple[str, ...] | None = None
-    """The tools sent with the last step: thinking blocks are bound to them."""
     retries = 0
     empty_retried = False
     compaction_tried = summarize is None
@@ -840,7 +829,6 @@ def run_agent(
             at = next((i for i, m in enumerate(messages) if m is full), None)
             if at is not None:
                 messages[at] = short
-                _without_thinking(messages, at)  # the blocks after it saw the full result
                 swapped = True
         return swapped
 
@@ -951,7 +939,6 @@ def run_agent(
                     del messages[1 : 1 + turns]
                     protect_from -= turns
                     messages[0] = Message("system", system + summary_block(summary))
-                    _without_thinking(messages)  # the kept turns' blocks saw another prefix
                     yield Compacted(summary, turns)
 
             def prepare(
@@ -963,12 +950,6 @@ def run_agent(
                 if extra:
                     head = sent[0]
                     sent[0] = replace(head, content=head.content + "\n\n" + extra)
-                # Trimmed to fit: the blocks from the first message that differs from the
-                # run's own are bound to what the model saw before, so they stay out.
-                same = 0
-                while same < min(len(sent), len(messages)) and sent[same] is messages[same]:
-                    same += 1
-                _without_thinking(sent, same)
                 return sent
 
             def size(
@@ -980,10 +961,6 @@ def run_agent(
                 return messages_size + (0 if extra else reserved)
 
             sent_tools = () if prompted else offered
-            names = tuple(s.name for s in sent_tools)
-            if last_tools is not None and names != last_tools:
-                _without_thinking(messages)  # find_tools (or the cap) changed the tools
-            last_tools = names
             sent = prepare()
             try:
                 try:

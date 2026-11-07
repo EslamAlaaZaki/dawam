@@ -50,6 +50,7 @@ from ..gateway import (
 )
 from .thinking import (
     THINKING_BINDING_BETA,
+    bare_tool_loop,
     claude_adaptive,
     claude_thinking_fields,
     is_claude,
@@ -321,11 +322,15 @@ class BedrockAdapter:
         if reasoning is not None and is_claude(model):
             # Claude takes the Anthropic adapter's thinking fields, passed through as they are.
             fields, reserve = claude_thinking_fields(
-                reasoning, adaptive=bool(claude_adaptive(model))
+                reasoning,
+                adaptive=bool(claude_adaptive(model)),
+                think=not bare_tool_loop(messages, _is_reasoning),
             )
-            fields["anthropic_beta"] = [THINKING_BINDING_BETA]  # the header, as a body field
-            body["additionalModelRequestFields"] = fields
-            body["additionalModelResponseFieldPaths"] = ["/input_transformations"]
+            if "thinking" in fields:  # the binding and its beta travel together
+                fields["anthropic_beta"] = [THINKING_BINDING_BETA]  # the header, as a body field
+                body["additionalModelResponseFieldPaths"] = ["/input_transformations"]
+            if fields:
+                body["additionalModelRequestFields"] = fields
             body["inferenceConfig"]["maxTokens"] = reserve + DEFAULT_MAX_TOKENS
         operation = "converse-stream" if stream else "converse"
         path = f"/model/{quote(model, safe='')}/{operation}"

@@ -168,6 +168,59 @@ def test_replayed_blocks_go_first_and_unchanged_and_thinking_stays_on_after_a_to
     assert sent.headers["anthropic-beta"] == BETA
 
 
+def test_a_history_changed_mid_loop_still_replays_its_blocks_with_the_binding():
+    # The first result was shortened after the blocks of both turns were made: they go back
+    # unchanged all the same, and the binding has the provider drop what no longer matches.
+    second = ToolCall("toolu_02", "lookup", {"id": 8})
+    history = [
+        *ASK,
+        Message("assistant", None, (CALL,), thinking=(THOUGHT,)),
+        Message("tool", "[shortened]", tool_call_id="toolu_01"),
+        Message("assistant", None, (second,), thinking=(REDACTED,)),
+        Message("tool", "row 8", tool_call_id="toolu_02"),
+    ]
+    adapter, transport = _anthropic(_json(TOOL_REPLY))
+
+    list(adapter.chat("claude-opus-5-5", history, [], False, None, ReasoningSettings()))
+
+    sent = transport.requests[0]
+    turns = [m["content"][0] for m in sent.json["messages"] if m["role"] == "assistant"]
+    assert turns == [THOUGHT, REDACTED]
+    assert sent.json["thinking"]["block_binding"] == BINDING
+    assert sent.headers["anthropic-beta"] == BETA
+
+
+def test_a_tool_turn_without_blocks_in_the_loop_goes_without_thinking():
+    # A checkpoint saved before blocks were kept, or a step another provider answered.
+    history = [
+        *ASK,
+        Message("assistant", None, (CALL,)),
+        Message("tool", "row 7", tool_call_id="toolu_01"),
+    ]
+    adapter, transport = _anthropic(_json(TOOL_REPLY))
+
+    list(adapter.chat("claude-opus-5-5", history, [], False, None, ReasoningSettings("low")))
+
+    sent = transport.requests[0]
+    assert "thinking" not in sent.json and "anthropic-beta" not in sent.headers
+    assert sent.json["output_config"] == {"effort": "low"}
+
+
+def test_a_bare_tool_turn_of_an_earlier_question_does_not_stop_thinking():
+    history = [
+        *ASK,
+        Message("assistant", None, (CALL,)),
+        Message("tool", "row 7", tool_call_id="toolu_01"),
+        Message("assistant", "Row 7."),
+        Message("user", "And order 8?"),
+    ]
+    adapter, transport = _anthropic(_json(TOOL_REPLY))
+
+    list(adapter.chat("claude-opus-5-5", history, [], False, None, ReasoningSettings()))
+
+    assert transport.requests[0].json["thinking"]["block_binding"] == BINDING
+
+
 def test_an_older_claude_gets_the_binding_beside_its_budget():
     adapter, transport = _anthropic(_json(TOOL_REPLY))
 
@@ -311,6 +364,21 @@ def test_bedrock_replays_the_blocks_first_and_sends_the_binding_with_its_beta():
         "anthropic_beta": [BETA],
     }
     assert body["additionalModelResponseFieldPaths"] == ["/input_transformations"]
+
+
+def test_bedrock_tool_turn_without_its_blocks_goes_without_thinking():
+    history = [
+        *ASK,
+        Message("assistant", None, (CALL,), thinking=(THOUGHT,)),  # not Bedrock's own shape
+        Message("tool", "row 7", tool_call_id="toolu_01"),
+    ]
+    adapter, transport = _bedrock(_json(CONVERSE_TOOL_REPLY))
+
+    list(adapter.chat(MODEL, history, [], False, None, ReasoningSettings("high")))
+
+    body = transport.requests[0].json
+    assert body["additionalModelRequestFields"] == {"output_config": {"effort": "high"}}
+    assert "additionalModelResponseFieldPaths" not in body
 
 
 # -- other providers ignore the blocks -----------------------------------------------------

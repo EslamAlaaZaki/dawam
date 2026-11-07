@@ -33,6 +33,7 @@ from ..gateway import (
 from .thinking import (
     THINKING_BINDING_BETA,
     adaptive_from_capabilities,
+    bare_tool_loop,
     claude_adaptive,
     claude_thinking_fields,
     is_claude_thinking_block,
@@ -111,7 +112,9 @@ class AnthropicAdapter:
             body["output_config"] = {"format": {"type": "json_schema", "schema": json_schema}}
         if reasoning is not None:
             fields, reserve = claude_thinking_fields(
-                reasoning, adaptive=self._takes_adaptive(model)
+                reasoning,
+                adaptive=self._takes_adaptive(model),
+                think=not bare_tool_loop(messages, is_claude_thinking_block),
             )
             if "output_config" in fields:  # the effort sits beside the JSON schema's format
                 body.setdefault("output_config", {}).update(fields.pop("output_config"))

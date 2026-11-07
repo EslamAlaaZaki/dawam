@@ -157,7 +157,12 @@ def test_an_older_model_keeps_the_budget_from_the_effort():
 def test_after_a_tool_call_an_adaptive_model_keeps_thinking_and_its_effort():
     history = [
         *ASK,
-        Message("assistant", None, (ToolCall("t1", "echo", {}),)),
+        Message(
+            "assistant",
+            None,
+            (ToolCall("t1", "echo", {}),),
+            thinking=({"type": "thinking", "thinking": "", "signature": "sig"},),
+        ),
         Message("tool", "ok", tool_call_id="t1"),
     ]
     adapter, transport = _anthropic(_json(CLAUDE_REPLY))

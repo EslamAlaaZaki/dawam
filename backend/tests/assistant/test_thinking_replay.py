@@ -1,7 +1,9 @@
 """Claude's thinking blocks are carried between the steps of a run (#557): kept on the
-assistant message that made the calls, saved with the checkpoint, and left out wherever the
-conversation before them changed (compaction, a changed tool list, trimmed results). The
-model is the scripted ``FakeAdapter`` through the real ``Gateway``."""
+assistant message that made the calls, saved with the checkpoint, and replayed unchanged even
+where the conversation before them changed (compaction, a changed tool list, trimmed results):
+the provider's ``block_binding`` drops what no longer matches, while a tool turn sent without
+its blocks would be refused. The model is the scripted ``FakeAdapter`` through the real
+``Gateway``."""
 
 from __future__ import annotations
 
@@ -73,7 +75,7 @@ def test_an_older_checkpoint_without_blocks_still_resumes():
     assert stored is not None and all(m.thinking == () for m in stored.messages)
 
 
-def test_after_compaction_the_kept_turns_carry_no_thinking():
+def test_compaction_removes_the_oldest_turns_and_the_kept_ones_keep_their_blocks():
     big = "lorem ipsum " * 660  # about 2,000 tokens
     history = [
         Message("user", big),
@@ -90,8 +92,8 @@ def test_after_compaction_the_kept_turns_carry_no_thinking():
 
     assert any(isinstance(e, Compacted) for e in events)
     sent = adapter.calls[0].messages
-    assert "Then this." in [m.content for m in sent]
-    assert all(m.thinking == () for m in sent)
+    assert big not in [m.content for m in sent]
+    assert [m.thinking for m in assistants(sent)] == [(FIRST,)]
 
 
 def run_with(adapter: FakeAdapter, history: list[Message], *, window: int, **options: Any):
@@ -104,7 +106,7 @@ def run_with(adapter: FakeAdapter, history: list[Message], *, window: int, **opt
     )
 
 
-def test_when_find_tools_changes_the_tools_the_earlier_blocks_stay_out(monkeypatch):
+def test_when_find_tools_changes_the_tools_the_earlier_blocks_still_go_back(monkeypatch):
     monkeypatch.setattr(agent_module, "TOOL_SEARCH_THRESHOLD", 30)
     find = ToolCall("f1", "find_tools", {"query": "revenue report"})
     use = ToolCall("u1", "zeta_report", {})
@@ -117,8 +119,8 @@ def test_when_find_tools_changes_the_tools_the_earlier_blocks_stay_out(monkeypat
     run(adapter, ManyTools(), core_tools={"tool_00"})
 
     second, third = adapter.calls[1].messages, adapter.calls[2].messages
-    assert [m.thinking for m in assistants(second)] == [()]  # the tool list grew
-    assert [m.thinking for m in assistants(third)] == [(), (SECOND,)]  # it did not
+    assert [m.thinking for m in assistants(second)] == [(FIRST,)]  # the tool list grew
+    assert [m.thinking for m in assistants(third)] == [(FIRST,), (SECOND,)]
 
 
 def test_the_providers_input_transformations_reach_the_log(caplog):
@@ -136,7 +138,7 @@ def test_the_providers_input_transformations_reach_the_log(caplog):
     )
 
 
-def test_a_result_shortened_to_fit_leaves_out_only_the_blocks_after_it():
+def test_a_result_shortened_to_fit_keeps_every_block():
     adapter = FakeAdapter().script(
         Reply(tool_calls=(call(1, id=1),), thinking=(FIRST,)),
         Reply(tool_calls=(call(2, id=2),), thinking=(SECOND,)),
@@ -148,4 +150,4 @@ def test_a_result_shortened_to_fit_leaves_out_only_the_blocks_after_it():
 
     assert events[-1].status == "completed"
     retried = adapter.calls[3].messages
-    assert [m.thinking for m in assistants(retried)] == [(FIRST,), ()]
+    assert [m.thinking for m in assistants(retried)] == [(FIRST,), (SECOND,)]

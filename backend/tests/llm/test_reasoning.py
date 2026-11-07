@@ -119,7 +119,8 @@ def test_anthropic_sends_no_thinking_without_settings():
 def test_anthropic_keeps_thinking_after_the_run_has_called_a_tool():
     from dawam.modules.llm import ToolCall
 
-    history = [*ASK, Message("assistant", None, (ToolCall("t1", "echo", {}),))]
+    block = {"type": "thinking", "thinking": "", "signature": "sig"}
+    history = [*ASK, Message("assistant", None, (ToolCall("t1", "echo", {}),), thinking=(block,))]
     history.append(Message("tool", "ok", tool_call_id="t1"))
     adapter, transport = _anthropic(_json(THINKING_REPLY))
 

@@ -16,9 +16,10 @@ append-only, and ``block_binding`` drops (rather than refuses) a block whose pre
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Sequence
 from typing import Any
 
-from ..gateway import ReasoningSettings
+from ..gateway import Message, ReasoningSettings
 
 MIN_THINKING_BUDGET = 1024
 """The least thinking budget Anthropic (and Gemini 2.5's useful range) accepts."""
@@ -87,18 +88,21 @@ def _supported(node: Any) -> bool:
 
 
 def claude_thinking_fields(
-    reasoning: ReasoningSettings, *, adaptive: bool
+    reasoning: ReasoningSettings, *, adaptive: bool, think: bool = True
 ) -> tuple[dict[str, Any], int]:
     """The request fields for Claude thinking (``thinking`` and ``output_config.effort``) and
     the extra output tokens to reserve for it. Thinking is asked for on every step of a run:
     the thinking blocks of earlier steps are sent back with it (``Message.thinking``). The
     ``block_binding`` makes a block whose conversation changed before it a dropped block
-    rather than a failed request; it needs the ``THINKING_BINDING_BETA``."""
+    rather than a failed request; it needs the ``THINKING_BINDING_BETA``. ``think`` off (see
+    ``bare_tool_loop``): no ``thinking`` field, so no binding either; the effort stays."""
     budget = thinking_budget(reasoning)
     fields: dict[str, Any] = {}
+    if adaptive and reasoning.effort:
+        fields["output_config"] = {"effort": reasoning.effort}
+    if not think:
+        return fields, budget if adaptive else 0
     if adaptive:
-        if reasoning.effort:
-            fields["output_config"] = {"effort": reasoning.effort}
         thinking: dict[str, Any] = {"type": "adaptive"}
         if reasoning.show:
             thinking["display"] = "summarized"  # 4.7 and newer omit the text by default
@@ -107,6 +111,23 @@ def claude_thinking_fields(
     thinking["block_binding"] = {"prefix_mismatch_behavior": "drop_block"}
     fields["thinking"] = thinking
     return fields, budget
+
+
+def bare_tool_loop(messages: Sequence[Message], is_block: Callable[[Any], bool]) -> bool:
+    """Whether the current tool loop (the assistant and tool messages since the last user
+    message) has an assistant turn with tool calls but none of this provider's thinking blocks
+    (``is_block``): a checkpoint saved before blocks were kept, or a step another provider's
+    model answered. With thinking on, Claude refuses such a turn, so it goes without."""
+    for message in reversed(messages):
+        if message.role == "user":
+            return False
+        if (
+            message.role == "assistant"
+            and message.tool_calls
+            and not any(is_block(b) for b in message.thinking)
+        ):
+            return True
+    return False
 
 
 def is_claude_thinking_block(block: Any) -> bool:
