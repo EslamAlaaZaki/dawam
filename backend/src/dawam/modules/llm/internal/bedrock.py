@@ -48,8 +48,14 @@ from ..gateway import (
     ToolSpec,
     Usage,
 )
-from .anthropic import _can_think
-from .thinking import claude_adaptive, claude_thinking_fields, is_claude
+from .thinking import (
+    THINKING_BINDING_BETA,
+    bare_tool_loop,
+    claude_adaptive,
+    claude_thinking_fields,
+    is_claude,
+    transformations,
+)
 from .transport import HttpResponse, Transport, TransportError
 from .wire import (
     MAX_LIST_PAGES,
@@ -284,7 +290,7 @@ class BedrockAdapter:
         json_schema: dict[str, Any] | None,
         reasoning: ReasoningSettings | None = None,
     ) -> Iterator[ChatEvent]:
-        system, wire_messages = _wire_messages(messages)
+        system, wire_messages = _wire_messages(messages, replay_reasoning=is_claude(model))
         body: dict[str, Any] = {
             "messages": wire_messages,
             "inferenceConfig": {"maxTokens": DEFAULT_MAX_TOKENS},
@@ -316,8 +322,13 @@ class BedrockAdapter:
         if reasoning is not None and is_claude(model):
             # Claude takes the Anthropic adapter's thinking fields, passed through as they are.
             fields, reserve = claude_thinking_fields(
-                reasoning, adaptive=bool(claude_adaptive(model)), think=_can_think(messages)
+                reasoning,
+                adaptive=bool(claude_adaptive(model)),
+                think=not bare_tool_loop(messages, _is_reasoning),
             )
+            if "thinking" in fields:  # the binding and its beta travel together
+                fields["anthropic_beta"] = [THINKING_BINDING_BETA]  # the header, as a body field
+                body["additionalModelResponseFieldPaths"] = ["/input_transformations"]
             if fields:
                 body["additionalModelRequestFields"] = fields
             body["inferenceConfig"]["maxTokens"] = reserve + DEFAULT_MAX_TOKENS
@@ -456,9 +467,13 @@ class BedrockAdapter:
             raise LlmError(UNAVAILABLE, str(exc)) from None
 
 
-def _wire_messages(messages: Sequence[Message]) -> tuple[list[str], list[dict[str, Any]]]:
+def _wire_messages(
+    messages: Sequence[Message], *, replay_reasoning: bool = False
+) -> tuple[list[str], list[dict[str, Any]]]:
     """System messages become the top-level ``system``; a tool result is a ``user`` block,
-    and consecutive ``user`` turns merge (Converse wants alternating roles)."""
+    and consecutive ``user`` turns merge (Converse wants alternating roles). With
+    ``replay_reasoning`` (Claude), an assistant message's ``reasoningContent`` blocks go back
+    first, unchanged, before its text and calls."""
     system: list[str] = []
     ids = SentCallIds()
     wire: list[dict[str, Any]] = []
@@ -496,7 +511,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[list[str], list[dict[st
             }
             add("user", [{"toolResult": result}])
         else:
-            blocks: list[dict[str, Any]] = []
+            blocks = [b for b in message.thinking if replay_reasoning and _is_reasoning(b)]
             if message.content:
                 blocks.append({"text": message.content})
             blocks.extend(
@@ -544,9 +559,12 @@ def _reply_events(data: Any) -> Iterator[ChatEvent]:
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, list):
         raise LlmError(INVALID_RESPONSE, "The provider's chat reply was malformed.")
+    thinking: list[dict[str, Any]] = []
     for block in content:
         if not isinstance(block, dict):
             raise LlmError(INVALID_RESPONSE, "The provider's chat reply was malformed.")
+        if _is_reasoning(block):
+            thinking.append(block)
         if block.get("text"):
             yield TextDelta(str(block["text"]))
         elif thought := _reasoning_text(block.get("reasoningContent")):
@@ -554,7 +572,32 @@ def _reply_events(data: Any) -> Iterator[ChatEvent]:
         elif isinstance(block.get("toolUse"), dict):
             use = block["toolUse"]
             yield ToolCallEvent(_tool_call(use, use.get("input")))
-    yield Done(_usage(data.get("usage")), _finish(data.get("stopReason")))
+    yield Done(
+        _usage(data.get("usage")),
+        _finish(data.get("stopReason")),
+        tuple(thinking),
+        _transformations(data),
+    )
+
+
+def _is_reasoning(block: Any) -> bool:
+    return isinstance(block, dict) and isinstance(block.get("reasoningContent"), dict)
+
+
+def _transformations(data: Any) -> tuple[dict[str, Any], ...]:
+    """Claude's ``input_transformations``, returned through ``additionalModelResponseFields``."""
+    extra = data.get("additionalModelResponseFields") if isinstance(data, dict) else None
+    return transformations(extra.get("input_transformations") if isinstance(extra, dict) else None)
+
+
+def _reasoning_block(parts: dict[str, Any]) -> dict[str, Any]:
+    """A streamed reasoning block put back together as ``converse`` returns it."""
+    if "redactedContent" in parts:
+        return {"reasoningContent": {"redactedContent": parts["redactedContent"]}}
+    text: dict[str, Any] = {"text": parts.get("text", "")}
+    if "signature" in parts:
+        text["signature"] = parts["signature"]
+    return {"reasoningContent": {"reasoningText": text}}
 
 
 def _reasoning_text(content: Any) -> str:
@@ -642,6 +685,10 @@ def _stream_error(kind: str, payload: Any, redact: Callable[[str], str]) -> LlmE
 
 def _stream_events(response: HttpResponse, redact: Callable[[str], str]) -> Iterator[ChatEvent]:
     tools: dict[int, dict[str, Any]] = {}
+    reasoning: dict[int, dict[str, Any]] = {}
+    """The reasoning blocks being streamed, by index: their text, signature or redaction."""
+    thinking: list[dict[str, Any]] = []
+    transformed: tuple[dict[str, Any], ...] = ()
     usage: Usage | None = None
     finish: str | None = None
     stopped = False
@@ -665,24 +712,35 @@ def _stream_events(response: HttpResponse, redact: Callable[[str], str]) -> Iter
         elif kind == "contentBlockDelta":
             delta = payload.get("delta")
             delta = delta if isinstance(delta, dict) else {}
+            part = delta.get("reasoningContent")
+            if isinstance(part, dict):
+                parts = reasoning.setdefault(index, {})
+                if isinstance(part.get("text"), str):
+                    parts["text"] = parts.get("text", "") + part["text"]
+                for key in ("signature", "redactedContent"):
+                    if key in part:
+                        parts[key] = part[key]
             if delta.get("text"):
                 yield TextDelta(str(delta["text"]))
-            elif thought := _reasoning_text(delta.get("reasoningContent")):
+            elif thought := _reasoning_text(part):
                 yield ReasoningDelta(thought)
             elif isinstance(delta.get("toolUse"), dict) and index in tools:
                 tools[index]["json"] += str(delta["toolUse"].get("input") or "")
         elif kind == "contentBlockStop":
+            if index in reasoning:
+                thinking.append(_reasoning_block(reasoning.pop(index)))
             slot = tools.pop(index, None)
             if slot is not None:
                 yield ToolCallEvent(_tool_call(slot["block"], _parse_arguments(slot["json"])))
         elif kind == "messageStop":
             finish = _finish(payload.get("stopReason"))
+            transformed = _transformations(payload)
             stopped = True
         elif kind == "metadata":
             usage = _usage(payload.get("usage")) or usage
     if not stopped:
         raise LlmError(UNAVAILABLE, "The provider's stream ended unexpectedly.")
-    yield Done(usage, finish)
+    yield Done(usage, finish, tuple(thinking), transformed)
 
 
 def _parse_arguments(raw: str) -> Any:

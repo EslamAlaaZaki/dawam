@@ -34,6 +34,7 @@ from tests.llm.replay import ReplayTransport, eventstream_frame
 from tests.llm.stub_server import StubLlmServer
 
 ASK = [Message("user", "Why is the sky blue?")]
+BINDING = {"prefix_mismatch_behavior": "drop_block"}
 SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
 
 
@@ -105,7 +106,7 @@ def test_an_adaptive_model_gets_adaptive_thinking_and_the_effort_beside_the_sche
     )
 
     body = transport.requests[0].json
-    assert body["thinking"] == {"type": "adaptive"}
+    assert body["thinking"] == {"type": "adaptive", "block_binding": BINDING}
     assert body["output_config"] == {
         "format": {"type": "json_schema", "schema": SCHEMA},
         "effort": "high",
@@ -119,7 +120,8 @@ def test_an_adaptive_model_without_an_effort_gets_the_providers_default():
     list(adapter.chat("claude-sonnet-5-5", ASK, [], False, None, reasoning=ReasoningSettings()))
 
     body = transport.requests[0].json
-    assert body["thinking"] == {"type": "adaptive"} and "output_config" not in body
+    assert body["thinking"] == {"type": "adaptive", "block_binding": BINDING}
+    assert "output_config" not in body
 
 
 def test_showing_the_reasoning_asks_an_adaptive_model_for_its_summary():
@@ -131,7 +133,11 @@ def test_showing_the_reasoning_asks_an_adaptive_model_for_its_summary():
         )
     )
 
-    assert transport.requests[0].json["thinking"] == {"type": "adaptive", "display": "summarized"}
+    assert transport.requests[0].json["thinking"] == {
+        "type": "adaptive",
+        "display": "summarized",
+        "block_binding": BINDING,
+    }
 
 
 def test_an_older_model_keeps_the_budget_from_the_effort():
@@ -144,14 +150,19 @@ def test_an_older_model_keeps_the_budget_from_the_effort():
     )
 
     body = transport.requests[0].json
-    assert body["thinking"] == {"type": "enabled", "budget_tokens": 4096}
+    assert body["thinking"] == {"type": "enabled", "budget_tokens": 4096, "block_binding": BINDING}
     assert "output_config" not in body
 
 
-def test_after_a_tool_call_an_adaptive_model_keeps_its_effort_and_is_never_sent_disabled():
+def test_after_a_tool_call_an_adaptive_model_keeps_thinking_and_its_effort():
     history = [
         *ASK,
-        Message("assistant", None, (ToolCall("t1", "echo", {}),)),
+        Message(
+            "assistant",
+            None,
+            (ToolCall("t1", "echo", {}),),
+            thinking=({"type": "thinking", "thinking": "", "signature": "sig"},),
+        ),
         Message("tool", "ok", tool_call_id="t1"),
     ]
     adapter, transport = _anthropic(_json(CLAUDE_REPLY))
@@ -163,7 +174,8 @@ def test_after_a_tool_call_an_adaptive_model_keeps_its_effort_and_is_never_sent_
     )
 
     body = transport.requests[0].json
-    assert "thinking" not in body and body["output_config"] == {"effort": "low"}
+    assert body["thinking"] == {"type": "adaptive", "block_binding": BINDING}
+    assert body["output_config"] == {"effort": "low"}
 
 
 def _anthropic_model(adaptive: bool, enabled: bool) -> dict[str, Any]:
@@ -196,7 +208,7 @@ def test_an_unknown_model_id_is_looked_up_once_in_the_models_api():
 
     first, second, third = transport.requests
     assert (first.method, first.url) == ("GET", "http://llm.test/v1/models/corp-sonnet")
-    assert second.json["thinking"] == {"type": "adaptive"} and third.method == "POST"
+    assert second.json["thinking"]["type"] == "adaptive" and third.method == "POST"
 
 
 def test_an_unknown_model_the_models_api_cannot_tell_keeps_the_budget():
@@ -206,7 +218,7 @@ def test_an_unknown_model_the_models_api_cannot_tell_keeps_the_budget():
         adapter.chat("corp-sonnet", ASK, [], False, None, reasoning=ReasoningSettings(effort="low"))
     )
 
-    assert transport.requests[1].json["thinking"] == {"type": "enabled", "budget_tokens": 1024}
+    assert transport.requests[1].json["thinking"]["budget_tokens"] == 1024
 
 
 # -- Gemini ------------------------------------------------------------------------------
@@ -358,8 +370,9 @@ def test_bedrock_claude_adaptive_model_gets_thinking_and_effort_in_additional_fi
 
     body = transport.requests[0].json
     assert body["additionalModelRequestFields"] == {
-        "thinking": {"type": "adaptive"},
+        "thinking": {"type": "adaptive", "block_binding": BINDING},
         "output_config": {"effort": "high"},
+        "anthropic_beta": ["thinking-binding-controls-2026-08-01"],
     }
     assert body["inferenceConfig"]["maxTokens"] > 8192
     assert events[0] == ReasoningDelta("Rayleigh.") and events[1] == TextDelta("Blue.")
@@ -381,7 +394,8 @@ def test_bedrock_older_claude_model_gets_a_budget():
 
     body = transport.requests[0].json
     assert body["additionalModelRequestFields"] == {
-        "thinking": {"type": "enabled", "budget_tokens": 1024}
+        "thinking": {"type": "enabled", "budget_tokens": 1024, "block_binding": BINDING},
+        "anthropic_beta": ["thinking-binding-controls-2026-08-01"],
     }
 
 

@@ -98,6 +98,12 @@ class Message:
     """On a ``tool`` message: the call it answers."""
     images: tuple[Image, ...] = ()
     """On a ``user`` message: images for a vision model, sent before the text."""
+    thinking: tuple[dict[str, Any], ...] = ()
+    """On an ``assistant`` message: the provider's thinking blocks of that reply, opaque and
+    exactly as received (signatures included), sent back only by the adapter that reads
+    their shape (Claude's ``thinking`` / ``redacted_thinking`` blocks on the Anthropic API,
+    ``reasoningContent`` blocks on Bedrock); every other adapter ignores them. Never shown,
+    edited or summarised."""
 
 
 @dataclass(frozen=True)
@@ -144,6 +150,13 @@ class Done:
     usage: Usage | None
     finish_reason: str | None = None
     """``stop``, ``tool_calls``, ``length`` or ``None`` when the provider gave none."""
+    thinking: tuple[dict[str, Any], ...] = ()
+    """The reply's thinking blocks, opaque, in order: what the caller keeps on the assistant
+    ``Message`` it builds from the reply (``Message.thinking``) to send them back."""
+    input_transformations: tuple[dict[str, Any], ...] = ()
+    """What the provider changed in the request before the model read it (Anthropic's
+    ``input_transformations``: ``{type, path, reason}``, e.g. a thinking block dropped because
+    the conversation before it changed). Empty when it changed nothing."""
 
 
 ChatEvent = TextDelta | ReasoningDelta | ToolCallEvent | Done
@@ -417,14 +430,14 @@ class Gateway:
                     prompt = estimate_prompt_tokens(messages)
                     completion = estimate_tokens("".join(produced)) + reasoning
                     usage = Usage(prompt, completion, estimated=True, reasoning_tokens=reasoning)
-                    event = Done(usage, event.finish_reason)
+                    event = replace(event, usage=usage)
                 elif event.usage.reasoning_tokens == 0 and reasoning:
                     # The provider counts thinking inside the output but does not split it out.
                     usage = replace(
                         event.usage,
                         reasoning_tokens=min(reasoning, event.usage.completion_tokens),
                     )
-                    event = Done(usage, event.finish_reason)
+                    event = replace(event, usage=usage)
             yield event
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:

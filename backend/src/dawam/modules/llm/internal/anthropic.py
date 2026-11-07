@@ -31,10 +31,14 @@ from ..gateway import (
     Usage,
 )
 from .thinking import (
+    THINKING_BINDING_BETA,
     adaptive_from_capabilities,
+    bare_tool_loop,
     claude_adaptive,
     claude_thinking_fields,
+    is_claude_thinking_block,
     thinks_from_capabilities,
+    transformations,
 )
 from .transport import HttpResponse, Transport, TransportError
 from .wire import (
@@ -108,13 +112,16 @@ class AnthropicAdapter:
             body["output_config"] = {"format": {"type": "json_schema", "schema": json_schema}}
         if reasoning is not None:
             fields, reserve = claude_thinking_fields(
-                reasoning, adaptive=self._takes_adaptive(model), think=_can_think(messages)
+                reasoning,
+                adaptive=self._takes_adaptive(model),
+                think=not bare_tool_loop(messages, is_claude_thinking_block),
             )
             if "output_config" in fields:  # the effort sits beside the JSON schema's format
                 body.setdefault("output_config", {}).update(fields.pop("output_config"))
             body.update(fields)
             body["max_tokens"] = reserve + DEFAULT_MAX_TOKENS  # thinking counts inside the cap
-        response = self._send("POST", "/messages", json.dumps(body).encode("utf-8"))
+        beta = THINKING_BINDING_BETA if "thinking" in body else None
+        response = self._send("POST", "/messages", json.dumps(body).encode("utf-8"), beta)
         if response.status >= 400:
             try:
                 raise error_for(response)
@@ -233,12 +240,16 @@ class AnthropicAdapter:
 
     # -- HTTP ------------------------------------------------------------------------
 
-    def _send(self, method: str, path: str, body: bytes | None) -> HttpResponse:
+    def _send(
+        self, method: str, path: str, body: bytes | None, beta: str | None = None
+    ) -> HttpResponse:
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
             "anthropic-version": API_VERSION,
         }
+        if beta:
+            headers["anthropic-beta"] = beta
         if self._api_key:
             headers["x-api-key"] = self._api_key
         try:
@@ -253,13 +264,6 @@ def _capabilities(data: Any) -> Any:
     return data.get("capabilities") if isinstance(data, dict) else None
 
 
-def _can_think(messages: Sequence[Message]) -> bool:
-    """Extended thinking needs the earlier thinking blocks sent back with each tool turn,
-    and the conversation does not keep them: after the model has called a tool, the rest
-    of the run goes without thinking rather than failing the request."""
-    return not any(m.role == "assistant" and m.tool_calls for m in messages)
-
-
 def _image_block(image: Image) -> dict[str, Any]:
     data = base64.b64encode(image.data).decode("ascii")
     return {
@@ -270,7 +274,8 @@ def _image_block(image: Image) -> dict[str, Any]:
 
 def _wire_messages(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any]]]:
     """System messages become the top-level ``system``; a tool result is a ``user`` block,
-    and consecutive ``user`` turns merge (Anthropic wants the results in one message)."""
+    and consecutive ``user`` turns merge (Anthropic wants the results in one message). An
+    assistant message's thinking blocks go back first, unchanged, before its text and calls."""
     system: list[str] = []
     ids = SentCallIds()
     wire: list[dict[str, Any]] = []
@@ -305,7 +310,7 @@ def _wire_messages(messages: Sequence[Message]) -> tuple[str, list[dict[str, Any
                 ],
             )
         else:
-            blocks: list[dict[str, Any]] = []
+            blocks = [b for b in message.thinking if is_claude_thinking_block(b)]
             if message.content:
                 blocks.append({"type": "text", "text": message.content})
             blocks.extend(
@@ -367,20 +372,32 @@ def _reply_events(data: Any) -> Iterator[ChatEvent]:
     content = data.get("content") if isinstance(data, dict) else None
     if not isinstance(content, list):
         raise LlmError(INVALID_RESPONSE, "The provider's chat reply was malformed.")
+    thinking: list[dict[str, Any]] = []
     for block in content:
         if not isinstance(block, dict):
             raise LlmError(INVALID_RESPONSE, "The provider's chat reply was malformed.")
+        if is_claude_thinking_block(block):
+            thinking.append(block)
         if block.get("type") == "text" and block.get("text"):
             yield TextDelta(str(block["text"]))
         elif block.get("type") == "thinking" and block.get("thinking"):
             yield ReasoningDelta(str(block["thinking"]))
         elif block.get("type") == "tool_use":
             yield ToolCallEvent(_tool_call(block, block.get("input")))
-    yield Done(_usage(data.get("usage")), _finish(data.get("stop_reason")))
+    yield Done(
+        _usage(data.get("usage")),
+        _finish(data.get("stop_reason")),
+        tuple(thinking),
+        transformations(data.get("input_transformations")),
+    )
 
 
 def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
     blocks: dict[int, dict[str, Any]] = {}
+    thoughts: dict[int, dict[str, Any]] = {}
+    """The thinking blocks being streamed, by index: rebuilt as the API would send them."""
+    thinking: list[dict[str, Any]] = []
+    transformed: tuple[dict[str, Any], ...] = ()
     usage: Usage | None = None
     finish: str | None = None
     finished = False
@@ -399,21 +416,34 @@ def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
             raise LlmError(UNAVAILABLE, "The provider failed mid-stream: " + detail(event))
         if kind == "message_start":
             message = event.get("message")
-            usage = _usage(message.get("usage") if isinstance(message, dict) else None, usage)
+            message = message if isinstance(message, dict) else {}
+            usage = _usage(message.get("usage"), usage)
+            transformed = transformations(message.get("input_transformations")) or transformed
         elif kind == "content_block_start":
             block = event.get("content_block")
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 blocks[_index(event)] = {"block": block, "json": ""}
+            elif is_claude_thinking_block(block):
+                thoughts[_index(event)] = dict(block)
         elif kind == "content_block_delta":
             delta = event.get("delta")
             delta = delta if isinstance(delta, dict) else {}
             if delta.get("type") == "text_delta" and delta.get("text"):
                 yield TextDelta(str(delta["text"]))
             elif delta.get("type") == "thinking_delta" and delta.get("thinking"):
+                thought = thoughts.get(_index(event))
+                if thought is not None:
+                    thought["thinking"] = str(thought.get("thinking") or "") + str(
+                        delta["thinking"]
+                    )
                 yield ReasoningDelta(str(delta["thinking"]))
+            elif delta.get("type") == "signature_delta" and _index(event) in thoughts:
+                thoughts[_index(event)]["signature"] = str(delta.get("signature") or "")
             elif delta.get("type") == "input_json_delta" and _index(event) in blocks:
                 blocks[_index(event)]["json"] += str(delta.get("partial_json") or "")
         elif kind == "content_block_stop":
+            if _index(event) in thoughts:
+                thinking.append(thoughts.pop(_index(event)))
             slot = blocks.pop(_index(event), None)
             if slot is not None:
                 yield ToolCallEvent(_tool_call(slot["block"], _parse_arguments(slot["json"])))
@@ -422,12 +452,13 @@ def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
             if isinstance(delta, dict):
                 finish = _finish(delta.get("stop_reason")) or finish
             usage = _usage(event.get("usage"), usage)
+            transformed = transformations(event.get("input_transformations")) or transformed
         elif kind == "message_stop":
             finished = True
             break
     if not finished and finish is None:
         raise LlmError(UNAVAILABLE, "The provider's stream ended unexpectedly.")
-    yield Done(usage, finish)
+    yield Done(usage, finish, tuple(thinking), transformed)
 
 
 def _index(event: dict[str, Any]) -> int:

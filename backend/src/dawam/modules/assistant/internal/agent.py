@@ -449,6 +449,7 @@ class Checkpoint:
                     m["content"],
                     tuple(ToolCall(**c) for c in m["tool_calls"]),
                     m["tool_call_id"],
+                    thinking=tuple(m.get("thinking") or ()),
                 )
                 for m in data["messages"]
             ),
@@ -482,6 +483,7 @@ def _message_json(message: Message) -> dict[str, Any]:
         "content": message.content,
         "tool_calls": [_call_json(c) for c in message.tool_calls],
         "tool_call_id": message.tool_call_id,
+        "thinking": list(message.thinking),
     }
 
 
@@ -597,6 +599,20 @@ def _prompted_form(message: Message) -> Message:
         )
         return Message("assistant", "\n\n".join(p for p in (message.content, calls) if p))
     return message
+
+
+def _log_transformations(entries: Sequence[dict[str, Any]], model: str | None) -> None:
+    """What the provider changed in a request (a thinking block dropped, say), for the log."""
+    for entry in entries:
+        logger.warning(
+            "model input transformed",
+            extra={
+                "model": model,
+                "transformation": str(entry.get("type")),
+                "reason": str(entry.get("reason")),
+                "path": str(entry.get("path")),
+            },
+        )
 
 
 def _cached_counter(counter: Callable[[str], int] | None) -> Callable[[str], int]:
@@ -904,6 +920,7 @@ def run_agent(
             offered = visible if under_cap else ()
             answer: list[str] = []
             finish: str | None = None
+            thinking: tuple[dict[str, Any], ...] = ()
             last_poll = float("-inf")  # always look at the flag when a model call begins
             extra = tools_prompt(offered) if prompted and offered else ""
             reserved = count(extra) if extra else schema_tokens(() if prompted else offered, count)
@@ -943,8 +960,8 @@ def run_agent(
                 messages_size = request_tokens(prepare() if sent is None else sent, count)
                 return messages_size + (0 if extra else reserved)
 
-            sent = prepare()
             sent_tools = () if prompted else offered
+            sent = prepare()
             try:
                 try:
                     started = ask(sent, sent_tools)
@@ -983,6 +1000,8 @@ def run_agent(
                                 pending.append(event.call)
                     elif isinstance(event, Done):
                         finish = event.finish_reason
+                        thinking = event.thinking
+                        _log_transformations(event.input_transformations, serving)
                         if event.usage is not None:
                             run.prompt += event.usage.prompt_tokens
                             run.completion += event.usage.completion_tokens
@@ -1063,7 +1082,9 @@ def run_agent(
                                 f"tool:{PROPOSALS_CHECK}",
                                 shorten_result("\n".join(f"- {e}" for e in errors), window),
                             )
-                            messages.append(Message("assistant", "".join(answer) or None))
+                            messages.append(
+                                Message("assistant", "".join(answer) or None, thinking=thinking)
+                            )
                             messages.append(Message("user", f"{report}\n\n{VERIFY_REQUEST}"))
                             run.text.clear()  # the answer before the fix is not the summary
                             save()
@@ -1103,7 +1124,9 @@ def run_agent(
             if prompted:
                 messages.append(Message("assistant", "".join(answer)))
             else:
-                messages.append(Message("assistant", "".join(answer) or None, tuple(pending)))
+                messages.append(
+                    Message("assistant", "".join(answer) or None, tuple(pending), thinking=thinking)
+                )
             save()  # the model is not asked for this step again
     except LlmError as exc:
         yield run.finish("failed", exc.code, exc.message)
