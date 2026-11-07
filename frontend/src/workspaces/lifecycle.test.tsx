@@ -44,10 +44,7 @@ const ARCHIVED_OWNER: Workspace["permissions"] = [
   "workspace.view",
 ];
 
-function workspace(state: {
-  archived: boolean;
-  permissions: Workspace["permissions"];
-}): Workspace {
+function workspace(state: { archived: boolean; permissions: Workspace["permissions"] }): Workspace {
   return {
     id: WORKSPACE_ID,
     name: "Retail DW",
@@ -65,10 +62,7 @@ function workspace(state: {
 }
 
 /** Ada owns the Workspace; `archived` flips as the API is called. */
-function backend(initial: {
-  archived: boolean;
-  permissions?: Workspace["permissions"];
-}) {
+function backend(initial: { archived: boolean; permissions?: Workspace["permissions"] }) {
   const state = { archived: initial.archived };
   const handle = (r: ApiRequest) => {
     switch (`${r.method} ${r.path}`) {
@@ -79,16 +73,11 @@ function backend(initial: {
           workspace({
             archived: state.archived,
             permissions:
-              initial.permissions ??
-              (state.archived ? ARCHIVED_OWNER : ACTIVE_OWNER),
+              initial.permissions ?? (state.archived ? ARCHIVED_OWNER : ACTIVE_OWNER),
           }),
         );
       case `GET ${API}/progress`:
-        return json({
-          source_analysis: [],
-          kpis: { status: "not_started" },
-          dw_modeling: [],
-        });
+        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
       case `GET ${API}/members`:
         return json({ items: [] });
       case "GET /api/v1/workspaces":
@@ -104,11 +93,7 @@ function backend(initial: {
       case `DELETE ${API}`:
         return (r.body as { name: string }).name === "Retail DW"
           ? noContent()
-          : apiError(
-              422,
-              "name_mismatch",
-              "Type the Workspace's name exactly to delete it.",
-            );
+          : apiError(422, "name_mismatch", "Type the Workspace's name exactly to delete it.");
     }
   };
   return handle;
@@ -125,60 +110,40 @@ describe("archiving a Workspace", () => {
     const requests = renderApp(backend({ archived: false }), PATH);
 
     await openSettings("Archive & delete");
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Archive Workspace" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Archive Workspace" }));
 
-    expect(
-      await screen.findByRole("status", { hidden: true }),
-    ).toHaveTextContent("archived and read-only");
-    expect(
-      requests.find((r) => r.method === "POST" && r.path === `${API}/archive`),
-    ).toMatchObject({ csrf: CSRF_TOKEN });
+    expect(await screen.findByRole("status", { hidden: true })).toHaveTextContent("archived and read-only");
+    expect(requests.find((r) => r.method === "POST" && r.path === `${API}/archive`)).toMatchObject(
+      { csrf: CSRF_TOKEN },
+    );
     // Read-only: no edit form, and unarchiving is on offer instead.
-    expect(
-      screen.queryByRole("button", { name: "Save" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Unarchive Workspace" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Archive Workspace" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unarchive Workspace" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Archive Workspace" })).not.toBeInTheDocument();
   });
 
   it("lets an owner unarchive it", async () => {
     renderApp(backend({ archived: true }), PATH);
     await openSettings("Archive & delete");
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Unarchive Workspace" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Unarchive Workspace" }));
 
-    expect(
-      await screen.findByRole("button", { name: "Archive Workspace" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/archived and read-only/),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Archive Workspace" })).toBeInTheDocument();
+    expect(screen.queryByText(/archived and read-only/)).not.toBeInTheDocument();
   });
 
   it("offers Fix impacts once unarchived, to those who review Change Sets", async () => {
     const requests = renderApp(backend({ archived: true }), PATH);
     await openSettings("Archive & delete");
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Unarchive Workspace" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Unarchive Workspace" }));
     fireEvent.click(await screen.findByRole("button", { name: "Fix impacts" }));
 
     expect(
       await screen.findByText("Nothing broken can be fixed by propagation."),
     ).toBeInTheDocument();
     expect(
-      requests.find(
-        (r) => r.method === "POST" && r.path === `${API}/fix-impacts`,
-      ),
+      requests.find((r) => r.method === "POST" && r.path === `${API}/fix-impacts`),
     ).toMatchObject({ csrf: CSRF_TOKEN });
   });
 
@@ -187,29 +152,18 @@ describe("archiving a Workspace", () => {
     await openSettings("Archive & delete");
 
     await screen.findByRole("button", { name: "Unarchive Workspace" });
-    expect(
-      screen.queryByRole("button", { name: "Fix impacts" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Fix impacts" })).not.toBeInTheDocument();
   });
 
   it("offers neither to a member the API gives no such permission", async () => {
-    renderApp(
-      backend({ archived: false, permissions: ["workspace.view"] }),
-      PATH,
-    );
+    renderApp(backend({ archived: false, permissions: ["workspace.view"] }), PATH);
 
     await screen.findByRole("heading", { name: "Retail DW" });
     const dialog = await openSettings();
 
-    expect(
-      within(dialog).queryByRole("tab", { name: "Archive & delete" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /rchive Workspace/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("form", { name: "Delete Workspace" }),
-    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("tab", { name: "Archive & delete" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /rchive Workspace/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: "Delete Workspace" })).not.toBeInTheDocument();
   });
 });
 
@@ -221,13 +175,9 @@ describe("deleting a Workspace", () => {
     const submit = screen.getByRole("button", { name: "Delete Workspace" });
     expect(submit).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Workspace name"), {
-      target: { value: "Retail" },
-    });
+    fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Retail" } });
     expect(submit).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Workspace name"), {
-      target: { value: "Retail DW" },
-    });
+    fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Retail DW" } });
     expect(submit).toBeEnabled();
     fireEvent.submit(form);
 

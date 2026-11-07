@@ -5,13 +5,7 @@ import type { Me } from "../api/queries";
 import type { SourceSummary } from "../api/sourceSummary";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
-import {
-  apiError,
-  json,
-  renderApp,
-  setCsrfCookie,
-  type ApiRequest,
-} from "../test/renderApp";
+import { apiError, json, renderApp, setCsrfCookie, type ApiRequest } from "../test/renderApp";
 
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 const API = `/api/v1/workspaces/${WORKSPACE_ID}`;
@@ -78,9 +72,7 @@ function backend(summary: () => Response) {
         return json(VIEWER);
       case `GET ${API}/progress`:
         return json({
-          source_analysis: [
-            { system_id: CBS.id, name: CBS.name, status: "in_progress" },
-          ],
+          source_analysis: [{ system_id: CBS.id, name: CBS.name, status: "in_progress" }],
           kpis: { status: "not_started" },
           dw_modeling: [],
         });
@@ -106,14 +98,9 @@ const FOLDER = `/workspaces/${WORKSPACE_ID}?folder=systems/${CBS.id}`;
 
 describe("the Source System dashboard", () => {
   it("shows the table count, documented and profiled shares, relationships and PII", async () => {
-    renderApp(
-      backend(() => json(SUMMARY)),
-      FOLDER,
-    );
+    renderApp(backend(() => json(SUMMARY)), FOLDER);
 
-    const dashboard = await screen.findByRole("region", {
-      name: "Source summary",
-    });
+    const dashboard = await screen.findByRole("region", { name: "Source summary" });
     await within(dashboard).findByText("Tables");
 
     const figure = (label: string) => {
@@ -130,20 +117,11 @@ describe("the Source System dashboard", () => {
 
   it("says so before the first Snapshot", async () => {
     renderApp(
-      backend(() =>
-        json({
-          ...SUMMARY,
-          has_snapshot: false,
-          table_count: 0,
-          status: "not_started",
-        }),
-      ),
+      backend(() => json({ ...SUMMARY, has_snapshot: false, table_count: 0, status: "not_started" })),
       FOLDER,
     );
 
-    const dashboard = await screen.findByRole("region", {
-      name: "Source summary",
-    });
+    const dashboard = await screen.findByRole("region", { name: "Source summary" });
 
     expect(
       await within(dashboard).findByText(/No Snapshot yet/),
@@ -151,21 +129,13 @@ describe("the Source System dashboard", () => {
   });
 
   it("reports a failure to load", async () => {
-    renderApp(
-      backend(() => apiError(500, "internal", "Boom")),
-      FOLDER,
-    );
+    renderApp(backend(() => apiError(500, "internal", "Boom")), FOLDER);
 
-    expect(
-      await screen.findByText(/Could not load the source summary/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Could not load the source summary/)).toBeInTheDocument();
   });
 
   it("shows each system's Source Analysis in the stage progress panel", async () => {
-    renderApp(
-      backend(() => json(SUMMARY)),
-      FOLDER,
-    );
+    renderApp(backend(() => json(SUMMARY)), FOLDER);
 
     const item = await screen.findByText("Source Analysis: Core Banking");
 

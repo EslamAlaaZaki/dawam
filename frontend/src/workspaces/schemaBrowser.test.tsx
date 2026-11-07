@@ -2,19 +2,10 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Me } from "../api/queries";
-import type {
-  SchemaSearchHit,
-  SnapshotSummary,
-  SourceSchema,
-} from "../api/snapshots";
+import type { SchemaSearchHit, SnapshotSummary, SourceSchema } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
-import {
-  json,
-  renderApp,
-  setCsrfCookie,
-  type ApiRequest,
-} from "../test/renderApp";
+import { json, renderApp, setCsrfCookie, type ApiRequest } from "../test/renderApp";
 
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 const API = `/api/v1/workspaces/${WORKSPACE_ID}`;
@@ -141,13 +132,7 @@ const SCHEMA: SourceSchema = {
     },
   ],
   removed_columns: [
-    {
-      id: "c2",
-      table_id: "t1",
-      name: "legacy_code",
-      status: "source_removed",
-      data_type: "text",
-    },
+    { id: "c2", table_id: "t1", name: "legacy_code", status: "source_removed", data_type: "text" },
   ],
   removed_tables: [
     {
@@ -214,16 +199,12 @@ describe("the Source Schema browser", () => {
       name: "Tables and views of core",
     });
     expect(within(tables).getByText("customers")).toBeInTheDocument();
-    expect(
-      within(tables).getByText("customer_balances").closest("li"),
-    ).toHaveTextContent("(view)");
-    expect(
-      within(tables).getByText("old_ledger").closest("li"),
-    ).toHaveTextContent("removed from the source");
-    const routines = screen.getByRole("list", { name: "Routines of core" });
-    expect(routines).toHaveTextContent(
-      "account_turnover(p_acct integer) (function)",
+    expect(within(tables).getByText("customer_balances").closest("li")).toHaveTextContent("(view)");
+    expect(within(tables).getByText("old_ledger").closest("li")).toHaveTextContent(
+      "removed from the source",
     );
+    const routines = screen.getByRole("list", { name: "Routines of core" });
+    expect(routines).toHaveTextContent("account_turnover(p_acct integer) (function)");
   });
 
   it("opens a table with its columns, keys, indexes, row estimate and comment", async () => {
@@ -238,26 +219,20 @@ describe("the Source Schema browser", () => {
     expect(page).toHaveTextContent("One row per bank customer");
     const row = within(page).getByText("legacy_code").closest("tr");
     expect(row).toHaveTextContent("removed from the source");
-    expect(within(page).getByText("cust_no").closest("tr")).toHaveTextContent(
-      "PK",
-    );
+    expect(within(page).getByText("cust_no").closest("tr")).toHaveTextContent("PK");
     expect(within(page).getByRole("list", { name: "Keys" })).toHaveTextContent(
       "customers_pkey: PK (cust_no)",
     );
-    expect(
-      within(page).getByRole("list", { name: "Indexes" }),
-    ).toHaveTextContent("customers_lower_idx (lower(email))");
+    expect(within(page).getByRole("list", { name: "Indexes" })).toHaveTextContent(
+      "customers_lower_idx (lower(email))",
+    );
   });
 
   it("shows a view's definition and a routine's code", async () => {
     renderApp(backend([]), FOLDER);
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "customer_balances" }),
-    );
-    expect(
-      await screen.findByText("SELECT cust_no FROM core.customers"),
-    ).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "customer_balances" }));
+    expect(await screen.findByText("SELECT cust_no FROM core.customers")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /account_turnover/ }));
     expect(
@@ -278,9 +253,7 @@ describe("the Source Schema browser", () => {
     expect(results).toHaveTextContent("core.customers.cust_no (column)");
     fireEvent.click(within(results).getByRole("button"));
     await waitFor(() =>
-      expect(
-        screen.getByRole("region", { name: "Table core.customers" }),
-      ).toBeInTheDocument(),
+      expect(screen.getByRole("region", { name: "Table core.customers" })).toBeInTheDocument(),
     );
   });
 });

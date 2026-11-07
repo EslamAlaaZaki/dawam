@@ -189,12 +189,7 @@ async function relationships() {
 describe("Source ER diagram", () => {
   it("marks tables that have Protected Columns, naming them", async () => {
     const column = (name: string, is_protected: boolean) =>
-      ({
-        id: `c-${name}`,
-        name,
-        ordinal: 1,
-        is_protected,
-      }) as unknown as SourceSchema["tables"][number]["columns"][number];
+      ({ id: `c-${name}`, name, ordinal: 1, is_protected }) as unknown as SourceSchema["tables"][number]["columns"][number];
     renderApp(
       (r) =>
         r.path === `${SYSTEM}/schema`
@@ -202,14 +197,7 @@ describe("Source ER diagram", () => {
               ...SCHEMA,
               tables: SCHEMA.tables.map((t) =>
                 t.id === "t-cust"
-                  ? {
-                      ...t,
-                      columns: [
-                        column("email", true),
-                        column("ssn", true),
-                        column("id", false),
-                      ],
-                    }
+                  ? { ...t, columns: [column("email", true), column("ssn", true), column("id", false)] }
                   : t,
               ),
             })
@@ -217,9 +205,7 @@ describe("Source ER diagram", () => {
       FOLDER,
     );
     const canvas = within(await screen.findByLabelText("ER diagram canvas"));
-    expect(
-      canvas.getByRole("img", { name: "2 Protected Columns: email, ssn" }),
-    ).toBeInTheDocument();
+    expect(canvas.getByRole("img", { name: "2 Protected Columns: email, ssn" })).toBeInTheDocument();
     expect(canvas.getAllByRole("img")).toHaveLength(1);
   });
 
@@ -230,15 +216,11 @@ describe("Source ER diagram", () => {
       list.getByText(/core\.accounts to core\.customers.*, declared/),
     ).toBeInTheDocument();
     expect(
-      list.getByText(
-        /core\.transactions to core\.accounts.*, inferred, accepted/,
-      ),
+      list.getByText(/core\.transactions to core\.accounts.*, inferred, accepted/),
     ).toBeInTheDocument();
     for (const name of ["customers", "accounts", "transactions", "events"]) {
       const canvas = screen.getByLabelText("ER diagram canvas");
-      expect(
-        within(canvas).getByText(new RegExp(`\\.${name}$`)),
-      ).toBeInTheDocument();
+      expect(within(canvas).getByText(new RegExp(`\\.${name}$`))).toBeInTheDocument();
     }
     const asked = requests.find((r) => r.path === `${SYSTEM}/relationships`);
     expect(asked?.query).toMatchObject({ status: "accepted" });
@@ -254,9 +236,7 @@ describe("Source ER diagram", () => {
     const canvas = screen.getByLabelText("ER diagram canvas");
     expect(within(canvas).getByText("audit.events")).toBeInTheDocument();
     expect(within(canvas).queryByText("core.accounts")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("list", { name: "Relationships" })?.children,
-    ).toHaveLength(0);
+    expect(screen.queryByRole("list", { name: "Relationships" })?.children).toHaveLength(0);
   });
 
   it("focuses on a table and its neighbours", async () => {
@@ -273,11 +253,7 @@ describe("Source ER diagram", () => {
       ).not.toBeInTheDocument(),
     );
     const canvas = within(screen.getByLabelText("ER diagram canvas"));
-    for (const name of [
-      "core.accounts",
-      "core.customers",
-      "core.transactions",
-    ]) {
+    for (const name of ["core.accounts", "core.customers", "core.transactions"]) {
       expect(canvas.getByText(name)).toBeInTheDocument();
     }
     const list = await relationships();
@@ -292,8 +268,6 @@ describe("Source ER diagram", () => {
           : api(r),
       FOLDER,
     );
-    expect(
-      await screen.findByText("No tables match these filters."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("No tables match these filters.")).toBeInTheDocument();
   });
 });

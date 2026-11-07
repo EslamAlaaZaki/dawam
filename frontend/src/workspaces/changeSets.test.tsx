@@ -238,10 +238,7 @@ describe("a Workspace memory Change Set", () => {
       skipped: [],
       needs_owner: [],
     };
-    const requests = renderApp(
-      memoryBackend(() => json(result)),
-      PATH,
-    );
+    const requests = renderApp(memoryBackend(() => json(result)), PATH);
 
     fireEvent.click(
       await screen.findByLabelText(

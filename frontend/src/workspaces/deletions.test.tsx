@@ -62,12 +62,7 @@ const CRM: SourceSystem = {
   updated_at: "2026-01-05T09:00:00Z",
 };
 
-const DELETED_CRM = {
-  id: CRM.id,
-  name: "CRM",
-  code: "crm",
-  deleted_at: "2026-01-06T09:00:00Z",
-};
+const DELETED_CRM = { id: CRM.id, name: "CRM", code: "crm", deleted_at: "2026-01-06T09:00:00Z" };
 
 const DELETED: DeletedObjects = { systems: [DELETED_CRM], tables: [] };
 
@@ -79,11 +74,7 @@ const REVIEW: SourceSystemDeletion = {
   routine_count: 0,
   snapshot_count: 3,
   staging_tables: [
-    {
-      id: "a0000000-0000-4000-8000-000000000001",
-      name: "stg_crm_public_customers",
-      has_mapping: true,
-    },
+    { id: "a0000000-0000-4000-8000-000000000001", name: "stg_crm_public_customers", has_mapping: true },
   ],
   broken_branches: [
     {
@@ -94,17 +85,9 @@ const REVIEW: SourceSystemDeletion = {
       branch_name: "CRM",
     },
   ],
-  files: [
-    {
-      id: "f0000000-0000-4000-8000-000000000001",
-      path: "notes.txt",
-      is_document: true,
-    },
-  ],
+  files: [{ id: "f0000000-0000-4000-8000-000000000001", path: "notes.txt", is_document: true }],
   source_link_count: 0,
-  rehomed_kpis: [
-    { id: "c0000000-0000-4000-8000-000000000001", name: "Revenue" },
-  ],
+  rehomed_kpis: [{ id: "c0000000-0000-4000-8000-000000000001", name: "Revenue" }],
   deleted_kpis: [{ id: "c0000000-0000-4000-8000-000000000002", name: "Churn" }],
 };
 
@@ -116,11 +99,7 @@ function backend(role: WorkspaceRole, systems: SourceSystem[] = []) {
       case `GET ${API}`:
         return json(workspace(role));
       case `GET ${API}/progress`:
-        return json({
-          source_analysis: [],
-          kpis: { status: "not_started" },
-          dw_modeling: [],
-        });
+        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
       case `GET ${API}/members`:
         return json({ items: [] });
       case `GET ${API}/systems`:
@@ -147,22 +126,16 @@ describe("the deleted list", () => {
     const requests = renderApp(backend("owner"), PATH);
 
     fireEvent.click(await screen.findByRole("button", { name: "Review CRM" }));
-    const review = await screen.findByRole("region", {
-      name: "Permanently delete CRM",
-    });
+    const review = await screen.findByRole("region", { name: "Permanently delete CRM" });
 
-    expect(
-      within(review).getByText("stg_crm_public_customers"),
-    ).toBeInTheDocument();
+    expect(within(review).getByText("stg_crm_public_customers")).toBeInTheDocument();
     expect(within(review).getByText("core_customer: CRM")).toBeInTheDocument();
     expect(within(review).getByText("notes.txt")).toBeInTheDocument();
     expect(within(review).getByText("Revenue")).toBeInTheDocument();
     expect(within(review).getByText("Churn")).toBeInTheDocument();
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
 
-    fireEvent.click(
-      within(review).getByRole("button", { name: "Delete permanently" }),
-    );
+    fireEvent.click(within(review).getByRole("button", { name: "Delete permanently" }));
 
     await waitFor(() =>
       expect(requests.find((r) => r.method === "DELETE")).toMatchObject({
@@ -175,12 +148,8 @@ describe("the deleted list", () => {
   it("is not offered to an editor", async () => {
     const requests = renderApp(backend("editor"), PATH);
 
-    expect(
-      await screen.findByRole("heading", { name: "Retail DW" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Deleted" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Retail DW" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Deleted" })).not.toBeInTheDocument();
     expect(requests.some((r) => r.path === `${API}/deleted`)).toBe(false);
   });
 });
@@ -194,9 +163,7 @@ describe("deleting a Source System", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
     const dialog = await screen.findByRole("dialog", { name: /^Delete .*\?$/ });
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Delete Source System" }),
-    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Source System" }));
 
     await waitFor(() =>
       expect(requests.find((r) => r.method === "DELETE")).toMatchObject({
@@ -208,11 +175,7 @@ describe("deleting a Source System", () => {
   it("is not offered to an editor", async () => {
     renderApp(backend("editor", [CRM]), FOLDER);
 
-    expect(
-      await screen.findByRole("button", { name: "Edit" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Delete" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 });

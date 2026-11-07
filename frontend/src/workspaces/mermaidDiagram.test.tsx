@@ -18,9 +18,7 @@ beforeEach(() => {
 
 describe("a mermaid block in an answer", () => {
   it("is drawn by the library in strict mode", async () => {
-    mermaid.render.mockResolvedValue({
-      svg: '<svg data-testid="drawn"></svg>',
-    });
+    mermaid.render.mockResolvedValue({ svg: '<svg data-testid="drawn"></svg>' });
 
     render(<Markdown>{`Here:\n\n\`\`\`mermaid\n${DIAGRAM}\n\`\`\``}</Markdown>);
 
@@ -41,11 +39,7 @@ describe("a mermaid block in an answer", () => {
   });
 
   it("leaves other code blocks alone and never renders raw HTML", () => {
-    render(
-      <Markdown>
-        {"```sql\nselect 1\n```\n\n<script>alert(1)</script>"}
-      </Markdown>,
-    );
+    render(<Markdown>{"```sql\nselect 1\n```\n\n<script>alert(1)</script>"}</Markdown>);
 
     expect(screen.getByText("select 1")).toBeInTheDocument();
     expect(document.querySelector("script")).toBeNull();

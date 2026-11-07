@@ -81,11 +81,7 @@ function backend(
       case `GET /api/v1/workspaces/${WORKSPACE_ID}`:
         return json(workspace(role));
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/progress`:
-        return json({
-          source_analysis: [],
-          kpis: { status: "not_started" },
-          dw_modeling: [],
-        });
+        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/members`:
         return json({ items: [] });
       case `GET ${SYSTEMS}`:
@@ -128,20 +124,16 @@ describe("Source Systems in the folder tree", () => {
       "KPIs",
       "Outputs",
     ]);
-    expect(
-      screen.getByRole("treeitem", { name: "Core Banking" }),
-    ).toHaveAttribute("aria-level", "3");
+    expect(screen.getByRole("treeitem", { name: "Core Banking" })).toHaveAttribute(
+      "aria-level",
+      "3",
+    );
   });
 
   it("opens a system's sub-folder with an empty state", async () => {
-    renderApp(
-      backend("viewer", [CBS]),
-      `${PATH}?folder=systems/${CBS.id}/profiling`,
-    );
+    renderApp(backend("viewer", [CBS]), `${PATH}?folder=systems/${CBS.id}/profiling`);
 
-    expect(
-      await screen.findByRole("heading", { name: "Profiling" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Profiling" })).toBeInTheDocument();
   });
 });
 
@@ -164,15 +156,9 @@ describe("the Systems folder", () => {
     const row = await screen.findByRole("row", { name: /Core Banking/ });
     expect(row).toHaveTextContent("cbs");
     expect(row).toHaveTextContent("Head of Retail");
-    expect(
-      screen.queryByRole("button", { name: "Add system" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Edit" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText("Only owners and editors can add Source Systems."),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add system" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.getByText("Only owners and editors can add Source Systems.")).toBeInTheDocument();
   });
 
   it("lets an editor add a Source System and opens its folder", async () => {
@@ -188,18 +174,12 @@ describe("the Systems folder", () => {
     );
 
     const form = await openAddSystem();
-    fireEvent.change(within(form).getByLabelText("Name"), {
-      target: { value: "Core Banking" },
-    });
-    fireEvent.change(within(form).getByLabelText("System Code"), {
-      target: { value: "cbs" },
-    });
+    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Core Banking" } });
+    fireEvent.change(within(form).getByLabelText("System Code"), { target: { value: "cbs" } });
     fireEvent.change(within(form).getByLabelText("Business owner"), {
       target: { value: "Head of Retail" },
     });
-    fireEvent.click(
-      within(form).getByRole("button", { name: "Add Source System" }),
-    );
+    fireEvent.click(within(form).getByRole("button", { name: "Add Source System" }));
 
     await waitFor(() =>
       expect(currentLocation()).toBe(`${PATH}?folder=systems%2F${CBS.id}`),
@@ -211,35 +191,23 @@ describe("the Systems folder", () => {
       business_owner: "Head of Retail",
       technical_owner: "",
     });
-    expect(
-      await screen.findByRole("treeitem", { name: "Core Banking" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("treeitem", { name: "Core Banking" })).toBeInTheDocument();
   });
 
   it("shows why a System Code is refused", async () => {
     renderApp(
       backend("editor", [], (r) =>
         r.method === "POST" && r.path === SYSTEMS
-          ? apiError(
-              409,
-              "system_code_taken",
-              "Another Source System has that System Code.",
-            )
+          ? apiError(409, "system_code_taken", "Another Source System has that System Code.")
           : undefined,
       ),
       `${PATH}?folder=systems`,
     );
 
     const form = await openAddSystem();
-    fireEvent.change(within(form).getByLabelText("Name"), {
-      target: { value: "Core" },
-    });
-    fireEvent.change(within(form).getByLabelText("System Code"), {
-      target: { value: "cbs" },
-    });
-    fireEvent.click(
-      within(form).getByRole("button", { name: "Add Source System" }),
-    );
+    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Core" } });
+    fireEvent.change(within(form).getByLabelText("System Code"), { target: { value: "cbs" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Add Source System" }));
 
     expect(await within(form).findByRole("alert")).toHaveTextContent(
       "Another Source System has that System Code.",
@@ -253,41 +221,29 @@ describe("a Source System's details", () => {
   it("is read-only for a viewer", async () => {
     renderApp(backend("viewer", [CBS]), FOLDER);
 
-    expect(
-      await screen.findByRole("heading", { name: "Core Banking" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Core Banking" })).toBeInTheDocument();
     expect(screen.getByText("DBA team")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Save" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
   });
 
   it("lets an editor edit it but not the System Code", async () => {
     const requests = renderApp(
       backend("editor", [CBS], (r) =>
-        r.method === "PATCH"
-          ? json({ ...CBS, technical_owner: "Platform", version: 2 })
-          : undefined,
+        r.method === "PATCH" ? json({ ...CBS, technical_owner: "Platform", version: 2 }) : undefined,
       ),
       FOLDER,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Edit Source System",
-    });
-    expect(within(dialog).getByLabelText("System Code")).toHaveAttribute(
-      "readonly",
-    );
+    const dialog = await screen.findByRole("dialog", { name: "Edit Source System" });
+    expect(within(dialog).getByLabelText("System Code")).toHaveAttribute("readonly");
     fireEvent.change(within(dialog).getByLabelText("Technical owner"), {
       target: { value: "Platform" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(requests.find((r) => r.method === "PATCH")).toMatchObject({
       path: `${SYSTEMS}/${CBS.id}`,
       body: { version: 1, technical_owner: "Platform", code: "cbs" },
@@ -297,9 +253,7 @@ describe("a Source System's details", () => {
   it("lets an owner change the System Code", async () => {
     const requests = renderApp(
       backend("owner", [CBS], (r) =>
-        r.method === "PATCH"
-          ? json({ ...CBS, code: "core", version: 2 })
-          : undefined,
+        r.method === "PATCH" ? json({ ...CBS, code: "core", version: 2 }) : undefined,
       ),
       FOLDER,
     );
@@ -311,25 +265,19 @@ describe("a Source System's details", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await screen.findByText("Saved.");
-    expect(requests.find((r) => r.method === "PATCH")?.body).toMatchObject({
-      code: "core",
-    });
+    expect(requests.find((r) => r.method === "PATCH")?.body).toMatchObject({ code: "core" });
   });
 
   it("edits a system from its row in the Systems folder", async () => {
     const requests = renderApp(
       backend("editor", [CBS], (r) =>
-        r.method === "PATCH"
-          ? json({ ...CBS, name: "Core Banking 2", version: 2 })
-          : undefined,
+        r.method === "PATCH" ? json({ ...CBS, name: "Core Banking 2", version: 2 }) : undefined,
       ),
       `${PATH}?folder=systems`,
     );
 
     const dialog = await openEditSystem();
-    fireEvent.change(within(dialog).getByLabelText("Name"), {
-      target: { value: "Core Banking 2" },
-    });
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Core Banking 2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
@@ -340,25 +288,16 @@ describe("a Source System's details", () => {
   });
 
   it("deletes a system from its row only after confirming", async () => {
-    const requests = renderApp(
-      backend("owner", [CBS]),
-      `${PATH}?folder=systems`,
-    );
+    const requests = renderApp(backend("owner", [CBS]), `${PATH}?folder=systems`);
 
     const row = await screen.findByRole("row", { name: /Core Banking/ });
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Delete Core Banking?",
-    });
+    const dialog = await screen.findByRole("dialog", { name: "Delete Core Banking?" });
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Delete Source System" }),
-    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Source System" }));
 
     await waitFor(() =>
-      expect(requests.find((r) => r.method === "DELETE")?.path).toBe(
-        `${SYSTEMS}/${CBS.id}`,
-      ),
+      expect(requests.find((r) => r.method === "DELETE")?.path).toBe(`${SYSTEMS}/${CBS.id}`),
     );
   });
 
@@ -366,11 +305,7 @@ describe("a Source System's details", () => {
     renderApp(
       backend("owner", [CBS], (r) =>
         r.method === "PATCH"
-          ? apiError(
-              409,
-              "version_conflict",
-              "Someone else changed this Source System.",
-            )
+          ? apiError(409, "version_conflict", "Someone else changed this Source System.")
           : undefined,
       ),
       FOLDER,

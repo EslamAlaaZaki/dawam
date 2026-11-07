@@ -787,10 +787,9 @@ export function AssistantPanel({
   const share = useShareConversation(workspace.id, selected ?? "");
   const remove = useDeleteConversation(workspace.id);
   // The conversation the member asked to delete, while they confirm.
-  const [deleting, setDeleting] = useState<{
-    id: string;
-    title: string;
-  } | null>(null);
+  const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(
+    null,
+  );
   const canAsk = allows(workspace, "assistant.ask");
   const archived = workspace.status === "archived";
   const current = conversations.data?.find((c) => c.id === selected);
@@ -1017,95 +1016,95 @@ export function AssistantPanel({
         <div aria-hidden className="h-px shrink-0 bg-ai-gradient" />
         <div ref={thread} className="flex-1 overflow-y-auto px-4 py-4">
           <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
-            {archived && (
-              <Hint>
-                This Workspace is archived: conversations are read-only.
-              </Hint>
-            )}
-            {current && mine && !archived && (
-              <label className={checkLabelClasses}>
-                <Switch
-                  checked={current.shared_with_workspace}
-                  disabled={share.isPending}
-                  onCheckedChange={(checked) => share.mutate(checked)}
-                />
-                Share with the Workspace&apos;s members
-              </label>
-            )}
-            {turns.length === 0 && !draft && canAsk && !archived && (
-              <div className="m-auto flex flex-col items-center gap-3 py-8 text-center">
-                <span
-                  aria-hidden
-                  className="flex size-10 items-center justify-center rounded-xl bg-ai-gradient text-lg text-white"
-                >
-                  ✦
-                </span>
-                <p className="text-xl font-semibold">How can I help?</p>
-              </div>
-            )}
-            <ol className="flex flex-col gap-6" aria-label="Conversation">
-              {turns.map(({ message, answer }) => (
-                <Turn
-                  key={message.id}
-                  message={message}
-                  workspaceId={workspace.id}
-                  conversationId={selected ?? ""}
-                  canRate={!archived}
-                  answer={answer?.role === "assistant" ? answer : undefined}
-                />
-              ))}
-              {draft && (
-                <>
-                  <Bubble email={me.data?.email ?? "you"} at={draft.askedAt}>
-                    {draft.question}
-                  </Bubble>
-                  <Bubble email={null} at={draft.askedAt} busy>
-                    {draft.reasoning && (
-                      <details open={!draft.text} className="group/reasoning">
-                        <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-md text-xs font-medium text-muted-foreground transition-colors duration-120 hover:text-foreground [&::-webkit-details-marker]:hidden">
-                          <ChevronRight
-                            aria-hidden
-                            className="size-3.5 transition-transform duration-120 group-open/reasoning:rotate-90"
-                          />
-                          Reasoning
-                        </summary>
-                        <p className="mt-1.5 ms-1.5 max-h-48 overflow-y-auto border-s-2 border-border ps-3 text-sm whitespace-pre-wrap text-muted-foreground">
-                          {draft.reasoning}
-                        </p>
-                      </details>
-                    )}
-                    {draft.text ? (
-                      <Markdown>{draft.text}</Markdown>
-                    ) : (
-                      <p className="ai-shimmer w-fit text-sm font-medium">
-                        Thinking…
+          {archived && (
+            <Hint>
+              This Workspace is archived: conversations are read-only.
+            </Hint>
+          )}
+          {current && mine && !archived && (
+            <label className={checkLabelClasses}>
+              <Switch
+                checked={current.shared_with_workspace}
+                disabled={share.isPending}
+                onCheckedChange={(checked) => share.mutate(checked)}
+              />
+              Share with the Workspace&apos;s members
+            </label>
+          )}
+          {turns.length === 0 && !draft && canAsk && !archived && (
+            <div className="m-auto flex flex-col items-center gap-3 py-8 text-center">
+              <span
+                aria-hidden
+                className="flex size-10 items-center justify-center rounded-xl bg-ai-gradient text-lg text-white"
+              >
+                ✦
+              </span>
+              <p className="text-xl font-semibold">How can I help?</p>
+            </div>
+          )}
+          <ol className="flex flex-col gap-6" aria-label="Conversation">
+            {turns.map(({ message, answer }) => (
+              <Turn
+                key={message.id}
+                message={message}
+                workspaceId={workspace.id}
+                conversationId={selected ?? ""}
+                canRate={!archived}
+                answer={answer?.role === "assistant" ? answer : undefined}
+              />
+            ))}
+            {draft && (
+              <>
+                <Bubble email={me.data?.email ?? "you"} at={draft.askedAt}>
+                  {draft.question}
+                </Bubble>
+                <Bubble email={null} at={draft.askedAt} busy>
+                  {draft.reasoning && (
+                    <details open={!draft.text} className="group/reasoning">
+                      <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-md text-xs font-medium text-muted-foreground transition-colors duration-120 hover:text-foreground [&::-webkit-details-marker]:hidden">
+                        <ChevronRight
+                          aria-hidden
+                          className="size-3.5 transition-transform duration-120 group-open/reasoning:rotate-90"
+                        />
+                        Reasoning
+                      </summary>
+                      <p className="mt-1.5 ms-1.5 max-h-48 overflow-y-auto border-s-2 border-border ps-3 text-sm whitespace-pre-wrap text-muted-foreground">
+                        {draft.reasoning}
                       </p>
-                    )}
-                    <ToolNotes tools={draft.tools} workspaceId={workspace.id} />
-                  </Bubble>
-                </>
-              )}
-            </ol>
-            {selected &&
-              messages.some((m) =>
-                m.run?.tool_calls.some(
-                  (t) =>
-                    t.name === "propose_changes" ||
-                    t.name === "propose_check_fix",
-                ),
-              ) && (
-                <ConversationChangeSets
-                  workspace={workspace}
-                  conversationId={selected}
-                  messageCount={messages.length}
-                />
-              )}
-            {failed &&
-              !draft &&
-              turns.every(({ message }) => message.run?.id !== failed.id) && (
-                <FailureNote run={failed} />
-              )}
-            {refusal && <ErrorText>{refusal}</ErrorText>}
+                    </details>
+                  )}
+                  {draft.text ? (
+                    <Markdown>{draft.text}</Markdown>
+                  ) : (
+                    <p className="ai-shimmer w-fit text-sm font-medium">
+                      Thinking…
+                    </p>
+                  )}
+                  <ToolNotes tools={draft.tools} workspaceId={workspace.id} />
+                </Bubble>
+              </>
+            )}
+          </ol>
+          {selected &&
+            messages.some((m) =>
+              m.run?.tool_calls.some(
+                (t) =>
+                  t.name === "propose_changes" ||
+                  t.name === "propose_check_fix",
+              ),
+            ) && (
+              <ConversationChangeSets
+                workspace={workspace}
+                conversationId={selected}
+                messageCount={messages.length}
+              />
+            )}
+          {failed &&
+            !draft &&
+            turns.every(({ message }) => message.run?.id !== failed.id) && (
+              <FailureNote run={failed} />
+            )}
+          {refusal && <ErrorText>{refusal}</ErrorText>}
           </div>
         </div>
         {canAsk && !archived && (
@@ -1275,9 +1274,7 @@ export function AssistantPanel({
                         aria-label={`Delete ${c.title}`}
                         disabled={running}
                         className="absolute inset-y-0 end-1 my-auto size-6 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 hover:text-danger-strong [&_svg]:size-3.5"
-                        onClick={() =>
-                          setDeleting({ id: c.id, title: c.title })
-                        }
+                        onClick={() => setDeleting({ id: c.id, title: c.title })}
                       >
                         <Trash2 aria-hidden />
                       </Button>

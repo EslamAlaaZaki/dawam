@@ -325,10 +325,14 @@ class Gateway:
 
     def _with_effort(self, effort: str | None) -> ReasoningSettings | None:
         """The model's reasoning settings with this call's effort in place of the stored one
-        (``None`` when it is not a reasoning model). No effort: the provider's default."""
+        (``None`` when it is not a reasoning model). No effort: the settings as they are."""
         if self._reasoning is None:
             return None
-        return replace(self._reasoning, effort=effort if effort in REASONING_EFFORTS else None)
+        return (
+            replace(self._reasoning, effort=effort)
+            if effort in REASONING_EFFORTS
+            else self._reasoning
+        )
 
     def chat(
         self,
