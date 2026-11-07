@@ -1081,7 +1081,7 @@ export function AssistantPanel({
         {/* The assistant's signature: a 1px gradient rule under its header. */}
         <div aria-hidden className="h-px shrink-0 bg-ai-gradient" />
         <div ref={thread} className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
+          <div className="flex min-h-full w-full flex-col gap-4">
           {archived && (
             <Hint>
               This Workspace is archived: conversations are read-only.
@@ -1178,7 +1178,7 @@ export function AssistantPanel({
         {canAsk && !archived && (
           <form onSubmit={onSubmit} className="px-4 pt-1 pb-3">
             {/* One box, like a message being written: the text on top, its tools below. */}
-            <div className="mx-auto flex w-full max-w-3xl flex-col rounded-xl border border-border-strong bg-surface-raised p-1">
+            <div className="flex w-full flex-col rounded-xl border border-border-strong bg-surface-raised p-1">
               <Textarea
                 ref={input}
                 aria-label="Ask the assistant"
