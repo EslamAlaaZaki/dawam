@@ -1,7 +1,14 @@
 "use client";
 
 import { FolderOpen, TriangleAlert } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import { ApiError } from "../api/client";
 import { ROLE_LABELS, useWorkspace } from "../api/workspaces";
@@ -36,6 +43,80 @@ import { StageProgressPanel } from "./StageProgressPanel";
 import { WorkspaceSettingsDialog } from "./WorkspaceSettingsDialog";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
+const CHAT_MIN_WIDTH = 360;
+
+/** The widest the chat may be: most of the window, leaving some of the page beside it. */
+function chatMaxWidth() {
+  return Math.max(CHAT_MIN_WIDTH, Math.round(window.innerWidth * 0.8));
+}
+
+function clampChatWidth(width: number) {
+  return Math.min(chatMaxWidth(), Math.max(CHAT_MIN_WIDTH, Math.round(width)));
+}
+
+/** The chat's default width: 680px, at most 55% of the window. */
+function defaultChatWidth() {
+  return Math.round(Math.min(680, window.innerWidth * 0.55));
+}
+
+/**
+ * The chat's left edge, dragged to make it wider or narrower (wide screens only; on a narrow
+ * one the chat takes the whole width). The arrow keys do the same.
+ */
+function ChatResizer({
+  width,
+  onResize,
+}: {
+  /** Null while the chat has its default width. */
+  width: number | null;
+  onResize: (width: number) => void;
+}) {
+  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    document.body.style.userSelect = "none";
+  }
+  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      onResize(window.innerWidth - event.clientX);
+    }
+  }
+  function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      document.body.style.userSelect = "";
+      onResize(window.innerWidth - event.clientX);
+    }
+  }
+  function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 96 : 32;
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      onResize(
+        (width ?? defaultChatWidth()) +
+          (event.key === "ArrowLeft" ? step : -step),
+      );
+    }
+  }
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the assistant"
+      aria-controls="assistant-panel"
+      aria-valuenow={width ?? undefined}
+      aria-valuemin={CHAT_MIN_WIDTH}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onKeyDown={onKeyDown}
+      className="absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize touch-none outline-primary transition-colors duration-120 hover:bg-border-strong focus-visible:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 lg:block"
+    />
+  );
+}
+
 /**
  * A Workspace's page: its folder tree, the selected folder (kept in the `folder` URL
  * parameter, so it can be linked and reloaded) and the stage progress. The Workspace's
@@ -47,6 +128,15 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const { folder, wanted, select, warehouse, systems, systemList } =
     useWorkspaceFolders(workspaceId, workspace.data?.name ?? "");
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // The chat's width once the member has dragged it; null keeps the default. Not kept
+  // across reloads.
+  const [chatWidth, setChatWidth] = useState<number | null>(null);
+  const chatStyle = (
+    chatWidth === null ? {} : { "--chat-width": `${chatWidth}px` }
+  ) as CSSProperties;
+  function resizeChat(width: number) {
+    setChatWidth(clampChatWidth(width));
+  }
   // The folder whose setup dialog was closed: it stays closed until another folder is
   // selected or the folder's button reopens it.
   const [setupDismissed, setSetupDismissed] = useState<string | null>(null);
@@ -131,7 +221,8 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   return (
     <>
       <div
-        className={`flex flex-col gap-5 ${assistantOpen ? "lg:mr-[min(680px,55vw)]" : ""}`}
+        style={chatStyle}
+        className={`flex flex-col gap-5 ${assistantOpen ? "lg:mr-[calc(var(--chat-width,min(680px,55vw)))]" : ""}`}
       >
         <PageHeader
           title={workspace.data.name}
@@ -316,8 +407,10 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             setAssistantOpen(false);
           }
         }}
-        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(680px,100vw)] overflow-hidden border-l border-border bg-background shadow-lg outline-none lg:w-[min(680px,55vw)] lg:shadow-none"
+        style={chatStyle}
+        className="dawam-ui fixed top-12 right-0 bottom-0 z-20 w-[min(680px,100vw)] overflow-hidden border-l border-border bg-background shadow-lg outline-none lg:w-[var(--chat-width,min(680px,55vw))] lg:shadow-none"
       >
+        <ChatResizer width={chatWidth} onResize={resizeChat} />
         {assistantUsed && (
           <div className="h-full">
             <AssistantPanel

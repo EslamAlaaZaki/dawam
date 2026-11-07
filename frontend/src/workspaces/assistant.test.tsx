@@ -435,6 +435,10 @@ describe("the assistant's chat panel", () => {
 
     await ask("IFRS 9 stages?");
 
+    const summary = await screen.findByText(
+      "Searched the web 1 time · read 3 pages",
+    );
+    fireEvent.click(summary);
     const web = await screen.findByRole("list", { name: "Web access" });
     expect(web).toHaveTextContent("Searched the web (SearXNG): IFRS 9 stage");
     expect(web).not.toHaveTextContent("Ahmed");
@@ -516,6 +520,70 @@ describe("the assistant's chat panel", () => {
     expect(steps[0]).toHaveTextContent("done");
     expect(steps[1]).toHaveTextContent("in progress");
     expect(steps[2]).toHaveTextContent("failed");
+  });
+
+  it("shows only the current web step while it answers, and drops it once the answer comes", async () => {
+    const search = {
+      name: "web_search",
+      arguments: { query: "Passat trims" },
+      status: "ok",
+      duration_ms: 30,
+      result: { query: "Passat trims", provider: "searxng", results: 3 },
+    };
+    const fetched = {
+      name: "web_fetch",
+      arguments: { url: "https://cars.example/passat" },
+      status: "ok",
+      duration_ms: 40,
+      result: { url: "https://cars.example/passat", title: "Passat", reader: "dawam" },
+    };
+    const encoder = new TextEncoder();
+    let push: (chunk: string) => void = () => {};
+    let finish: () => void = () => {};
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(frame("tool", search)));
+        push = (chunk) => controller.enqueue(encoder.encode(chunk));
+        finish = () => {
+          controller.enqueue(
+            encoder.encode(
+              frame("done", {
+                run: run({ status: "cancelled" }),
+                message_id: null,
+              }),
+            ),
+          );
+          controller.close();
+        };
+      },
+    });
+    renderApp(
+      backend({
+        answer: () =>
+          new Response(stream, {
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    await ask("Passat trims?");
+
+    expect(await screen.findByText("Searching the web…")).toBeInTheDocument();
+    expect(screen.getByText("Passat trims")).toBeInTheDocument();
+    expect(screen.queryByText("Thinking…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Web access" })).toBeNull();
+
+    push(frame("tool", fetched));
+    expect(await screen.findByText("Reading a web page…")).toBeInTheDocument();
+    expect(screen.getByText("https://cars.example/passat")).toBeInTheDocument();
+    expect(screen.queryByText("Searching the web…")).not.toBeInTheDocument();
+
+    push(frame("text", { text: "Four trims." }));
+    expect(await screen.findByText("Four trims.")).toBeInTheDocument();
+    expect(screen.queryByText("Reading a web page…")).not.toBeInTheDocument();
+    finish();
   });
 
   it("streams the model's reasoning while it answers, when its model shows it", async () => {
