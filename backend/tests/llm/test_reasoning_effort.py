@@ -273,6 +273,16 @@ def test_gemini_2_5_gets_a_thinking_budget_from_the_effort(effort: str, budget: 
     assert thinking == {"thinkingBudget": budget}
 
 
+@pytest.mark.parametrize("model", ["gemini-2.0-flash", "gemini-flash-latest", "corp-gemini"])
+def test_gemini_models_outside_2_5_and_3_get_no_thinking_config(model: str):
+    adapter, transport = _gemini(_json(GEMINI_REPLY))
+    settings = ReasoningSettings(effort="high", budget_tokens=2000, show=True)
+
+    list(adapter.chat(model, ASK, [], False, None, reasoning=settings))
+
+    assert "generationConfig" not in transport.requests[0].json
+
+
 def test_gemini_without_settings_sends_no_thinking_config():
     adapter, transport = _gemini(_json(GEMINI_REPLY))
 

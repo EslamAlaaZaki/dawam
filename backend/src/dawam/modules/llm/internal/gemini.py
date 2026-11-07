@@ -428,10 +428,13 @@ class GeminiAdapter:
 
 def _thinking_config(model: str, reasoning: ReasoningSettings) -> dict[str, Any]:
     """Gemini 3: ``thinkingLevel`` (the effort, stepped up to a level the model takes); Gemini
-    2.5: ``thinkingBudget``. Neither an effort nor a budget: the model's own default."""
+    2.5: ``thinkingBudget``. Neither an effort nor a budget: the model's own default. Any other
+    model (Gemini 2.0, an alias such as ``gemini-flash-latest``) gets no thinking config."""
     name = model.removeprefix("models/").lower()
+    if not name.startswith(("gemini-2.5", "gemini-3")):
+        return {}
     config: dict[str, Any] = {}
-    if name.startswith("gemini-2"):
+    if name.startswith("gemini-2.5"):
         if reasoning.effort or reasoning.budget_tokens:
             config["thinkingBudget"] = thinking_budget(reasoning)
     elif reasoning.effort in _THINKING_LEVELS:
