@@ -101,9 +101,12 @@ def validate_formula(schema: DwSchema | None, sql: str) -> None:
                 problems.append(f"`{column.table}` is not a table or alias in the query")
             elif name not in {c.name.lower() for c in table.columns}:
                 problems.append(f"`{table.name}` has no column `{column.name}`")
-        elif name not in outputs and not opaque:
-            if not any(name in {c.name.lower() for c in t.columns} for t in sources.values()):
-                problems.append(f"No table in the query has a column `{column.name}`")
+        elif (
+            name not in outputs
+            and not opaque
+            and not any(name in {c.name.lower() for c in t.columns} for t in sources.values())
+        ):
+            problems.append(f"No table in the query has a column `{column.name}`")
     if problems:
         shown = list(dict.fromkeys(problems))[:MAX_PROBLEMS]
         raise _refused("The formula does not fit the DW Schema: " + "; ".join(shown) + ".")
