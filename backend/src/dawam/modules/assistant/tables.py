@@ -25,6 +25,7 @@ class ConversationRecord(Base):
     __tablename__ = "assistant_conversations"
     __table_args__ = (
         sa.Index("ix_assistant_conversations_workspace_user", "workspace_id", "user_id"),
+        sa.CheckConstraint("last_effort IN ('low', 'medium', 'high')", name="last_effort"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
@@ -38,6 +39,9 @@ class ConversationRecord(Base):
         sa.ForeignKey("llm_models.id", ondelete="SET NULL")
     )
     """The model picked for the last message; used again until another is picked."""
+    last_effort: Mapped[str | None] = mapped_column(sa.String)
+    """The reasoning effort (``low``, ``medium`` or ``high``) picked for the last message; none
+    is medium. Used for the conversation's later messages and background jobs."""
     summary: Mapped[str | None] = mapped_column(sa.Text)
     """Compaction: a summary of the turns up to ``summary_through``, which are no longer sent."""
     summary_through: Mapped[int | None]

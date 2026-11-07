@@ -140,6 +140,8 @@ class ToolContext:
     """What the Workspace lets the model see; a tool that may send more or less than its own
     ``level`` asks it."""
     conversation_id: uuid.UUID | None = None
+    effort: str | None = None
+    """The conversation's reasoning effort; a job started from it keeps it."""
     budget: QueryBudget = field(default_factory=QueryBudget)
     """The source-query seconds this run has left (one budget per run)."""
     proposals: Proposals | None = None
@@ -2139,6 +2141,7 @@ def _submit_job(ctx: ToolContext, title: str, task: str) -> Reported:
             "title": title,
             "conversation_id": str(ctx.conversation_id) if ctx.conversation_id else None,
             "task": task,
+            "effort": ctx.effort,
         },
         title=title,
         created_by=ctx.user.id,
@@ -3192,6 +3195,7 @@ class ToolRegistry:
         conversation_id: uuid.UUID | None = None,
         *,
         job: bool = False,
+        effort: str | None = None,
     ) -> BoundTools:
         """The tools of one run. ``job``: a background job's tools (no ``start_job``; its
         proposed changes are held for one Change Set, see ``BoundTools.submit_proposals``)."""
@@ -3201,6 +3205,7 @@ class ToolRegistry:
             self._services,
             policy,
             conversation_id,
+            effort,
             QueryBudget(self._source_query_seconds),
             Proposals() if job else None,
         )

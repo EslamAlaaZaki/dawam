@@ -98,7 +98,11 @@ function backend(
       case `GET /api/v1/workspaces/${WORKSPACE_ID}`:
         return json(workspace(role, archived));
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/progress`:
-        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+        return json({
+          source_analysis: [],
+          kpis: { status: "not_started" },
+          dw_modeling: [],
+        });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/members`:
         return json({ items: [] });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/systems`:
@@ -117,12 +121,19 @@ afterEach(() => clearCookie());
 
 const NO_CONNECTION = (r: ApiRequest) =>
   r.method === "GET" && r.path === CONNECTION_PATH
-    ? apiError(404, "connection_not_found", "This Source System has no Connection yet.")
+    ? apiError(
+        404,
+        "connection_not_found",
+        "This Source System has no Connection yet.",
+      )
     : undefined;
 
 describe("a Source System's Connection", () => {
   it("is for owners only", async () => {
-    const requests = renderApp(backend("editor", () => undefined), FOLDER);
+    const requests = renderApp(
+      backend("editor", () => undefined),
+      FOLDER,
+    );
 
     expect(
       await screen.findByText(/Only owners can see or change a Source System/),
@@ -133,19 +144,33 @@ describe("a Source System's Connection", () => {
   it("tests the settings before saving and lists the schemas found", async () => {
     const requests = renderApp(
       backend("owner", (r) =>
-        r.method === "POST" && r.path === `${CONNECTION_PATH}/test` ? json(WORKS) : NO_CONNECTION(r),
+        r.method === "POST" && r.path === `${CONNECTION_PATH}/test`
+          ? json(WORKS)
+          : NO_CONNECTION(r),
       ),
       FOLDER,
     );
 
     const form = await screen.findByRole("form", { name: "Connection" });
-    fireEvent.change(within(form).getByLabelText("Host"), { target: { value: "db.internal" } });
-    fireEvent.change(within(form).getByLabelText("Database"), { target: { value: "core" } });
-    fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "reader" } });
-    fireEvent.change(within(form).getByLabelText("Password"), { target: { value: "s3cret" } });
-    fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
+    fireEvent.change(within(form).getByLabelText("Host"), {
+      target: { value: "db.internal" },
+    });
+    fireEvent.change(within(form).getByLabelText("Database"), {
+      target: { value: "core" },
+    });
+    fireEvent.change(within(form).getByLabelText("Username"), {
+      target: { value: "reader" },
+    });
+    fireEvent.change(within(form).getByLabelText("Password"), {
+      target: { value: "s3cret" },
+    });
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Test connection" }),
+    );
 
-    expect(await screen.findByText(/Connection works \(PostgreSQL 16.4\)/)).toBeVisible();
+    expect(
+      await screen.findByText(/Connection works \(PostgreSQL 16.4\)/),
+    ).toBeVisible();
     expect(requests.find((r) => r.path.endsWith("/test"))?.body).toMatchObject({
       host: "db.internal",
       port: 5432,
@@ -154,7 +179,9 @@ describe("a Source System's Connection", () => {
       password: "s3cret",
       allowed_schemas: ["public"],
     });
-    fireEvent.click(within(form).getByRole("button", { name: "Allow restricted" }));
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Allow restricted" }),
+    );
     expect(within(form).getByLabelText("Allowed Database Schemas")).toHaveValue(
       "public, restricted",
     );
@@ -171,15 +198,29 @@ describe("a Source System's Connection", () => {
     );
 
     const form = await screen.findByRole("form", { name: "Connection" });
-    fireEvent.change(within(form).getByLabelText("Engine"), { target: { value: "sqlserver" } });
+    fireEvent.change(within(form).getByLabelText("Engine"), {
+      target: { value: "sqlserver" },
+    });
     expect(within(form).getByLabelText("Port")).toHaveValue(1433);
-    expect(within(form).getByLabelText("Allowed Database Schemas")).toHaveValue("dbo");
-    fireEvent.change(within(form).getByLabelText("Host"), { target: { value: "db.internal" } });
-    fireEvent.change(within(form).getByLabelText("Database"), { target: { value: "core" } });
-    fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "reader" } });
-    fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
+    expect(within(form).getByLabelText("Allowed Database Schemas")).toHaveValue(
+      "dbo",
+    );
+    fireEvent.change(within(form).getByLabelText("Host"), {
+      target: { value: "db.internal" },
+    });
+    fireEvent.change(within(form).getByLabelText("Database"), {
+      target: { value: "core" },
+    });
+    fireEvent.change(within(form).getByLabelText("Username"), {
+      target: { value: "reader" },
+    });
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Test connection" }),
+    );
 
-    expect(await screen.findByText(/Connection works \(SQL Server 16.0.4135\)/)).toBeVisible();
+    expect(
+      await screen.findByText(/Connection works \(SQL Server 16.0.4135\)/),
+    ).toBeVisible();
     expect(requests.find((r) => r.path.endsWith("/test"))?.body).toMatchObject({
       engine: "sqlserver",
       port: 1433,
@@ -198,17 +239,29 @@ describe("a Source System's Connection", () => {
     );
 
     const form = await screen.findByRole("form", { name: "Connection" });
-    fireEvent.change(within(form).getByLabelText("Engine"), { target: { value: "mysql" } });
+    fireEvent.change(within(form).getByLabelText("Engine"), {
+      target: { value: "mysql" },
+    });
     expect(within(form).getByLabelText("Port")).toHaveValue(3306);
-    fireEvent.change(within(form).getByLabelText("Host"), { target: { value: "db.internal" } });
-    fireEvent.change(within(form).getByLabelText("Database"), { target: { value: "core" } });
-    fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "reader" } });
+    fireEvent.change(within(form).getByLabelText("Host"), {
+      target: { value: "db.internal" },
+    });
+    fireEvent.change(within(form).getByLabelText("Database"), {
+      target: { value: "core" },
+    });
+    fireEvent.change(within(form).getByLabelText("Username"), {
+      target: { value: "reader" },
+    });
     fireEvent.change(within(form).getByLabelText("Allowed Database Schemas"), {
       target: { value: "core, crm" },
     });
-    fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Test connection" }),
+    );
 
-    expect(await screen.findByText(/Connection works \(MySQL \/ MariaDB 8.4.0\)/)).toBeVisible();
+    expect(
+      await screen.findByText(/Connection works \(MySQL \/ MariaDB 8.4.0\)/),
+    ).toBeVisible();
     expect(requests.find((r) => r.path.endsWith("/test"))?.body).toMatchObject({
       engine: "mysql",
       port: 3306,
@@ -225,7 +278,9 @@ describe("a Source System's Connection", () => {
     };
     renderApp(
       backend("owner", (r) =>
-        r.method === "POST" && r.path === `${CONNECTION_PATH}/test` ? json(result) : NO_CONNECTION(r),
+        r.method === "POST" && r.path === `${CONNECTION_PATH}/test`
+          ? json(result)
+          : NO_CONNECTION(r),
       ),
       FOLDER,
     );
@@ -235,23 +290,32 @@ describe("a Source System's Connection", () => {
       ["Database", "core"],
       ["Username", "u"],
     ] as const) {
-      fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+      fireEvent.change(within(form).getByLabelText(label), {
+        target: { value },
+      });
     }
 
-    fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Test connection" }),
+    );
     expect(await within(form).findByRole("alert")).toHaveTextContent(
       "Connection failed: The database rejected the username or password.",
     );
 
     result = { ...WORKS, can_write: true };
-    fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
-    expect(await within(form).findByText(/this database user can write/)).toBeVisible();
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Test connection" }),
+    );
+    expect(
+      await within(form).findByText(/this database user can write/),
+    ).toBeVisible();
   });
 
   it("saves, keeping a stored password when the field is left blank", async () => {
     const requests = renderApp(
       backend("owner", (r) => {
-        if (r.method === "GET" && r.path === CONNECTION_PATH) return json(SAVED);
+        if (r.method === "GET" && r.path === CONNECTION_PATH)
+          return json(SAVED);
         if (r.method === "PUT" && r.path === CONNECTION_PATH) {
           return json({ ...SAVED, allowed_schemas: ["core"] });
         }
@@ -269,11 +333,21 @@ describe("a Source System's Connection", () => {
     fireEvent.change(within(form).getByLabelText("Allowed Database Schemas"), {
       target: { value: "core" },
     });
-    fireEvent.click(within(form).getByRole("button", { name: "Save Connection" }));
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Save Connection" }),
+    );
 
-    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
-    const body = requests.find((r) => r.method === "PUT")?.body as Record<string, unknown>;
-    expect(body).toMatchObject({ host: "db.internal", allowed_schemas: ["core"] });
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "PUT")).toBe(true),
+    );
+    const body = requests.find((r) => r.method === "PUT")?.body as Record<
+      string,
+      unknown
+    >;
+    expect(body).toMatchObject({
+      host: "db.internal",
+      allowed_schemas: ["core"],
+    });
     expect(body).not.toHaveProperty("password");
     expect(await screen.findByText("Connection saved.")).toBeVisible();
   });
@@ -282,7 +356,10 @@ describe("a Source System's Connection", () => {
     const requests = renderApp(
       backend(
         "owner",
-        (r) => (r.method === "GET" && r.path === CONNECTION_PATH ? json(SAVED) : undefined),
+        (r) =>
+          r.method === "GET" && r.path === CONNECTION_PATH
+            ? json(SAVED)
+            : undefined,
         true,
       ),
       FOLDER,
@@ -291,9 +368,15 @@ describe("a Source System's Connection", () => {
     const form = await screen.findByRole("form", { name: "Connection" });
     expect(within(form).getByLabelText("Host")).toHaveValue("db.internal");
     expect(within(form).getByLabelText("Host")).toBeDisabled();
-    expect(within(form).getByText(/archived: its Connection is read-only/)).toBeVisible();
-    expect(within(form).queryByRole("button", { name: "Save Connection" })).toBeNull();
-    expect(within(form).queryByRole("button", { name: "Test connection" })).toBeNull();
+    expect(
+      within(form).getByText(/archived: its Connection is read-only/),
+    ).toBeVisible();
+    expect(
+      within(form).queryByRole("button", { name: "Save Connection" }),
+    ).toBeNull();
+    expect(
+      within(form).queryByRole("button", { name: "Test connection" }),
+    ).toBeNull();
     expect(requests.some((r) => r.method !== "GET")).toBe(false);
   });
 });

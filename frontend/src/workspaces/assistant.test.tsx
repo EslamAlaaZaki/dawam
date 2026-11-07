@@ -58,6 +58,7 @@ const NEW_CONVERSATION = {
   created_at: "2026-01-05T10:00:00Z",
   updated_at: "2026-01-05T10:00:00Z",
   model_id: null,
+  effort: null,
 };
 
 function run(overrides: Partial<Run> = {}): Run {
@@ -371,21 +372,33 @@ describe("the assistant's chat panel", () => {
       arguments: { url: "https://ifrs.example/9" },
       status: "ok",
       duration_ms: 40,
-      result: { url: "https://ifrs.example/9", title: "IFRS 9", reader: "dawam" },
+      result: {
+        url: "https://ifrs.example/9",
+        title: "IFRS 9",
+        reader: "dawam",
+      },
     };
     const throughJina = {
       name: "web_fetch",
       arguments: { url: "https://guarded.example/report" },
       status: "ok",
       duration_ms: 50,
-      result: { url: "https://guarded.example/report", title: "Report", reader: "jina" },
+      result: {
+        url: "https://guarded.example/report",
+        title: "Report",
+        reader: "jina",
+      },
     };
     const throughCrawl4ai = {
       name: "web_fetch",
       arguments: { url: "https://browser.example/page" },
       status: "ok",
       duration_ms: 60,
-      result: { url: "https://browser.example/page", title: "Page", reader: "crawl4ai" },
+      result: {
+        url: "https://browser.example/page",
+        title: "Page",
+        reader: "crawl4ai",
+      },
     };
     renderApp(
       backend({
@@ -398,7 +411,9 @@ describe("the assistant's chat panel", () => {
             frame("tool", throughCrawl4ai),
             frame("text", { text: "Three stages." }),
             frame("done", {
-              run: run({ tool_calls: [search, fetched, throughJina, throughCrawl4ai] }),
+              run: run({
+                tool_calls: [search, fetched, throughJina, throughCrawl4ai],
+              }),
               message_id: "a",
             }),
           ]),
@@ -410,7 +425,9 @@ describe("the assistant's chat panel", () => {
               role: "user",
               content: "IFRS 9 stages?",
               created_at: "2026-01-05T10:00:00Z",
-              run: run({ tool_calls: [search, fetched, throughJina, throughCrawl4ai] }),
+              run: run({
+                tool_calls: [search, fetched, throughJina, throughCrawl4ai],
+              }),
               sender: ADA_SENDER,
               model: null,
               fell_back: false,
@@ -1397,6 +1414,7 @@ const AI = {
       internal: false,
       is_default: true,
       limited: false,
+      reasoning: false,
     },
     {
       id: SMALL,
@@ -1405,6 +1423,7 @@ const AI = {
       internal: false,
       is_default: false,
       limited: true,
+      reasoning: true,
     },
   ],
 };
@@ -1433,7 +1452,9 @@ describe("picking the model of a message", () => {
     ]);
     expect(options[0]).toBeChecked();
     fireEvent.click(options[1]!);
-    await screen.findByRole("button", { name: "Model for this message: Small" });
+    await screen.findByRole("button", {
+      name: "Model for this message: Small",
+    });
     await ask("Hi");
 
     await waitFor(() =>
@@ -1458,7 +1479,9 @@ describe("picking the model of a message", () => {
     );
     await openAssistant();
 
-    await screen.findByRole("button", { name: "Model for this message: Small" });
+    await screen.findByRole("button", {
+      name: "Model for this message: Small",
+    });
     await ask("Hi");
 
     await waitFor(() =>
@@ -1468,6 +1491,64 @@ describe("picking the model of a message", () => {
         )?.body,
       ).toMatchObject({ content: "Hi", model_id: null }),
     );
+  });
+
+  it("shows the effort picker only for a reasoning model, on Medium, and sends the pick", async () => {
+    const requests = renderApp(
+      backend({ ai: AI, answer: () => ANSWERED.clone() }),
+      PATH,
+    );
+    await openAssistant();
+
+    await screen.findByRole("button", { name: "Model for this message: Big" });
+    expect(screen.queryByRole("button", { name: /^Effort for/ })).toBeNull();
+    openMenu(
+      screen.getByRole("button", { name: "Model for this message: Big" }),
+    );
+    fireEvent.click((await screen.findAllByRole("menuitemradio"))[1]!);
+    openMenu(
+      await screen.findByRole("button", {
+        name: "Effort for this message: Medium",
+      }),
+    );
+    const options = await screen.findAllByRole("menuitemradio");
+    expect(options.map((o) => o.textContent)).toEqual([
+      "Low",
+      "Medium",
+      "High",
+    ]);
+    fireEvent.click(options[2]!);
+    await screen.findByRole("button", {
+      name: "Effort for this message: High",
+    });
+    await ask("Hi");
+
+    await waitFor(() =>
+      expect(
+        requests.find(
+          (r) => r.method === "POST" && r.path.endsWith("/messages"),
+        )?.body,
+      ).toMatchObject({ content: "Hi", model_id: SMALL, effort: "high" }),
+    );
+  });
+
+  it("starts the effort picker on the Conversation's saved effort", async () => {
+    const conversation = {
+      ...NEW_CONVERSATION,
+      model_id: SMALL,
+      effort: "low" as const,
+    };
+    renderApp(
+      backend({
+        ai: AI,
+        conversations: [conversation],
+        detail: { conversation, messages: [] },
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    await screen.findByRole("button", { name: "Effort for this message: Low" });
   });
 
   it("labels each reply with the model that answered", async () => {

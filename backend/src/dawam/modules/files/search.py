@@ -246,7 +246,9 @@ class RegisteredVisionModels:
         if not found:
             return None
         provider, model = found[0]
-        gateway = self._roles.metered_gateway(model.id, "vision", workspace_id=workspace_id)
+        gateway = self._roles.metered_gateway(
+            model.id, "vision", workspace_id=workspace_id, effort="low"
+        )
         return VisionModel(provider.is_internal, gateway)
 
 
@@ -329,7 +331,7 @@ class RegisteredLightModels:
             for model in provider.models:
                 if model.id == chosen and "light" in model.roles:
                     gateway = self._roles.metered_gateway(
-                        model.id, "light", workspace_id=workspace_id
+                        model.id, "light", workspace_id=workspace_id, effort="low"
                     )
                     return LightModel(provider.is_internal, gateway)
         return None

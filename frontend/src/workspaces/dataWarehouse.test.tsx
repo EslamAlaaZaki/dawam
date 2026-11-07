@@ -321,10 +321,14 @@ describe("reselecting the Data Warehouse folder", () => {
 
     await screen.findByRole("dialog");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
 
     fireEvent.click(screen.getByRole("treeitem", { name: "Systems" }));
-    fireEvent.click(await screen.findByRole("treeitem", { name: "Data Warehouse" }));
+    fireEvent.click(
+      await screen.findByRole("treeitem", { name: "Data Warehouse" }),
+    );
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });

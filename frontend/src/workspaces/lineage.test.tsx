@@ -5,7 +5,12 @@ import type { ImpactReport, LineageNode, NodeLineage } from "../api/lineage";
 import type { Me } from "../api/queries";
 import { LineageGraph } from "../diagrams/LineageGraph";
 import { edgeStyle, layout, merge } from "../diagrams/lineageLayout";
-import { json, renderApp, setCsrfCookie, type ApiRequest } from "../test/renderApp";
+import {
+  json,
+  renderApp,
+  setCsrfCookie,
+  type ApiRequest,
+} from "../test/renderApp";
 
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 const PATH = `/workspaces/${WORKSPACE_ID}`;
@@ -19,9 +24,14 @@ const ADA: Me = {
   must_change_password: false,
 };
 
-const id = (n: number) => `a0000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
-const node = (n: number, type: LineageNode["type"], label: string, layer: LineageNode["layer"]) =>
-  ({ id: id(n), type, label, layer }) satisfies LineageNode;
+const id = (n: number) =>
+  `a0000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const node = (
+  n: number,
+  type: LineageNode["type"],
+  label: string,
+  layer: LineageNode["layer"],
+) => ({ id: id(n), type, label, layer }) satisfies LineageNode;
 
 const SRC = node(1, "src_column", "crm.dbo.orders.amount", "source");
 const STATUS = node(2, "src_column", "crm.dbo.orders.status", "source");
@@ -33,7 +43,12 @@ const MART = node(7, "dw_column", "mart_orders.amount_m", "mart");
 const KPI = node(8, "kpi", "Revenue", "kpi");
 const OTHER = node(9, "dw_column", "mart_returns.amount_r", "mart");
 
-const edge = (n: number, kind: NodeLineage["edges"][number]["kind"], from: LineageNode, to: LineageNode) => ({
+const edge = (
+  n: number,
+  kind: NodeLineage["edges"][number]["kind"],
+  from: LineageNode,
+  to: LineageNode,
+) => ({
   id: id(100 + n),
   kind,
   from_id: from.id,
@@ -59,7 +74,12 @@ const SRC_DOWNSTREAM: NodeLineage = {
   edges: [edge(1, "value", SRC, STG), edge(7, "value", STG, OTHER)],
 };
 
-const SRC_IMPACT: ImpactReport = { start: SRC, columns: [STG, CORE, MART, OTHER], tables: [], kpis: [KPI] };
+const SRC_IMPACT: ImpactReport = {
+  start: SRC,
+  columns: [STG, CORE, MART, OTHER],
+  tables: [],
+  kpis: [KPI],
+};
 
 function backend(seen: ApiRequest[] = []) {
   return (r: ApiRequest) => {
@@ -84,7 +104,11 @@ function backend(seen: ApiRequest[] = []) {
           updated_at: "2026-01-05T09:00:00Z",
         });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/progress`:
-        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+        return json({
+          source_analysis: [],
+          kpis: { status: "not_started" },
+          dw_modeling: [],
+        });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/members`:
         return json({ items: [] });
       case `GET ${DW}`:
@@ -114,7 +138,9 @@ describe("the lineage folder", () => {
   it("asks where to start without a node", async () => {
     renderApp(backend(), `${PATH}?folder=dw/lineage`);
 
-    expect(await screen.findByText(/Pick a KPI or a DW column/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Pick a KPI or a DW column/),
+    ).toBeInTheDocument();
   });
 
   it("traces a KPI back to its source columns, uses edges told apart", async () => {
@@ -122,11 +148,15 @@ describe("the lineage folder", () => {
     renderApp(backend(seen), `${PATH}?folder=dw/lineage&node=${KPI.id}`);
 
     const graph = await screen.findByRole("group", { name: "Lineage graph" });
-    expect(within(graph).getByText("crm.dbo.orders.amount")).toBeInTheDocument();
+    expect(
+      within(graph).getByText("crm.dbo.orders.amount"),
+    ).toBeInTheDocument();
     expect(within(graph).getByText("Revenue")).toBeInTheDocument();
     expect(screen.getByText(/8 nodes, 6 edges/)).toBeInTheDocument();
     const list = screen.getByRole("list", { name: "Lineage edges" });
-    expect(within(list).getByText("stg_orders.status → fact_orders (uses)")).toBeInTheDocument();
+    expect(
+      within(list).getByText("stg_orders.status → fact_orders (uses)"),
+    ).toBeInTheDocument();
     const request = seen.find((r) => r.path === `${DW}/lineage`);
     expect(request?.query).toMatchObject({ node: KPI.id, direction: "both" });
   });
@@ -135,16 +165,32 @@ describe("the lineage folder", () => {
     renderApp(backend(), `${PATH}?folder=dw/lineage&node=${KPI.id}`);
     const graph = await screen.findByRole("group", { name: "Lineage graph" });
 
-    fireEvent.click(within(graph).getByRole("button", { name: "crm.dbo.orders.amount" }));
-    const selection = screen.getByRole("complementary", { name: "Selected node" });
-    fireEvent.click(within(selection).getByRole("button", { name: "Expand downstream" }));
-    expect(await within(graph).findByText("mart_returns.amount_r")).toBeInTheDocument();
+    fireEvent.click(
+      within(graph).getByRole("button", { name: "crm.dbo.orders.amount" }),
+    );
+    const selection = screen.getByRole("complementary", {
+      name: "Selected node",
+    });
+    fireEvent.click(
+      within(selection).getByRole("button", { name: "Expand downstream" }),
+    );
+    expect(
+      await within(graph).findByText("mart_returns.amount_r"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/9 nodes, 7 edges/)).toBeInTheDocument();
 
-    fireEvent.click(within(selection).getByRole("button", { name: "Impact report" }));
+    fireEvent.click(
+      within(selection).getByRole("button", { name: "Impact report" }),
+    );
     const impact = await screen.findByRole("region", { name: "Impact report" });
-    expect(within(within(impact).getByRole("list", { name: "KPIs" })).getByText("Revenue")).toBeInTheDocument();
-    expect(within(impact).getByRole("list", { name: "DW columns" }).children).toHaveLength(4);
+    expect(
+      within(within(impact).getByRole("list", { name: "KPIs" })).getByText(
+        "Revenue",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(impact).getByRole("list", { name: "DW columns" }).children,
+    ).toHaveLength(4);
   });
 });
 
@@ -152,7 +198,12 @@ describe("the lineage layout", () => {
   it("puts each Layer in its own column, source first", () => {
     const placed = layout([KPI, MART, SRC, STG]);
 
-    expect(placed.map((p) => p.node.layer)).toEqual(["source", "staging", "mart", "kpi"]);
+    expect(placed.map((p) => p.node.layer)).toEqual([
+      "source",
+      "staging",
+      "mart",
+      "kpi",
+    ]);
     expect(new Set(placed.map((p) => p.x)).size).toBe(4);
   });
 
@@ -160,7 +211,9 @@ describe("the lineage layout", () => {
     expect(edgeStyle("value").strokeDasharray).toBeUndefined();
     expect(edgeStyle("uses").strokeDasharray).toBeDefined();
     expect(edgeStyle("lookup").strokeDasharray).toBeDefined();
-    expect(edgeStyle("lookup").strokeDasharray).not.toEqual(edgeStyle("uses").strokeDasharray);
+    expect(edgeStyle("lookup").strokeDasharray).not.toEqual(
+      edgeStyle("uses").strokeDasharray,
+    );
   });
 
   it("draws every edge kind in a theme token, never a fixed colour", () => {
@@ -194,27 +247,54 @@ describe("the lineage layout", () => {
       />,
     );
     const graph = within(screen.getByRole("group", { name: "Lineage graph" }));
-    expect(graph.getByRole("img", { name: "Protected Column" })).toBeInTheDocument();
-    expect(graph.getByRole("img", { name: "PII-influenced KPI" })).toBeInTheDocument();
-    expect(graph.getByRole("img", { name: "PII-derived, pseudonymised" })).toBeInTheDocument();
+    expect(
+      graph.getByRole("img", { name: "Protected Column" }),
+    ).toBeInTheDocument();
+    expect(
+      graph.getByRole("img", { name: "PII-influenced KPI" }),
+    ).toBeInTheDocument();
+    expect(
+      graph.getByRole("img", { name: "PII-derived, pseudonymised" }),
+    ).toBeInTheDocument();
     // The same-label twin and the unlisted STG node stay unmarked.
     expect(graph.getAllByRole("img")).toHaveLength(3);
   });
 
   it("renders a 500-node graph in under 2 s", () => {
-    const layers: LineageNode["layer"][] = ["source", "staging", "core", "mart", "kpi"];
+    const layers: LineageNode["layer"][] = [
+      "source",
+      "staging",
+      "core",
+      "mart",
+      "kpi",
+    ];
     const nodes = Array.from({ length: 500 }, (_, i) =>
-      node(1000 + i, "dw_column", `t.c${i}`, layers[i % layers.length] as LineageNode["layer"]),
+      node(
+        1000 + i,
+        "dw_column",
+        `t.c${i}`,
+        layers[i % layers.length] as LineageNode["layer"],
+      ),
     );
-    const edges = nodes.slice(1).map((n, i) => edge(1000 + i, "value", nodes[i] as LineageNode, n));
+    const edges = nodes
+      .slice(1)
+      .map((n, i) => edge(1000 + i, "value", nodes[i] as LineageNode, n));
 
     const started = performance.now();
     render(
-      <LineageGraph nodes={nodes} edges={edges} startId={id(1000)} selectedId={null} onSelect={() => {}} />,
+      <LineageGraph
+        nodes={nodes}
+        edges={edges}
+        startId={id(1000)}
+        selectedId={null}
+        onSelect={() => {}}
+      />,
     );
     // Time the render only: getByRole over 500 nodes is slow in jsdom, not in a browser.
     const elapsed = performance.now() - started;
-    expect(screen.getByRole("group", { name: "Lineage graph" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "Lineage graph" }),
+    ).toBeInTheDocument();
 
     expect(elapsed).toBeLessThan(2000);
   });
@@ -222,10 +302,21 @@ describe("the lineage layout", () => {
 
 describe("the PII marks of the lineage graph", () => {
   it("labels a KPI that links PII-derived columns as depending on them", () => {
-    const pii = new Map([[KPI.id, { kind: "dependent" as const, pseudonymised: false }]]);
+    const pii = new Map([
+      [KPI.id, { kind: "dependent" as const, pseudonymised: false }],
+    ]);
     render(
-      <LineageGraph nodes={[KPI]} edges={[]} startId={KPI.id} selectedId={null} onSelect={() => {}} pii={pii} />,
+      <LineageGraph
+        nodes={[KPI]}
+        edges={[]}
+        startId={KPI.id}
+        selectedId={null}
+        onSelect={() => {}}
+        pii={pii}
+      />,
     );
-    expect(screen.getByRole("img", { name: "Depends on PII-derived columns" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Depends on PII-derived columns" }),
+    ).toBeInTheDocument();
   });
 });

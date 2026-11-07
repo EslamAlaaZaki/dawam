@@ -121,6 +121,8 @@ class ChosenModel:
     is_default: bool
     limited: bool = False
     """Tested and without native tool calling."""
+    reasoning: bool = False
+    """A reasoning model: members may pick the effort it thinks with."""
 
 
 @dataclass(frozen=True)
@@ -640,6 +642,7 @@ class WorkspaceAiService:
                     p.is_internal,
                     w.is_default,
                     m.test_ok is True and m.supports_tools is False,
+                    m.reasoning_enabled,
                 )
             )
         return WorkspaceAiView(

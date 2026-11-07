@@ -513,7 +513,7 @@ describe("language models page", () => {
     });
   });
 
-  it("sets a model's reasoning: effort, budget and whether members see it", async () => {
+  it("sets a model's reasoning: whether it reasons and whether members see it", async () => {
     const requests = renderApp(
       providersApi([PROVIDER], (r) =>
         r.method === "PUT" && r.path === `/api/v1/admin/llm/models/${MODEL.id}`
@@ -526,15 +526,12 @@ describe("language models page", () => {
     const row = await screen.findByRole("row", { name: "Model qwen3" });
     fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
     const dialog = await screen.findByRole("dialog", { name: "Edit model" });
-    expect(within(dialog).queryByLabelText("Effort")).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByLabelText("This is a reasoning model"));
-    fireEvent.change(within(dialog).getByLabelText("Effort"), {
-      target: { value: "high" },
-    });
-    fireEvent.change(
-      within(dialog).getByLabelText(/Thinking budget in tokens/),
-      { target: { value: "4000" } },
-    );
+    // Members pick the effort in the chat: the form has no effort or budget field.
+    expect(within(dialog).queryByLabelText("Effort")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText(/Thinking budget/),
+    ).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByLabelText(/Show the reasoning/));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
@@ -544,8 +541,8 @@ describe("language models page", () => {
     expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
       reasoning: {
         enabled: true,
-        effort: "high",
-        budget_tokens: 4000,
+        effort: null,
+        budget_tokens: null,
         show: true,
       },
     });

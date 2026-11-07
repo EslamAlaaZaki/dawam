@@ -719,19 +719,20 @@ describe("a Workspace's page", () => {
     );
 
     await screen.findByRole("button", { name: "Workspace settings" });
-    expect(screen.getByRole("button", { name: "Assistant" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Assistant" }),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
     expect(screen.queryByText("AI settings")).not.toBeInTheDocument();
     expect(screen.queryByText("Archive and delete")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Members" })).toBeInTheDocument();
 
     const dialog = await openSettings();
-    expect(within(dialog).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Details",
-      "AI",
-      "Document AI",
-      "Archive & delete",
-    ]);
+    expect(
+      within(dialog)
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Details", "AI", "Document AI", "Archive & delete"]);
   });
 
   it("shows a not-found page for a Workspace the API does not show the user", async () => {

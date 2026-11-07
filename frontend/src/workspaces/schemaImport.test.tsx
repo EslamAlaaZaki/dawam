@@ -67,7 +67,11 @@ function backend(role: WorkspaceRole) {
       case `GET ${API}`:
         return json(workspace(role));
       case `GET ${API}/progress`:
-        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+        return json({
+          source_analysis: [],
+          kpis: { status: "not_started" },
+          dw_modeling: [],
+        });
       case `GET ${API}/members`:
         return json({ items: [] });
       case `GET ${API}/systems`:
@@ -87,28 +91,44 @@ describe("Schema Import downloads", () => {
   it("offers an editor the template and the helper queries of each engine", async () => {
     renderApp(backend("editor"), FOLDER);
 
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Import from template" }));
-    const queries = await screen.findByRole("link", { name: /Download helper queries/ });
-    expect(screen.getByText(/Use this when DAWAM cannot reach the database/)).toBeVisible();
-    expect(queries).toHaveAttribute("href", `${IMPORT}/helper-queries?engine=postgresql`);
-    expect(screen.getByRole("link", { name: /Download template/ })).toHaveAttribute(
-      "href",
-      `${IMPORT}/template`,
+    fireEvent.mouseDown(
+      await screen.findByRole("tab", { name: "Import from template" }),
     );
+    const queries = await screen.findByRole("link", {
+      name: /Download helper queries/,
+    });
+    expect(
+      screen.getByText(/Use this when DAWAM cannot reach the database/),
+    ).toBeVisible();
+    expect(queries).toHaveAttribute(
+      "href",
+      `${IMPORT}/helper-queries?engine=postgresql`,
+    );
+    expect(
+      screen.getByRole("link", { name: /Download template/ }),
+    ).toHaveAttribute("href", `${IMPORT}/template`);
 
     // Engines DAWAM cannot connect to are there too.
-    fireEvent.change(screen.getByLabelText("Database engine"), { target: { value: "teradata" } });
-    expect(queries).toHaveAttribute("href", `${IMPORT}/helper-queries?engine=teradata`);
-    expect(screen.getByRole("option", { name: "IBM Db2 (LUW)" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Database engine"), {
+      target: { value: "teradata" },
+    });
+    expect(queries).toHaveAttribute(
+      "href",
+      `${IMPORT}/helper-queries?engine=teradata`,
+    );
+    expect(
+      screen.getByRole("option", { name: "IBM Db2 (LUW)" }),
+    ).toBeInTheDocument();
   });
 
   it("remembers the tab used last", async () => {
     renderApp(backend("editor"), FOLDER);
-    expect(await screen.findByRole("tab", { name: "Live connection" })).toHaveAttribute(
-      "aria-selected",
-      "true",
+    expect(
+      await screen.findByRole("tab", { name: "Live connection" }),
+    ).toHaveAttribute("aria-selected", "true");
+    fireEvent.mouseDown(
+      screen.getByRole("tab", { name: "Import from template" }),
     );
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Import from template" }));
     expect(localStorage.getItem("dawam.connection-tab")).toBe("import");
   });
 
@@ -116,11 +136,12 @@ describe("Schema Import downloads", () => {
     localStorage.setItem("dawam.connection-tab", "import");
     renderApp(backend("editor"), FOLDER);
 
-    expect(await screen.findByRole("tab", { name: "Import from template" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("link", { name: /Download template/ })).toBeVisible();
+    expect(
+      await screen.findByRole("tab", { name: "Import from template" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("link", { name: /Download template/ }),
+    ).toBeVisible();
   });
 
   it("still works when browser storage is unavailable", async () => {
@@ -131,8 +152,12 @@ describe("Schema Import downloads", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(blocked);
     renderApp(backend("editor"), FOLDER);
 
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Import from template" }));
-    expect(await screen.findByRole("link", { name: /Download template/ })).toBeVisible();
+    fireEvent.mouseDown(
+      await screen.findByRole("tab", { name: "Import from template" }),
+    );
+    expect(
+      await screen.findByRole("link", { name: /Download template/ }),
+    ).toBeVisible();
     vi.restoreAllMocks();
   });
 
@@ -140,6 +165,8 @@ describe("Schema Import downloads", () => {
     renderApp(backend("viewer"), FOLDER);
 
     expect(await screen.findByText(/Only owners can see/)).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Download helper queries/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Download helper queries/ }),
+    ).not.toBeInTheDocument();
   });
 });

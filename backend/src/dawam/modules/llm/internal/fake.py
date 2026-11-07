@@ -138,11 +138,19 @@ class FakeAdapter:
         finish = outcome.finish_reason or ("tool_calls" if outcome.tool_calls else "stop")
         yield Done(outcome.usage, finish)
 
-    def vision(self, model: str, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+    def vision(
+        self,
+        model: str,
+        prompt: str,
+        images: Sequence[Image],
+        reasoning: ReasoningSettings | None = None,
+    ) -> Iterator[ChatEvent]:
         """A ``chat`` call (recorded and scripted alike) whose one user turn has the images."""
         if not self.reads_images:
             raise LlmError(BAD_REQUEST, "This model cannot read images.")
-        return self.chat(model, [Message("user", prompt, images=tuple(images))], (), False, None)
+        return self.chat(
+            model, [Message("user", prompt, images=tuple(images))], (), False, None, reasoning
+        )
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         self.calls.append(FakeCall("embed", model, texts=tuple(texts)))

@@ -107,7 +107,11 @@ function backend(
       case `GET /api/v1/workspaces/${WORKSPACE_ID}`:
         return json(workspace(role));
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/progress`:
-        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+        return json({
+          source_analysis: [],
+          kpis: { status: "not_started" },
+          dw_modeling: [],
+        });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/members`:
         return json({ items: [] });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/data-warehouse`:
@@ -117,7 +121,10 @@ function backend(
       case `GET ${KPIS}`:
         return (
           handle(r) ??
-          json({ items: r.query.data_warehouse === "true" ? kpis.dw : kpis.system, next_cursor: null })
+          json({
+            items: r.query.data_warehouse === "true" ? kpis.dw : kpis.system,
+            next_cursor: null,
+          })
         );
       default:
         return handle(r);
@@ -150,22 +157,37 @@ describe("the KPIs folders", () => {
     const row = await screen.findByRole("row", { name: /Net interest margin/ });
     expect(row).toHaveTextContent("Draft");
     expect(row).toHaveTextContent("CFO office");
-    expect(screen.queryByRole("button", { name: "Add KPI" })).not.toBeInTheDocument();
-    expect(within(row).queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
-    expect(screen.getByText("Only owners and editors can document KPIs.")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Add KPI" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole("button", { name: "Edit" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Only owners and editors can document KPIs."),
+    ).toBeInTheDocument();
   });
 
   it("lists the Data Warehouse's KPIs apart, before it is set up", async () => {
     const requests = renderApp(
-      backend("viewer", { system: [NIM], dw: [{ ...NIM, name: "Customer count", source_system_id: null }] }),
+      backend("viewer", {
+        system: [NIM],
+        dw: [{ ...NIM, name: "Customer count", source_system_id: null }],
+      }),
       DW_FOLDER,
     );
 
-    expect(await screen.findByRole("row", { name: /Customer count/ })).toBeInTheDocument();
-    expect(screen.queryByRole("row", { name: /Net interest margin/ })).not.toBeInTheDocument();
-    expect(requests.some((r) => r.path === KPIS && r.query.data_warehouse === "true")).toBe(
-      true,
-    );
+    expect(
+      await screen.findByRole("row", { name: /Customer count/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("row", { name: /Net interest margin/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      requests.some(
+        (r) => r.path === KPIS && r.query.data_warehouse === "true",
+      ),
+    ).toBe(true);
   });
 
   it("shows an empty state", async () => {
@@ -175,14 +197,19 @@ describe("the KPIs folders", () => {
   });
 
   it("labels an AI-suggested KPI in the list and shows its rationale on the KPI page", async () => {
-    renderApp(backend("editor", { system: [NIM, AI_KPI], dw: [] }), SYSTEM_FOLDER);
+    renderApp(
+      backend("editor", { system: [NIM, AI_KPI], dw: [] }),
+      SYSTEM_FOLDER,
+    );
 
     const ai = await screen.findByRole("row", { name: /Cost to income/ });
     expect(ai).toHaveTextContent("AI-generated");
-    expect(screen.getByRole("row", { name: /Net interest margin/ })).not.toHaveTextContent(
-      "AI-generated",
-    );
-    expect(within(ai).getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("row", { name: /Net interest margin/ }),
+    ).not.toHaveTextContent("AI-generated");
+    expect(
+      within(ai).getByRole("button", { name: "Delete" }),
+    ).toBeInTheDocument();
     fireEvent.click(within(ai).getByRole("button", { name: "Cost to income" }));
 
     const page = await screen.findByRole("dialog", { name: "Cost to income" });
@@ -194,12 +221,20 @@ describe("the KPIs folders", () => {
   it("shows a viewer a KPI read-only", async () => {
     renderApp(backend("viewer", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Net interest margin" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Net interest margin" }),
+    );
 
-    const details = await screen.findByRole("dialog", { name: "Net interest margin" });
-    expect(within(details).getByText("Interest earned minus interest paid")).toBeInTheDocument();
+    const details = await screen.findByRole("dialog", {
+      name: "Net interest margin",
+    });
+    expect(
+      within(details).getByText("Interest earned minus interest paid"),
+    ).toBeInTheDocument();
     expect(within(details).getByText("FY2027: 3.2%")).toBeInTheDocument();
-    expect(within(details).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(
+      within(details).queryByRole("button", { name: "Save" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -221,13 +256,17 @@ describe("documenting a KPI", () => {
     fireEvent.change(within(form).getByLabelText("Name"), {
       target: { value: "Net interest margin" },
     });
-    fireEvent.change(within(form).getByLabelText("Unit"), { target: { value: "%" } });
+    fireEvent.change(within(form).getByLabelText("Unit"), {
+      target: { value: "%" },
+    });
     fireEvent.change(within(form).getByLabelText("Targets"), {
       target: { value: "FY2027: 3.2%\n\nFY2028: 3.4%" },
     });
     fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
 
-    expect(await screen.findByText("Net interest margin added.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Net interest margin added."),
+    ).toBeInTheDocument();
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       name: "Net interest margin",
       source_system_id: CBS.id,
@@ -256,10 +295,14 @@ describe("documenting a KPI", () => {
     );
 
     const form = await openAddKpi();
-    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Customer count" } });
+    fireEvent.change(within(form).getByLabelText("Name"), {
+      target: { value: "Customer count" },
+    });
     fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
 
-    await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "POST")).toBe(true),
+    );
     expect(requests.find((r) => r.method === "POST")?.body).toMatchObject({
       name: "Customer count",
       source_system_id: null,
@@ -267,14 +310,23 @@ describe("documenting a KPI", () => {
   });
 
   it("refuses a target that is not `label: value` without asking the server", async () => {
-    const requests = renderApp(backend("editor", { system: [], dw: [] }), SYSTEM_FOLDER);
+    const requests = renderApp(
+      backend("editor", { system: [], dw: [] }),
+      SYSTEM_FOLDER,
+    );
 
     const form = await openAddKpi();
-    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "X" } });
-    fireEvent.change(within(form).getByLabelText("Targets"), { target: { value: "95%" } });
+    fireEvent.change(within(form).getByLabelText("Name"), {
+      target: { value: "X" },
+    });
+    fireEvent.change(within(form).getByLabelText("Targets"), {
+      target: { value: "95%" },
+    });
     fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent('"95%" is not');
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      '"95%" is not',
+    );
     expect(requests.some((r) => r.method === "POST")).toBe(false);
   });
 });
@@ -283,13 +335,17 @@ describe("editing a KPI", () => {
   it("lets an editor change its status", async () => {
     const requests = renderApp(
       backend("editor", { system: [NIM], dw: [] }, (r) =>
-        r.method === "PATCH" ? json({ ...NIM, status: "in_review", version: 2 }) : undefined,
+        r.method === "PATCH"
+          ? json({ ...NIM, status: "in_review", version: 2 })
+          : undefined,
       ),
       SYSTEM_FOLDER,
     );
 
     const form = await openEditKpi();
-    fireEvent.change(within(form).getByLabelText("Status"), { target: { value: "in_review" } });
+    fireEvent.change(within(form).getByLabelText("Status"), {
+      target: { value: "in_review" },
+    });
     fireEvent.click(within(form).getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
@@ -331,16 +387,22 @@ describe("editing a KPI", () => {
 
     const row = await screen.findByRole("row", { name: /Net interest margin/ });
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
-    const dialog = await screen.findByRole("dialog", { name: "Delete Net interest margin?" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete Net interest margin?",
+    });
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete KPI" }));
 
     await waitFor(() =>
-      expect(screen.queryByRole("row", { name: /Net interest margin/ })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole("row", { name: /Net interest margin/ }),
+      ).not.toBeInTheDocument(),
     );
-    expect(requests.some((r) => r.method === "DELETE" && r.path === `${KPIS}/${NIM.id}`)).toBe(
-      true,
-    );
+    expect(
+      requests.some(
+        (r) => r.method === "DELETE" && r.path === `${KPIS}/${NIM.id}`,
+      ),
+    ).toBe(true);
     expect(await screen.findByText(/No KPIs yet/)).toBeInTheDocument();
   });
 });

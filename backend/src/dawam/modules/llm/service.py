@@ -636,7 +636,7 @@ class ProviderService:
         if model is not None:
             if model.reasoning_enabled:
                 reasoning = ReasoningSettings(
-                    effort=model.reasoning_effort,
+                    effort=None,  # the caller's effort per call; the stored one is not read
                     budget_tokens=model.reasoning_budget_tokens,
                     show=model.reasoning_show,
                 )

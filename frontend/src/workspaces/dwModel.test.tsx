@@ -188,11 +188,15 @@ describe("the model folders", () => {
     expect(fact).toHaveTextContent("Fact");
     expect(fact).toHaveTextContent("One row per order line");
     // The bus matrix below also has a row (its header) naming dim_customer.
-    expect(screen.getByRole("button", { name: "dim_customer" }).closest("tr")).toHaveTextContent(
-      "SCD 2",
-    );
-    expect(screen.queryByRole("form", { name: "Add table" })).not.toBeInTheDocument();
-    expect(screen.getByText("Only owners and editors can edit the model.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "dim_customer" }).closest("tr"),
+    ).toHaveTextContent("SCD 2");
+    expect(
+      screen.queryByRole("form", { name: "Add table" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Only owners and editors can edit the model."),
+    ).toBeInTheDocument();
   });
 
   it("asks only for the Layer it is in", async () => {

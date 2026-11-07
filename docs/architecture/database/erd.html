@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "b8e3d1f6a924"
+  "c5d8e2a1f347"
  ],
  "modules": [
   {
@@ -914,6 +914,28 @@ a.tlink:hover { text-decoration: underline; }
      "description": "Set when its starter deleted it: kept (its runs stay in the logs) but gone for everyone.",
      "pk": false,
      "fk": []
+    },
+    {
+     "name": "last_effort",
+     "type": "character varying",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": {
+      "source": "CHECK ck_assistant_conversations_last_effort",
+      "values": [
+       "low",
+       "medium",
+       "high"
+      ]
+     },
+     "in_orm": true,
+     "attribute": "last_effort",
+     "app_default": null,
+     "description": "The reasoning effort (``low``, ``medium`` or ``high``) picked for the last message; none\nis medium. Used for the conversation's later messages and background jobs.",
+     "pk": false,
+     "fk": []
     }
    ],
    "primary_key": [
@@ -958,6 +980,14 @@ a.tlink:hover { text-decoration: underline; }
     }
    ],
    "constraints": [
+    {
+     "name": "ck_assistant_conversations_last_effort",
+     "kind": "CHECK",
+     "columns": [
+      "last_effort"
+     ],
+     "definition": "CHECK (((last_effort)::text = ANY ((ARRAY['low'::character varying, 'medium'::character varying, 'high'::character varying])::text[])))"
+    },
     {
      "name": "fk_assistant_conversations_last_model_id_llm_models",
      "kind": "FOREIGN KEY",

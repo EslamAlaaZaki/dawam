@@ -55,7 +55,11 @@ function workspace(role: WorkspaceRole): Workspace {
   };
 }
 
-function member(user_id: string, display_name: string, role: WorkspaceRole): Member {
+function member(
+  user_id: string,
+  display_name: string,
+  role: WorkspaceRole,
+): Member {
   return {
     user_id,
     email: `${(display_name.split(" ")[0] ?? "").toLowerCase()}@example.com`,
@@ -67,7 +71,11 @@ function member(user_id: string, display_name: string, role: WorkspaceRole): Mem
 }
 
 const ADA_MEMBER = member(ADA.id, "Ada Lovelace", "owner");
-const GRACE = member("22222222-2222-4222-8222-222222222222", "Grace Hopper", "viewer");
+const GRACE = member(
+  "22222222-2222-4222-8222-222222222222",
+  "Grace Hopper",
+  "viewer",
+);
 
 /** Ada, as `role`, opens the Workspace; `handle` answers everything else. */
 function backend(
@@ -82,7 +90,11 @@ function backend(
       case `GET /api/v1/workspaces/${WORKSPACE_ID}`:
         return json(workspace(role));
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/progress`:
-        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+        return json({
+          source_analysis: [],
+          kpis: { status: "not_started" },
+          dw_modeling: [],
+        });
       case "GET /api/v1/workspaces":
         return json({ items: [], next_cursor: null });
       case `GET ${MEMBERS}`:
@@ -107,14 +119,26 @@ async function openAddMember() {
 
 describe("the members panel", () => {
   it("lists the members with their roles for any member, read-only for non-owners", async () => {
-    renderApp(backend("viewer", [{ ...ADA_MEMBER, role: "viewer" }, { ...GRACE, role: "owner" }]), PATH);
+    renderApp(
+      backend("viewer", [
+        { ...ADA_MEMBER, role: "viewer" },
+        { ...GRACE, role: "owner" },
+      ]),
+      PATH,
+    );
 
     const grace = await screen.findByRole("row", { name: "Grace Hopper" });
     expect(grace).toHaveTextContent("grace@example.com");
     expect(grace).toHaveTextContent("Owner");
-    expect(screen.getByRole("row", { name: "Ada Lovelace" })).toHaveTextContent("(you)");
-    expect(screen.queryByRole("button", { name: "Add member" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Change role" })).not.toBeInTheDocument();
+    expect(screen.getByRole("row", { name: "Ada Lovelace" })).toHaveTextContent(
+      "(you)",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Add member" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Change role" }),
+    ).not.toBeInTheDocument();
   });
 
   it("lets an owner add someone by email with a role", async () => {
@@ -122,7 +146,11 @@ describe("the members panel", () => {
     const requests = renderApp(
       backend("owner", members, (r) => {
         if (r.method === "POST" && r.path === MEMBERS) {
-          const added = member("33333333-3333-4333-8333-333333333333", "Alan Turing", "viewer");
+          const added = member(
+            "33333333-3333-4333-8333-333333333333",
+            "Alan Turing",
+            "viewer",
+          );
           members.push(added);
           return json({ outcome: "added", member: added }, 201);
         }
@@ -134,11 +162,17 @@ describe("the members panel", () => {
     fireEvent.change(within(form).getByLabelText("Email"), {
       target: { value: "alan@example.com" },
     });
-    fireEvent.change(within(form).getByLabelText("Role"), { target: { value: "viewer" } });
+    fireEvent.change(within(form).getByLabelText("Role"), {
+      target: { value: "viewer" },
+    });
     fireEvent.click(within(form).getByRole("button", { name: "Add member" }));
 
-    expect(await screen.findByText("Alan Turing is now a viewer.")).toBeInTheDocument();
-    expect(await screen.findByRole("row", { name: "Alan Turing" })).toBeInTheDocument();
+    expect(
+      await screen.findByText("Alan Turing is now a viewer."),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("row", { name: "Alan Turing" }),
+    ).toBeInTheDocument();
     expect(requests.find((r) => r.method === "POST")?.body).toEqual({
       email: "alan@example.com",
       role: "viewer",
@@ -152,7 +186,10 @@ describe("the members panel", () => {
           ? json(
               {
                 outcome: "invited",
-                invitation: { email: "new@example.com", expires_at: "2026-01-12T09:00:00Z" },
+                invitation: {
+                  email: "new@example.com",
+                  expires_at: "2026-01-12T09:00:00Z",
+                },
                 delivery: "sent",
               },
               201,
@@ -168,14 +205,20 @@ describe("the members panel", () => {
     });
     fireEvent.click(within(form).getByRole("button", { name: "Add member" }));
 
-    expect(await screen.findByText("Invitation emailed to new@example.com.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Invitation emailed to new@example.com."),
+    ).toBeInTheDocument();
   });
 
   it("shows why an invitation is refused", async () => {
     renderApp(
       backend("owner", [ADA_MEMBER], (r) =>
         r.method === "POST" && r.path === MEMBERS
-          ? apiError(403, "invite_not_allowed", "Only an admin can invite new people.")
+          ? apiError(
+              403,
+              "invite_not_allowed",
+              "Only an admin can invite new people.",
+            )
           : undefined,
       ),
       PATH,
@@ -202,8 +245,12 @@ describe("the members panel", () => {
 
     const grace = await screen.findByRole("row", { name: "Grace Hopper" });
     fireEvent.click(within(grace).getByRole("button", { name: "Change role" }));
-    const dialog = await screen.findByRole("dialog", { name: "Change role of Grace Hopper" });
-    fireEvent.change(within(dialog).getByLabelText("Role"), { target: { value: "editor" } });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Change role of Grace Hopper",
+    });
+    fireEvent.change(within(dialog).getByLabelText("Role"), {
+      target: { value: "editor" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
@@ -226,8 +273,12 @@ describe("the members panel", () => {
 
     const row = await screen.findByRole("row", { name: "Ada Lovelace" });
     fireEvent.click(within(row).getByRole("button", { name: "Change role" }));
-    const dialog = await screen.findByRole("dialog", { name: "Change role of Ada Lovelace" });
-    fireEvent.change(within(dialog).getByLabelText("Role"), { target: { value: "viewer" } });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Change role of Ada Lovelace",
+    });
+    fireEvent.change(within(dialog).getByLabelText("Role"), {
+      target: { value: "viewer" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
@@ -249,14 +300,20 @@ describe("the members panel", () => {
 
     const grace = await screen.findByRole("row", { name: "Grace Hopper" });
     fireEvent.click(within(grace).getByRole("button", { name: "Remove" }));
-    const dialog = await screen.findByRole("dialog", { name: "Remove Grace Hopper?" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Remove Grace Hopper?",
+    });
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
 
     await waitFor(() =>
-      expect(screen.queryByRole("row", { name: "Grace Hopper" })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole("row", { name: "Grace Hopper" }),
+      ).not.toBeInTheDocument(),
     );
-    expect(requests.find((r) => r.method === "DELETE")?.path).toBe(`${MEMBERS}/${GRACE.user_id}`);
+    expect(requests.find((r) => r.method === "DELETE")?.path).toBe(
+      `${MEMBERS}/${GRACE.user_id}`,
+    );
   });
 
   it("transfers ownership after confirming", async () => {
@@ -270,12 +327,20 @@ describe("the members panel", () => {
     );
 
     const grace = await screen.findByRole("row", { name: "Grace Hopper" });
-    fireEvent.click(within(grace).getByRole("button", { name: "Transfer ownership" }));
-    const dialog = await screen.findByRole("dialog", { name: "Make Grace Hopper the owner?" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Transfer ownership" }));
+    fireEvent.click(
+      within(grace).getByRole("button", { name: "Transfer ownership" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Make Grace Hopper the owner?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Transfer ownership" }),
+    );
 
     await waitFor(() =>
-      expect(requests.find((r) => r.path.endsWith("/transfer-ownership"))?.body).toEqual({
+      expect(
+        requests.find((r) => r.path.endsWith("/transfer-ownership"))?.body,
+      ).toEqual({
         user_id: GRACE.user_id,
       }),
     );
@@ -284,14 +349,22 @@ describe("the members panel", () => {
   it("lets a member leave and goes back to the Workspace list", async () => {
     renderApp(
       backend("viewer", [{ ...ADA_MEMBER, role: "viewer" }, GRACE], (r) =>
-        r.method === "POST" && r.path.endsWith("/leave") ? noContent() : undefined,
+        r.method === "POST" && r.path.endsWith("/leave")
+          ? noContent()
+          : undefined,
       ),
       PATH,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Leave Workspace" }));
-    const dialog = await screen.findByRole("dialog", { name: "Leave this Workspace?" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Leave Workspace" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Leave Workspace" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Leave this Workspace?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Leave Workspace" }),
+    );
 
     await waitFor(() => expect(currentLocation()).toBe("/"));
   });

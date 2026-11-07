@@ -5749,6 +5749,11 @@ export interface components {
              * @description The model picked for the last message, used again until another is picked; none until one is.
              */
             model_id: string | null;
+            /**
+             * Effort
+             * @description The reasoning effort picked for the last message, used again until another is picked; none is medium. Only a reasoning model uses it.
+             */
+            effort: ("low" | "medium" | "high") | null;
         };
         /** ConversationSearchHit */
         ConversationSearchHit: {
@@ -9821,6 +9826,11 @@ export interface components {
              * @description The model to answer with: one of the Workspace's agent models (422 `model_not_allowed` otherwise). Omitted: the conversation's last pick, else the Workspace's agent model.
              */
             model_id?: string | null;
+            /**
+             * Effort
+             * @description The reasoning effort for this message, kept for the conversation. Omitted: the conversation's last pick, else medium. Ignored by a model that does not reason.
+             */
+            effort?: ("low" | "medium" | "high") | null;
         };
         /** SenderOut */
         SenderOut: {
@@ -11867,6 +11877,11 @@ export interface components {
              * @description Tested and without native tool calling: less reliable tool use.
              */
             limited: boolean;
+            /**
+             * Reasoning
+             * @description A reasoning model: members pick its effort (low, medium or high) in the chat.
+             */
+            reasoning: boolean;
         };
         /** WorkspaceOwner */
         WorkspaceOwner: {

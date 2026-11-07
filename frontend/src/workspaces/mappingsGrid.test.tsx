@@ -5,7 +5,12 @@ import type { DwTable } from "../api/dwModel";
 import type { TableMapping } from "../api/mappings";
 import type { Me } from "../api/queries";
 import type { Workspace, WorkspaceRole } from "../api/workspaces";
-import { json, renderApp, setCsrfCookie, type ApiRequest } from "../test/renderApp";
+import {
+  json,
+  renderApp,
+  setCsrfCookie,
+  type ApiRequest,
+} from "../test/renderApp";
 
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 const PATH = `/workspaces/${WORKSPACE_ID}`;
@@ -26,7 +31,10 @@ function workspace(role: WorkspaceRole): Workspace {
     description: "",
     domain: "",
     role,
-    permissions: role === "viewer" ? ["workspace.view"] : ["dw_schema.edit", "workspace.view"],
+    permissions:
+      role === "viewer"
+        ? ["workspace.view"]
+        : ["dw_schema.edit", "workspace.view"],
     status: "active",
     archived_at: null,
     require_distinct_approver: false,
@@ -58,7 +66,11 @@ const MART: DwTable = {
 };
 const MAPPING_PATH = `${TABLES}/${MART.id}/mapping`;
 
-function mappingOf(version: number, sql: string, unparsed = false): TableMapping {
+function mappingOf(
+  version: number,
+  sql: string,
+  unparsed = false,
+): TableMapping {
   const input = {
     kind: "value" as const,
     table_id: "a0000000-0000-4000-8000-000000000002",
@@ -87,7 +99,9 @@ function mappingOf(version: number, sql: string, unparsed = false): TableMapping
         uses: [],
         validation: {
           unparsed,
-          errors: unparsed ? [{ code: "unparsed", message: "The SQL does not parse: bad" }] : [],
+          errors: unparsed
+            ? [{ code: "unparsed", message: "The SQL does not parse: bad" }]
+            : [],
         },
         version,
       },
@@ -139,7 +153,9 @@ beforeEach(() => {
 afterEach(() => clearCookie());
 
 async function openMappings() {
-  fireEvent.click(await screen.findByRole("button", { name: "dim_customer_m" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "dim_customer_m" }),
+  );
   fireEvent.click(await screen.findByRole("button", { name: "Mappings" }));
   return screen.findByRole("region", { name: "Mappings of dim_customer_m" });
 }
@@ -156,14 +172,18 @@ describe("the mappings editor", () => {
     const row = within(grid).getByRole("row", { name: /full_name/ });
     expect(row).toHaveTextContent("Direct");
     expect(row).toHaveTextContent("dim_customer.first_name");
-    expect(within(grid).queryByRole("button", { name: /Save/ })).not.toBeInTheDocument();
+    expect(
+      within(grid).queryByRole("button", { name: /Save/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("saves an editor's mapping with the row's version", async () => {
     let saved = false;
     const requests = renderApp(
       backend("editor", () =>
-        json(saved ? mappingOf(1, "dim_customer.first_name") : mappingOf(0, "")),
+        json(
+          saved ? mappingOf(1, "dim_customer.first_name") : mappingOf(0, ""),
+        ),
       ),
       `${PATH}?folder=dw/mart/model`,
     );
@@ -176,16 +196,22 @@ describe("the mappings editor", () => {
       target: { value: "dim_customer.first_name" },
     });
     saved = true;
-    fireEvent.click(within(grid).getByRole("button", { name: "Save full_name" }));
+    fireEvent.click(
+      within(grid).getByRole("button", { name: "Save full_name" }),
+    );
 
-    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "PUT")).toBe(true),
+    );
     expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
       mapping_type: "direct",
       rule_text: "",
       sql_expression: "dim_customer.first_name",
       version: 0,
     });
-    expect(await within(grid).findByText("dim_customer.first_name")).toBeInTheDocument();
+    expect(
+      await within(grid).findByText("dim_customer.first_name"),
+    ).toBeInTheDocument();
   });
 
   it("flags SQL that does not parse", async () => {
@@ -196,6 +222,8 @@ describe("the mappings editor", () => {
 
     const grid = await openMappings();
 
-    expect(within(grid).getByText("The SQL does not parse: bad")).toBeInTheDocument();
+    expect(
+      within(grid).getByText("The SQL does not parse: bad"),
+    ).toBeInTheDocument();
   });
 });

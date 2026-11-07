@@ -323,6 +323,13 @@ class Gateway:
                 return counted
         return estimate_tokens(text)
 
+    def _with_effort(self, effort: str | None) -> ReasoningSettings | None:
+        """The model's reasoning settings with this call's effort in place of the stored one
+        (``None`` when it is not a reasoning model). No effort: the provider's default."""
+        if self._reasoning is None:
+            return None
+        return replace(self._reasoning, effort=effort if effort in REASONING_EFFORTS else None)
+
     def chat(
         self,
         messages: Sequence[Message],
@@ -332,15 +339,19 @@ class Gateway:
         json_schema: dict[str, Any] | None = None,
         max_retries: int | None = None,
         keep_reasoning: bool = False,
+        effort: str | None = None,
     ) -> Iterator[ChatEvent]:
         """Send the conversation and yield events. A rate limit or an unavailable provider
         is retried with backoff, but only until the first event: a stream already begun
         is never restarted. ``max_retries`` overrides the gateway's own for this call (``0``:
         no retry and no wait, when another model can take over). Token usage is estimated
         when the provider reports none. ``keep_reasoning``: yield ``ReasoningDelta`` even when
-        the model is not set to show it (the probe looks for it)."""
+        the model is not set to show it (the probe looks for it). ``effort`` (``low``,
+        ``medium`` or ``high``) is this call's reasoning effort; it replaces the model's own
+        and is ignored when the model is not a reasoning model."""
+        settings = self._with_effort(effort)
         extra: dict[str, Any] = (
-            {"reasoning": self._reasoning} if self._reasoning and self._takes_reasoning else {}
+            {"reasoning": settings} if settings and self._takes_reasoning else {}
         )
         events = self._estimated(
             self._retrying(
@@ -356,15 +367,21 @@ class Gateway:
             if show or not isinstance(event, ReasoningDelta):
                 yield event
 
-    def vision(self, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+    def vision(
+        self, prompt: str, images: Sequence[Image], *, effort: str | None = None
+    ) -> Iterator[ChatEvent]:
         """Send ``images`` (page images, say) with ``prompt`` in one user turn and yield the
-        reply's events, without streaming. Retried and estimated like ``chat``. Raises
+        reply's events, without streaming. Retried and estimated like ``chat``; ``effort`` is
+        this call's reasoning effort, as for ``chat``. Raises
         ``LlmError`` ``bad_request`` when the provider's adapter cannot read images."""
         reader = getattr(self._adapter, "vision", None)
         if reader is None:
             raise LlmError(BAD_REQUEST, "This provider cannot read images.")
+        extra: dict[str, Any] = {}
+        if self._reasoning is not None and "reasoning" in inspect.signature(reader).parameters:
+            extra["reasoning"] = self._with_effort(effort)
         yield from self._estimated(
-            self._retrying(lambda: reader(self._model, prompt, tuple(images))),
+            self._retrying(lambda: reader(self._model, prompt, tuple(images), **extra)),
             [Message("user", prompt, images=tuple(images))],
         )
 
