@@ -176,6 +176,10 @@ class AzureOpenAIAdapter(OpenAICompatibleAdapter):
     def list_models(self) -> list[str]:
         raise ListingUnsupported("Azure OpenAI names deployments, which the API cannot list.")
 
+    def reasoning_support(self, model: str) -> bool | None:
+        """Azure says nothing about a deployment's reasoning: the probe's reply decides."""
+        return None
+
     def _url(self, path: str) -> str:
         if path == "/models":
             path = "/openai/models"

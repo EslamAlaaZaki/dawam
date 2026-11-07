@@ -76,6 +76,10 @@ class ConversationOut(BaseModel):
         description="The model picked for the last message, used again until another is "
         "picked; none until one is."
     )
+    effort: Literal["low", "medium", "high"] | None = Field(
+        description="The reasoning effort picked for the last message, used again until another "
+        "is picked; none is medium. Only a reasoning model uses it."
+    )
 
 
 class ConversationList(BaseModel):
@@ -247,6 +251,11 @@ class SendMessageRequest(BaseModel):
         "(422 `model_not_allowed` otherwise). Omitted: the "
         "conversation's last pick, else the Workspace's agent model.",
     )
+    effort: Literal["low", "medium", "high"] | None = Field(
+        default=None,
+        description="The reasoning effort for this message, kept for the conversation. Omitted: "
+        "the conversation's last pick, else medium. Ignored by a model that does not reason.",
+    )
 
 
 def _conversation(view: Conversation) -> ConversationOut:
@@ -259,6 +268,7 @@ def _conversation(view: Conversation) -> ConversationOut:
         created_at=view.created_at,
         updated_at=view.updated_at,
         model_id=view.model_id,
+        effort=view.effort,  # type: ignore[arg-type]
     )
 
 
@@ -491,7 +501,7 @@ def send_message(
         else None
     )
     events = service.send_message(
-        user, workspace_id, conversation_id, body.content, context, body.model_id
+        user, workspace_id, conversation_id, body.content, context, body.model_id, body.effort
     )
     return StreamingResponse(
         _frames(events),

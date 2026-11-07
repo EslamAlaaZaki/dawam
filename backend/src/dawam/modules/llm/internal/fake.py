@@ -44,6 +44,10 @@ class Reply:
     finish_reason: str | None = None
     reasoning: str = ""
     """The model's thinking, sent before the text (a reasoning model)."""
+    thinking: tuple[dict[str, Any], ...] = ()
+    """The reply's opaque thinking blocks, handed over on ``Done`` (``Done.thinking``)."""
+    input_transformations: tuple[dict[str, Any], ...] = ()
+    """What the provider says it changed in the request (``Done.input_transformations``)."""
 
 
 @dataclass(frozen=True)
@@ -87,6 +91,8 @@ class FakeAdapter:
         self._rerank_script: deque[list[float] | LlmError] = deque()
         self.reads_images = True
         """False: ``vision`` refuses, like a model that cannot read images."""
+        self.reasoning_flag: bool | LlmError | None = None
+        """What ``reasoning_support`` returns (or raises): the provider's metadata."""
 
     def script(self, *outcomes: Reply | LlmError) -> FakeAdapter:
         self._script.extend(outcomes)
@@ -134,13 +140,21 @@ class FakeAdapter:
         for call in outcome.tool_calls:
             yield ToolCallEvent(call)
         finish = outcome.finish_reason or ("tool_calls" if outcome.tool_calls else "stop")
-        yield Done(outcome.usage, finish)
+        yield Done(outcome.usage, finish, outcome.thinking, outcome.input_transformations)
 
-    def vision(self, model: str, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+    def vision(
+        self,
+        model: str,
+        prompt: str,
+        images: Sequence[Image],
+        reasoning: ReasoningSettings | None = None,
+    ) -> Iterator[ChatEvent]:
         """A ``chat`` call (recorded and scripted alike) whose one user turn has the images."""
         if not self.reads_images:
             raise LlmError(BAD_REQUEST, "This model cannot read images.")
-        return self.chat(model, [Message("user", prompt, images=tuple(images))], (), False, None)
+        return self.chat(
+            model, [Message("user", prompt, images=tuple(images))], (), False, None, reasoning
+        )
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         self.calls.append(FakeCall("embed", model, texts=tuple(texts)))
@@ -170,6 +184,11 @@ class FakeAdapter:
 
     def count_tokens(self, model: str, text: str) -> int | None:
         return self.token_counter(text) if self.token_counter else None
+
+    def reasoning_support(self, model: str) -> bool | None:
+        if isinstance(self.reasoning_flag, LlmError):
+            raise self.reasoning_flag
+        return self.reasoning_flag
 
     def list_models(self) -> list[str]:
         if self.models is None:

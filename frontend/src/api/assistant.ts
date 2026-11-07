@@ -306,6 +306,8 @@ export function useSendMessage(workspaceId: string) {
       context?: PageContext;
       /** The model to answer with; omitted: the conversation's last pick. */
       modelId?: string;
+      /** The reasoning effort; omitted: the conversation's last pick, else medium. */
+      effort?: "low" | "medium" | "high";
       onEvent: (event: AnswerEvent) => void;
     }) => {
       const { error, response } = await client.POST(
@@ -321,6 +323,7 @@ export function useSendMessage(workspaceId: string) {
             content: input.content,
             context: input.context ?? null,
             model_id: input.modelId ?? null,
+            effort: input.effort ?? null,
           },
           parseAs: "stream",
         },

@@ -19484,6 +19484,23 @@
             ],
             "title": "Model Id",
             "description": "The model picked for the last message, used again until another is picked; none until one is."
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort",
+            "description": "The reasoning effort picked for the last message, used again until another is picked; none is medium. Only a reasoning model uses it."
           }
         },
         "type": "object",
@@ -19495,7 +19512,8 @@
           "can_post",
           "created_at",
           "updated_at",
-          "model_id"
+          "model_id",
+          "effort"
         ],
         "title": "ConversationOut"
       },
@@ -28673,6 +28691,23 @@
             ],
             "title": "Model Id",
             "description": "The model to answer with: one of the Workspace's agent models (422 `model_not_allowed` otherwise). Omitted: the conversation's last pick, else the Workspace's agent model."
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort",
+            "description": "The reasoning effort for this message, kept for the conversation. Omitted: the conversation's last pick, else medium. Ignored by a model that does not reason."
           }
         },
         "type": "object",
@@ -33525,6 +33560,11 @@
             "type": "boolean",
             "title": "Limited",
             "description": "Tested and without native tool calling: less reliable tool use."
+          },
+          "reasoning": {
+            "type": "boolean",
+            "title": "Reasoning",
+            "description": "A reasoning model: members pick its effort (low, medium or high) in the chat."
           }
         },
         "type": "object",
@@ -33534,7 +33574,8 @@
           "provider_name",
           "internal",
           "is_default",
-          "limited"
+          "limited",
+          "reasoning"
         ],
         "title": "WorkspaceModel"
       },

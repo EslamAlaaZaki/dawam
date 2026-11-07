@@ -253,3 +253,20 @@ def test_without_a_self_hosted_engine_a_failed_vision_call_says_the_scan_is_unre
     done = listed(roles, system_id)["scan.pdf"]
     assert done["index_status"] == "indexed" and done["text_status"] == "no_text_found"
     assert NO_FALLBACK in done["index_note"]
+
+
+def test_the_vision_model_reads_a_scan_at_low_effort(roles: RoleClients, ocr, fake_llm, worker):
+    model = use_vision(roles, internal=True)
+    reasoning = {"enabled": True, "effort": "high", "budget_tokens": 2048}
+    response = roles.client("admin").put(
+        f"{ADMIN}/models/{model['id']}", json={"reasoning": reasoning}
+    )
+    assert response.status_code == 200, response.text
+    before = len(vision_calls(fake_llm))
+    fake_llm.script(Reply(text=SCANNED))
+    upload(roles, system(roles), "scan.pdf", blank_pdf())
+
+    worker()
+
+    [call] = vision_calls(fake_llm)[before:]
+    assert call.reasoning is not None and call.reasoning.effort == "low"

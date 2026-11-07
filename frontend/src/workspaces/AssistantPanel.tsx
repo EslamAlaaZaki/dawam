@@ -761,6 +761,56 @@ function ModelPicker({
   );
 }
 
+type Effort = "low" | "medium" | "high";
+const EFFORTS: readonly { value: Effort; label: string }[] = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
+
+/** How hard a reasoning model thinks about this message; saved on the conversation. */
+function EffortPicker({
+  value,
+  disabled,
+  onPick,
+}: {
+  value: Effort;
+  disabled: boolean;
+  onPick: (effort: Effort) => void;
+}) {
+  const label = EFFORTS.find((e) => e.value === value)?.label ?? "Medium";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Effort for this message: ${label}`}
+          disabled={disabled}
+          className="data-[state=open]:bg-muted data-[state=open]:text-foreground"
+        >
+          <span>{label}</span>
+          <ChevronDown aria-hidden className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" className="w-40">
+        <DropdownMenuLabel>Effort for this message</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={value}
+          onValueChange={(v) => onPick(v as Effort)}
+        >
+          {EFFORTS.map((e) => (
+            <DropdownMenuRadioItem key={e.value} value={e.value}>
+              {e.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 const conversationClasses =
   "flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors duration-120 hover:bg-muted aria-[current=true]:bg-muted aria-[current=true]:font-semibold disabled:opacity-60";
 
@@ -796,6 +846,7 @@ export function AssistantPanel({
   const [failed, setFailed] = useState<Run | null>(null);
   const [listOpen, setListOpen] = useState(isWide);
   const [picked, setPicked] = useState<string | null>(null);
+  const [pickedEffort, setPickedEffort] = useState<Effort | null>(null);
   const ai = useWorkspaceAiSettings(workspace.id);
   const send = useSendMessage(workspace.id);
   const stop = useStopResponse(workspace.id);
@@ -819,6 +870,10 @@ export function AssistantPanel({
   const fallback = models.find((m) => m.is_default);
   const remembered = models.find((m) => m.id === current?.model_id)?.id;
   const modelId = picked ?? remembered ?? fallback?.id ?? "";
+  // The effort picker shows only for a reasoning model; it starts on the conversation's
+  // saved effort, else Medium.
+  const reasons = models.find((m) => m.id === modelId)?.reasoning ?? false;
+  const effort: Effort = pickedEffort ?? current?.effort ?? "medium";
   const input = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLDivElement>(null);
 
@@ -842,6 +897,7 @@ export function AssistantPanel({
         content,
         context: asking ?? undefined,
         modelId: picked ?? undefined,
+        effort: reasons ? effort : undefined,
         onEvent: (event: AnswerEvent) => {
           if (event.type === "text") {
             setDraft((d) => d && { ...d, text: d.text + event.text });
@@ -922,6 +978,7 @@ export function AssistantPanel({
     search.setTyped("");
     setChosen(id);
     setPicked(null);
+    setPickedEffort(null);
     setFailed(null);
     setRefusal(null);
     if (!isWide()) {
@@ -1155,6 +1212,13 @@ export function AssistantPanel({
                     onPick={setPicked}
                   />
                 )}
+                {reasons && (
+                  <EffortPicker
+                    value={effort}
+                    disabled={!canPost || running}
+                    onPick={setPickedEffort}
+                  />
+                )}
                 <span className="ms-auto" />
                 {running ? (
                   <Button
@@ -1318,6 +1382,7 @@ export function AssistantPanel({
               if (id === selected) {
                 setChosen(null);
                 setPicked(null);
+                setPickedEffort(null);
               }
               setDeleting(null);
             },

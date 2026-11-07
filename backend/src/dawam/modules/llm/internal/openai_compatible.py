@@ -80,8 +80,9 @@ class OpenAICompatibleAdapter:
             body["stream_options"] = {"include_usage": True}
         if reasoning is not None and reasoning.effort:
             body["reasoning_effort"] = reasoning.effort
-        # Qwen3 / DeepSeek-R1 style servers put the thinking inline between <think> tags.
-        tags = ThinkTagSplitter() if reasoning is not None else None
+        # Qwen3 / DeepSeek-R1 style servers put the thinking inline between <think> tags, also
+        # for a model not marked as reasoning: it is always split out (the gateway drops it).
+        tags = ThinkTagSplitter()
         response = self._post("/chat/completions", body)
         try:
             if stream:
@@ -93,9 +94,17 @@ class OpenAICompatibleAdapter:
         finally:
             response.close()
 
-    def vision(self, model: str, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+    def vision(
+        self,
+        model: str,
+        prompt: str,
+        images: Sequence[Image],
+        reasoning: ReasoningSettings | None = None,
+    ) -> Iterator[ChatEvent]:
         """One user turn with the images, then the prompt; the reply is a chat reply."""
-        return self.chat(model, [Message("user", prompt, images=tuple(images))], (), False, None)
+        return self.chat(
+            model, [Message("user", prompt, images=tuple(images))], (), False, None, reasoning
+        )
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         response = self._post("/embeddings", {"model": model, "input": list(texts)})
@@ -173,6 +182,44 @@ class OpenAICompatibleAdapter:
     def ollama_context(self, model: str) -> OllamaContext | None:
         """Ask Ollama's native ``/api/show`` (next to its ``/v1``) for the model's
         ``num_ctx``; any other server answers 404 or garbage, which means not Ollama."""
+        data = self._ollama_show(model)
+        if data is None or "model_info" not in data:
+            return None
+        parameters = data.get("parameters")
+        match = (
+            re.search(r"^\s*num_ctx\s+(\d+)", parameters, re.MULTILINE)
+            if isinstance(parameters, str)
+            else None
+        )
+        return OllamaContext(int(match.group(1)) if match else None)
+
+    def reasoning_support(self, model: str) -> bool | None:
+        """``True`` when Ollama's ``/api/show`` lists the ``thinking`` capability or the
+        ``/models`` entry's ``supported_parameters`` (OpenRouter) holds ``reasoning``; ``None``
+        when neither says. Raises ``LlmError`` when ``/models`` fails other than by refusing."""
+        shown = self._ollama_show(model)
+        capabilities = shown.get("capabilities") if shown is not None else None
+        if isinstance(capabilities, list):
+            return "thinking" in capabilities
+        response = self._send("GET", "/models", None)
+        try:
+            if response.status >= 400:
+                raise error_for(response)
+            data = json_body(response)
+        except OSError:
+            raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
+        finally:
+            response.close()
+        entries = data.get("data") if isinstance(data, dict) else None
+        for entry in entries if isinstance(entries, list) else []:
+            if isinstance(entry, dict) and entry.get("id") == model:
+                parameters = entry.get("supported_parameters")
+                if isinstance(parameters, list):
+                    return "reasoning" in parameters
+        return None
+
+    def _ollama_show(self, model: str) -> dict[str, Any] | None:
+        """Ollama's ``/api/show`` for the model; ``None`` from any other server or failure."""
         root = self._base_url.removesuffix("/v1")
         body = json.dumps({"model": model}).encode("utf-8")
         try:
@@ -193,15 +240,7 @@ class OpenAICompatibleAdapter:
             return None
         finally:
             response.close()
-        if not isinstance(data, dict) or "model_info" not in data:
-            return None
-        parameters = data.get("parameters")
-        match = (
-            re.search(r"^\s*num_ctx\s+(\d+)", parameters, re.MULTILINE)
-            if isinstance(parameters, str)
-            else None
-        )
-        return OllamaContext(int(match.group(1)) if match else None)
+        return data if isinstance(data, dict) else None
 
     def list_models(self) -> list[str]:
         response = self._send("GET", "/models", None)

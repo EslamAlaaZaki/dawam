@@ -58,6 +58,9 @@ class WorkspaceModel(ModelChoice):
     limited: bool = Field(
         description="Tested and without native tool calling: less reliable tool use."
     )
+    reasoning: bool = Field(
+        description="A reasoning model: members pick its effort (low, medium or high) in the chat."
+    )
 
 
 class ModelChoices(BaseModel):
@@ -203,6 +206,7 @@ def _chosen(m: ChosenModel) -> WorkspaceModel:
         internal=m.internal,
         is_default=m.is_default,
         limited=m.limited,
+        reasoning=m.reasoning,
     )
 
 
