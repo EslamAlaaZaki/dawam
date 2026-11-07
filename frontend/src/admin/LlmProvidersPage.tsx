@@ -537,8 +537,8 @@ function contextWindow(form: FormData): number | undefined {
   return window ? Number(window) : undefined;
 }
 
-/** The thinking settings of a reasoning model: how hard it thinks and whether members
- * see the reasoning. Off: nothing special is sent to the model. */
+/** The thinking settings of a reasoning model: whether it is one, and whether members
+ * see the reasoning (they pick the effort in the chat). Off: nothing special is sent to the model. */
 function ReasoningFields({ model }: { model: LlmModel }) {
   const [enabled, setEnabled] = useState(model.reasoning.enabled);
   return (
@@ -556,27 +556,6 @@ function ReasoningFields({ model }: { model: LlmModel }) {
       </label>
       {enabled && (
         <>
-          <label className={labelClasses}>
-            Effort
-            <NativeSelect
-              name="reasoning_effort"
-              defaultValue={model.reasoning.effort ?? ""}
-            >
-              <option value="">Provider default</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </NativeSelect>
-          </label>
-          <label className={labelClasses}>
-            Thinking budget in tokens (Anthropic; empty: from the effort)
-            <Input
-              name="reasoning_budget_tokens"
-              type="number"
-              min={1}
-              defaultValue={model.reasoning.budget_tokens ?? ""}
-            />
-          </label>
           <label className="flex items-center gap-2 text-sm font-medium">
             <input
               name="reasoning_show"
@@ -597,12 +576,10 @@ function reasoningSettings(form: FormData, previous: LlmModel["reasoning"]) {
   if (!enabled) {
     return { ...previous, enabled: false };
   }
-  const effort = String(form.get("reasoning_effort") ?? "");
-  const budget = String(form.get("reasoning_budget_tokens") ?? "").trim();
+  // Members pick the effort in the chat; the stored effort and budget stay as they were.
   return {
+    ...previous,
     enabled: true,
-    effort: effort ? (effort as "low" | "medium" | "high") : null,
-    budget_tokens: budget ? Number(budget) : null,
     show: form.get("reasoning_show") !== null,
   };
 }

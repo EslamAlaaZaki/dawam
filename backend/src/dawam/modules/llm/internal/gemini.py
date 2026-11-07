@@ -268,9 +268,17 @@ class GeminiAdapter:
         finally:
             response.close()
 
-    def vision(self, model: str, prompt: str, images: Sequence[Image]) -> Iterator[ChatEvent]:
+    def vision(
+        self,
+        model: str,
+        prompt: str,
+        images: Sequence[Image],
+        reasoning: ReasoningSettings | None = None,
+    ) -> Iterator[ChatEvent]:
         """One user turn with the images, then the prompt; the reply is a chat reply."""
-        return self.chat(model, [Message("user", prompt, images=tuple(images))], (), False, None)
+        return self.chat(
+            model, [Message("user", prompt, images=tuple(images))], (), False, None, reasoning
+        )
 
     def embed(self, model: str, texts: Sequence[str]) -> list[list[float]]:
         if "aiplatform.googleapis.com" in self._base_url:

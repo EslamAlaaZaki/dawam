@@ -282,6 +282,7 @@ class MeteredGateway:
         refuse_external: bool = False,
         fallbacks: Sequence[MeteredGateway] = (),
         model_id: uuid.UUID | None = None,
+        effort: str | None = None,
     ) -> None:
         self._gateway = gateway
         self._chain: tuple[MeteredGateway, ...] = (self, *fallbacks)
@@ -295,6 +296,9 @@ class MeteredGateway:
         self._workspace_id = workspace_id
         self._user_id = user_id
         self.on_fall_back: FallBackListener | None = None
+        self.effort: str | None = effort
+        """The reasoning effort (``low``, ``medium``, ``high``) of every call of this run, the
+        fallback models' too; ignored by a model that does not reason."""
 
     @property
     def role(self) -> str:
@@ -357,7 +361,12 @@ class MeteredGateway:
             retries = 0 if self._failed or self._candidates() else None
             events = model._metered(
                 lambda model=model, retries=retries: model._gateway.chat(
-                    messages, tools, stream, json_schema=json_schema, max_retries=retries
+                    messages,
+                    tools,
+                    stream,
+                    json_schema=json_schema,
+                    max_retries=retries,
+                    effort=self.effort,
                 ),
                 messages,
             )
@@ -435,7 +444,7 @@ class MeteredGateway:
         against the budgets (as the provider reports them, or estimated)."""
         self._ensure_allowed()
         yield from self._metered(
-            lambda: self._gateway.vision(prompt, images),
+            lambda: self._gateway.vision(prompt, images, effort=self.effort),
             [Message("user", prompt, images=tuple(images))],
         )
 
@@ -519,7 +528,12 @@ class RoleService:
     # -- using a role ----------------------------------------------------------------
 
     def gateway_for_role(
-        self, role: str, *, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
+        self,
+        role: str,
+        *,
+        workspace_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
+        effort: str | None = None,
     ) -> MeteredGateway:
         """The gateway a feature calls for ``role``, resolved from the Workspace's
         Workspace Models: ``agent`` its default agent model, ``light`` its default light
@@ -541,7 +555,12 @@ class RoleService:
                 {"role": role},
             )
         return self.metered_gateway(
-            model_id, role, workspace_id=workspace_id, user_id=user_id, with_fallbacks=True
+            model_id,
+            role,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            with_fallbacks=True,
+            effort=effort,
         )
 
     def light_gateway(
@@ -555,7 +574,12 @@ class RoleService:
         if model_id is None:
             return None
         return self.metered_gateway(
-            model_id, "light", workspace_id=workspace_id, user_id=user_id, with_fallbacks=True
+            model_id,
+            "light",
+            workspace_id=workspace_id,
+            user_id=user_id,
+            with_fallbacks=True,
+            effort="low",  # a light-role feature never needs deep thinking
         )
 
     def metered_gateway(
@@ -566,6 +590,7 @@ class RoleService:
         workspace_id: uuid.UUID | None = None,
         user_id: uuid.UUID | None = None,
         with_fallbacks: bool = False,
+        effort: str | None = None,
     ) -> MeteredGateway:
         """A metered gateway for a specific registered model, used under ``role``. For an
         internal-only Workspace its calls are refused when the model's provider is external.
@@ -597,6 +622,7 @@ class RoleService:
             refuse_external=refuse,
             fallbacks=fallbacks,
             model_id=model_id,
+            effort=effort,
         )
 
     # -- fallbacks -------------------------------------------------------------------

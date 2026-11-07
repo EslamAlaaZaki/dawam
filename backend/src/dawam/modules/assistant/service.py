@@ -23,7 +23,14 @@ from sqlalchemy.orm import Session, aliased
 
 from dawam.modules.auth import User
 from dawam.modules.jobs import JobCancelledError, JobContext, JobPausedError
-from dawam.modules.llm import LlmError, Message, RoleService, TextDelta, WorkspaceAiService
+from dawam.modules.llm import (
+    REASONING_EFFORTS,
+    LlmError,
+    Message,
+    RoleService,
+    TextDelta,
+    WorkspaceAiService,
+)
 from dawam.modules.workspaces import Action, WorkspaceScope, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -77,6 +84,8 @@ from .tables import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_TITLE = "New conversation"
+DEFAULT_EFFORT = "medium"
+"""The reasoning effort of a conversation whose member never picked one."""
 HISTORY_MESSAGES = 30
 """The most recent turns sent to the model with a new message."""
 AUTO_RETRIEVE_PASSAGES = 3
@@ -135,6 +144,9 @@ class Conversation:
     updated_at: datetime
     model_id: uuid.UUID | None = None
     """The model picked for the last message; none until one is picked."""
+    effort: str | None = None
+    """The reasoning effort (``low``, ``medium``, ``high``) picked for the last message; none is
+    medium."""
 
 
 @dataclass(frozen=True)
@@ -558,11 +570,14 @@ class AssistantService:
         content: str,
         context: PageContext | None = None,
         model_id: uuid.UUID | None = None,
+        effort: str | None = None,
     ) -> Iterator[StreamEvent]:
         """Store the member's message and return the events of the run answering it.
         ``model_id`` picks the model for this message (one of the Workspace's agent models, else
         422 ``model_not_allowed``); without it the conversation's last
-        pick is used, else the Workspace's agent model.
+        pick is used, else the Workspace's agent model. ``effort`` (``low``, ``medium``,
+        ``high``; else 422 ``invalid_effort``) is the reasoning effort of the run, kept as the
+        conversation's last pick; a model that does not reason ignores it.
         409 ``workspace_archived``, 409 ``run_in_progress``, 422 ``invalid_message``."""
         scope = self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
         content = content.strip()
@@ -572,6 +587,13 @@ class AssistantService:
                 "invalid_message",
                 f"A message must have 1 to {MESSAGE_MAX_LENGTH} characters.",
                 {"field": "content"},
+            )
+        if effort is not None and effort not in REASONING_EFFORTS:
+            raise ApiError(
+                422,
+                "invalid_effort",
+                f"The effort must be one of: {', '.join(REASONING_EFFORTS)}.",
+                {"field": "effort"},
             )
         if model_id is not None:
             self._ai.check_chat_model(workspace_id, model_id)
@@ -630,11 +652,15 @@ class AssistantService:
                 workspace_id, record.last_model_id
             ):
                 model_id = record.last_model_id  # else the pick is gone: the default answers
+            if effort is not None:
+                record.last_effort = effort
+            else:
+                effort = record.last_effort or DEFAULT_EFFORT
             light = self._roles.light_gateway(workspace_id=workspace_id, user_id=user.id)
             history = self._history(db, record, compaction=light is not None)
             started = Started(run.id, message.id)
         return self._stream(
-            user, workspace_id, conversation_id, started, history, context, model_id, light
+            user, workspace_id, conversation_id, started, history, context, model_id, light, effort
         )
 
     def stop(self, user: User, workspace_id: uuid.UUID, conversation_id: uuid.UUID) -> None:
@@ -780,8 +806,11 @@ class AssistantService:
             ctx.log(redact_text(line)[:500])
 
         try:
+            # The effort the conversation had when the job started, kept in the job's params.
+            effort = params.get("effort")
+            effort = effort if effort in REASONING_EFFORTS else None
             gateway = self._roles.gateway_for_role(
-                "agent", workspace_id=workspace_id, user_id=user.id
+                "agent", workspace_id=workspace_id, user_id=user.id, effort=effort
             )
             gateway.on_fall_back = handed_over  # the rest of the job stays on that model
             if resume and saved:  # a model that took over before the pause serves on
@@ -973,6 +1002,7 @@ class AssistantService:
         context: PageContext | None,
         model_id: uuid.UUID | None = None,
         light: Any = None,
+        effort: str | None = None,
     ) -> Iterator[StreamEvent]:
         began = self._timer()
         text: list[str] = []
@@ -997,7 +1027,7 @@ class AssistantService:
                     gateway, on_light = light, True
                 elif model_id is None:
                     gateway = self._roles.gateway_for_role(
-                        "agent", workspace_id=workspace_id, user_id=user.id
+                        "agent", workspace_id=workspace_id, user_id=user.id, effort=effort
                     )
                 else:  # the member's pick falls back like the default
                     gateway = self._roles.metered_gateway(
@@ -1006,9 +1036,14 @@ class AssistantService:
                         workspace_id=workspace_id,
                         user_id=user.id,
                         with_fallbacks=True,
+                        effort=effort,
                     )
                 tools = self._tools.bind(
-                    user, workspace_id, self._ai.policy(workspace_id), conversation_id
+                    user,
+                    workspace_id,
+                    self._ai.policy(workspace_id),
+                    conversation_id,
+                    effort=effort,
                 )
                 tools.allow_urls(m.content or "" for m in history.messages if m.role == "user")
                 self._set_prompt_version(
@@ -1236,6 +1271,7 @@ class AssistantService:
             created_at=record.created_at,
             updated_at=record.updated_at,
             model_id=record.last_model_id,
+            effort=record.last_effort,
         )
 
     @staticmethod

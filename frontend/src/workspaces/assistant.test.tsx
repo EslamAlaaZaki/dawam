@@ -58,6 +58,7 @@ const NEW_CONVERSATION = {
   created_at: "2026-01-05T10:00:00Z",
   updated_at: "2026-01-05T10:00:00Z",
   model_id: null,
+  effort: null,
 };
 
 function run(overrides: Partial<Run> = {}): Run {
@@ -1397,6 +1398,7 @@ const AI = {
       internal: false,
       is_default: true,
       limited: false,
+      reasoning: false,
     },
     {
       id: SMALL,
@@ -1405,6 +1407,7 @@ const AI = {
       internal: false,
       is_default: false,
       limited: true,
+      reasoning: true,
     },
   ],
 };
@@ -1468,6 +1471,52 @@ describe("picking the model of a message", () => {
         )?.body,
       ).toMatchObject({ content: "Hi", model_id: null }),
     );
+  });
+
+  it("shows the effort picker only for a reasoning model, on Medium, and sends the pick", async () => {
+    const requests = renderApp(
+      backend({ ai: AI, answer: () => ANSWERED.clone() }),
+      PATH,
+    );
+    await openAssistant();
+
+    await screen.findByRole("button", { name: "Model for this message: Big" });
+    expect(screen.queryByRole("button", { name: /^Effort for/ })).toBeNull();
+    openMenu(screen.getByRole("button", { name: "Model for this message: Big" }));
+    fireEvent.click((await screen.findAllByRole("menuitemradio"))[1]!);
+    openMenu(
+      await screen.findByRole("button", {
+        name: "Effort for this message: Medium",
+      }),
+    );
+    const options = await screen.findAllByRole("menuitemradio");
+    expect(options.map((o) => o.textContent)).toEqual(["Low", "Medium", "High"]);
+    fireEvent.click(options[2]!);
+    await screen.findByRole("button", { name: "Effort for this message: High" });
+    await ask("Hi");
+
+    await waitFor(() =>
+      expect(
+        requests.find(
+          (r) => r.method === "POST" && r.path.endsWith("/messages"),
+        )?.body,
+      ).toMatchObject({ content: "Hi", model_id: SMALL, effort: "high" }),
+    );
+  });
+
+  it("starts the effort picker on the Conversation's saved effort", async () => {
+    const conversation = { ...NEW_CONVERSATION, model_id: SMALL, effort: "low" as const };
+    renderApp(
+      backend({
+        ai: AI,
+        conversations: [conversation],
+        detail: { conversation, messages: [] },
+      }),
+      PATH,
+    );
+    await openAssistant();
+
+    await screen.findByRole("button", { name: "Effort for this message: Low" });
   });
 
   it("labels each reply with the model that answered", async () => {
