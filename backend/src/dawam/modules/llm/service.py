@@ -565,6 +565,8 @@ class ProviderService:
             record.supports_streaming = caps.streaming
             if not (confirmed_only and caps.json_schema is None):
                 record.supports_json_schema = caps.json_schema
+            if caps.reasoning:  # detected: tick it; not detected: the admin's choice stands
+                record.reasoning_enabled = True
             record.embedding_dimension = caps.embedding_dimension
             if record.context_window is None:
                 record.context_window = caps.context_window

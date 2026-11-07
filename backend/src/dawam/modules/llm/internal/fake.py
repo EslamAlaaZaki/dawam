@@ -87,6 +87,8 @@ class FakeAdapter:
         self._rerank_script: deque[list[float] | LlmError] = deque()
         self.reads_images = True
         """False: ``vision`` refuses, like a model that cannot read images."""
+        self.reasoning_flag: bool | LlmError | None = None
+        """What ``reasoning_support`` returns (or raises): the provider's metadata."""
 
     def script(self, *outcomes: Reply | LlmError) -> FakeAdapter:
         self._script.extend(outcomes)
@@ -170,6 +172,11 @@ class FakeAdapter:
 
     def count_tokens(self, model: str, text: str) -> int | None:
         return self.token_counter(text) if self.token_counter else None
+
+    def reasoning_support(self, model: str) -> bool | None:
+        if isinstance(self.reasoning_flag, LlmError):
+            raise self.reasoning_flag
+        return self.reasoning_flag
 
     def list_models(self) -> list[str]:
         if self.models is None:

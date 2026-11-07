@@ -40,6 +40,7 @@ from ..gateway import (
     ListingUnsupported,
     LlmError,
     Message,
+    ReasoningDelta,
     ReasoningSettings,
     TextDelta,
     ToolCall,
@@ -47,6 +48,7 @@ from ..gateway import (
     ToolSpec,
     Usage,
 )
+from .thinking import thinking_budget
 from .transport import HttpResponse, Transport, TransportError
 from .wire import MAX_LIST_PAGES, detail, error_for, json_body, received_call_id
 
@@ -60,6 +62,11 @@ PLACEHOLDER_SIGNATURE = "skip_thought_signature_validator"
 
 _FINISH_REASONS = {"STOP": "stop", "MAX_TOKENS": "length"}
 _FILTERED = {"SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY"}
+
+_THINKING_LEVELS = ("low", "medium", "high")
+_LIMITED_LEVELS = {"gemini-3-pro": ("low", "high")}
+"""Gemini 3 models that reject some thinking levels (by model name prefix): a rejected effort
+is sent as the nearest level above it."""
 
 
 def _b64url(raw: bytes) -> str:
@@ -239,11 +246,14 @@ class GeminiAdapter:
                     ]
                 }
             ]
+        config: dict[str, Any] = {}
         if json_schema is not None:
-            body["generationConfig"] = {
-                "responseMimeType": "application/json",
-                "responseJsonSchema": json_schema,
-            }
+            config["responseMimeType"] = "application/json"
+            config["responseJsonSchema"] = json_schema
+        if reasoning is not None and (thinking := _thinking_config(model, reasoning)):
+            config["thinkingConfig"] = thinking
+        if config:
+            body["generationConfig"] = config
         method = "streamGenerateContent?alt=sse" if stream else "generateContent"
         response = self._send("POST", f"{_model_path(model)}:{method}", json.dumps(body).encode())
         if response.status >= 400:
@@ -293,21 +303,31 @@ class GeminiAdapter:
 
     def context_window(self, model: str) -> int | None:
         try:
-            response = self._send("GET", _model_path(model), None)
+            data = self._model_info(model)
         except LlmError:
             return None
-        try:
-            if response.status != 200:
-                return None
-            data = json_body(response)
-        except (LlmError, OSError):
-            return None
-        finally:
-            response.close()
         value = data.get("inputTokenLimit") if isinstance(data, dict) else None
         if isinstance(value, int) and not isinstance(value, bool) and value > 0:
             return value
         return None
+
+    def reasoning_support(self, model: str) -> bool | None:
+        """The model info's ``thinking`` flag; ``None`` when it has none. Raises ``LlmError``
+        when the provider cannot be asked."""
+        data = self._model_info(model)
+        value = data.get("thinking") if isinstance(data, dict) else None
+        return value if isinstance(value, bool) else None
+
+    def _model_info(self, model: str) -> Any:
+        response = self._send("GET", _model_path(model), None)
+        if response.status != 200:
+            raise self._error(response)
+        try:
+            return json_body(response)
+        except OSError:
+            raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
+        finally:
+            response.close()
 
     def count_tokens(self, model: str, text: str) -> int | None:
         """The provider's count of ``text`` (``:countTokens``), ``None`` on any failure."""
@@ -406,6 +426,31 @@ class GeminiAdapter:
         return source.redact(text) if isinstance(source, ServiceAccountTokenSource) else text
 
 
+def _thinking_config(model: str, reasoning: ReasoningSettings) -> dict[str, Any]:
+    """Gemini 3: ``thinkingLevel`` (the effort, stepped up to a level the model takes); Gemini
+    2.5: ``thinkingBudget``. Neither an effort nor a budget: the model's own default. Any other
+    model (Gemini 2.0, an alias such as ``gemini-flash-latest``) gets no thinking config."""
+    name = model.removeprefix("models/").lower()
+    if not name.startswith(("gemini-2.5", "gemini-3")):
+        return {}
+    config: dict[str, Any] = {}
+    if name.startswith("gemini-2.5"):
+        if reasoning.effort or reasoning.budget_tokens:
+            config["thinkingBudget"] = thinking_budget(reasoning)
+    elif reasoning.effort in _THINKING_LEVELS:
+        allowed = next(
+            (levels for prefix, levels in _LIMITED_LEVELS.items() if name.startswith(prefix)),
+            _THINKING_LEVELS,
+        )
+        wanted = _THINKING_LEVELS.index(reasoning.effort)
+        config["thinkingLevel"] = next(
+            (level for level in _THINKING_LEVELS[wanted:] if level in allowed), allowed[-1]
+        )
+    if reasoning.show:
+        config["includeThoughts"] = True
+    return config
+
+
 def _model_path(model: str) -> str:
     name = model[len("models/") :] if model.startswith("models/") else model
     return f"/models/{quote(name, safe='')}"
@@ -488,7 +533,9 @@ def _usage(raw: Any, previous: Usage | None = None) -> Usage | None:
         return previous  # an early chunk that counts the prompt only
     cached = raw.get("cachedContentTokenCount")
     cached = cached if isinstance(cached, int) and not isinstance(cached, bool) else 0
-    return Usage(prompt, completion, cache_read_tokens=cached)
+    thoughts = raw.get("thoughtsTokenCount")
+    thoughts = thoughts if isinstance(thoughts, int) and not isinstance(thoughts, bool) else 0
+    return Usage(prompt, completion, cache_read_tokens=cached, reasoning_tokens=thoughts)
 
 
 def _finish(reason: Any, called_tools: bool) -> str | None:
@@ -544,8 +591,9 @@ def _part_events(parts: list[Any]) -> Iterator[ChatEvent]:
             raise LlmError(INVALID_RESPONSE, "The provider's chat reply was malformed.")
         if isinstance(part.get("functionCall"), dict):
             yield ToolCallEvent(_tool_call(part["functionCall"], part.get("thoughtSignature")))
-        elif part.get("text") and not part.get("thought"):
-            yield TextDelta(str(part["text"]))
+        elif part.get("text"):
+            text = str(part["text"])
+            yield ReasoningDelta(text) if part.get("thought") else TextDelta(text)
 
 
 def _reply_events(data: Any) -> Iterator[ChatEvent]:

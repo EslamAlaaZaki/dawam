@@ -155,7 +155,7 @@ def test_gemini_keeps_thoughts_out_of_the_reply_and_counts_them_as_output():
 
     events = chat(adapter)
 
-    assert events[0] == TextDelta("Answer.")
+    assert [e for e in events if isinstance(e, TextDelta)] == [TextDelta("Answer.")]
     assert (events[-1].usage.prompt_tokens, events[-1].usage.completion_tokens) == (5, 9)
     assert events[-1].finish_reason == "length"
 

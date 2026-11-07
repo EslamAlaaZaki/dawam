@@ -30,6 +30,12 @@ from ..gateway import (
     ToolSpec,
     Usage,
 )
+from .thinking import (
+    adaptive_from_capabilities,
+    claude_adaptive,
+    claude_thinking_fields,
+    thinks_from_capabilities,
+)
 from .transport import HttpResponse, Transport, TransportError
 from .wire import (
     MAX_LIST_PAGES,
@@ -45,11 +51,6 @@ DEFAULT_MAX_TOKENS = 4096
 """The API requires a cap on the reply; this one fits every Claude model."""
 
 _EPHEMERAL = {"type": "ephemeral"}
-
-MIN_THINKING_BUDGET = 1024
-"""The least thinking budget the API accepts."""
-_EFFORT_BUDGETS = {"low": 1024, "medium": 4096, "high": 8192}
-DEFAULT_THINKING_EFFORT = "medium"
 
 _FINISH_REASONS = {
     "end_turn": "stop",
@@ -72,6 +73,9 @@ class AnthropicAdapter:
         self._api_key = api_key
         self._timeout = timeout_seconds
         self._transport = transport
+        self._adaptive: dict[str, bool | None] = {}
+        """Per model id the Models API was asked about: adaptive thinking or not (``None``:
+        it could not tell)."""
 
     # -- Adapter ---------------------------------------------------------------------
 
@@ -102,10 +106,14 @@ class AnthropicAdapter:
             body["tools"][-1]["cache_control"] = _EPHEMERAL
         if json_schema is not None:
             body["output_config"] = {"format": {"type": "json_schema", "schema": json_schema}}
-        if reasoning is not None and _can_think(messages):
-            budget = _thinking_budget(reasoning)
-            body["thinking"] = {"type": "enabled", "budget_tokens": budget}
-            body["max_tokens"] = budget + DEFAULT_MAX_TOKENS  # the budget counts inside the cap
+        if reasoning is not None:
+            fields, reserve = claude_thinking_fields(
+                reasoning, adaptive=self._takes_adaptive(model), think=_can_think(messages)
+            )
+            if "output_config" in fields:  # the effort sits beside the JSON schema's format
+                body.setdefault("output_config", {}).update(fields.pop("output_config"))
+            body.update(fields)
+            body["max_tokens"] = reserve + DEFAULT_MAX_TOKENS  # thinking counts inside the cap
         response = self._send("POST", "/messages", json.dumps(body).encode("utf-8"))
         if response.status >= 400:
             try:
@@ -131,21 +139,18 @@ class AnthropicAdapter:
 
     def context_window(self, model: str) -> int | None:
         try:
-            response = self._send("GET", f"/models/{model}", None)
+            data = self._model_info(model)
         except LlmError:
             return None
-        try:
-            if response.status != 200:
-                return None
-            data = json_body(response)
-        except (LlmError, OSError):
-            return None
-        finally:
-            response.close()
         value = data.get("max_input_tokens") if isinstance(data, dict) else None
         if isinstance(value, int) and not isinstance(value, bool) and value > 0:
             return value
         return None
+
+    def reasoning_support(self, model: str) -> bool | None:
+        """Whether the Models API says the model thinks (``capabilities.thinking``); ``None``
+        when it does not say. Raises ``LlmError`` when the provider cannot be asked."""
+        return thinks_from_capabilities(_capabilities(self._model_info(model)))
 
     def count_tokens(self, model: str, text: str) -> int | None:
         """The provider's count of ``text`` (``/messages/count_tokens``); ``None`` on failure."""
@@ -190,6 +195,34 @@ class AnthropicAdapter:
             path = f"/models?limit=1000&after_id={quote(last, safe='')}"
         return names
 
+    def _takes_adaptive(self, model: str) -> bool:
+        """Adaptive thinking or a budget: from the model id when it names a known Claude
+        model, else from the Models API (asked once per id), else a budget as before."""
+        known = claude_adaptive(model)
+        if known is not None:
+            return known
+        if model not in self._adaptive:
+            try:
+                capabilities = _capabilities(self._model_info(model))
+            except LlmError as exc:
+                if exc.retryable:
+                    return False  # not remembered: the next call asks again
+                capabilities = None  # refused (unknown to the Models API): a budget
+            self._adaptive[model] = adaptive_from_capabilities(capabilities)
+        return bool(self._adaptive[model])
+
+    def _model_info(self, model: str) -> Any:
+        """``GET /models/{id}``; raises ``LlmError`` for a failure or an error status."""
+        response = self._send("GET", f"/models/{quote(model, safe='')}", None)
+        try:
+            if response.status != 200:
+                raise error_for(response)
+            return json_body(response)
+        except OSError:
+            raise LlmError(UNAVAILABLE, "The connection to the provider was lost.") from None
+        finally:
+            response.close()
+
     # -- HTTP ------------------------------------------------------------------------
 
     def _send(self, method: str, path: str, body: bytes | None) -> HttpResponse:
@@ -208,10 +241,8 @@ class AnthropicAdapter:
             raise LlmError(UNAVAILABLE, str(exc)) from None
 
 
-def _thinking_budget(reasoning: ReasoningSettings) -> int:
-    if reasoning.budget_tokens:
-        return max(MIN_THINKING_BUDGET, reasoning.budget_tokens)
-    return _EFFORT_BUDGETS.get(reasoning.effort or "", _EFFORT_BUDGETS[DEFAULT_THINKING_EFFORT])
+def _capabilities(data: Any) -> Any:
+    return data.get("capabilities") if isinstance(data, dict) else None
 
 
 def _can_think(messages: Sequence[Message]) -> bool:

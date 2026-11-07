@@ -40,6 +40,7 @@ from ..gateway import (
     Image,
     LlmError,
     Message,
+    ReasoningDelta,
     ReasoningSettings,
     TextDelta,
     ToolCall,
@@ -47,6 +48,8 @@ from ..gateway import (
     ToolSpec,
     Usage,
 )
+from .anthropic import _can_think
+from .thinking import claude_adaptive, claude_thinking_fields, is_claude
 from .transport import HttpResponse, Transport, TransportError
 from .wire import (
     MAX_LIST_PAGES,
@@ -310,6 +313,14 @@ class BedrockAdapter:
                     },
                 }
             }
+        if reasoning is not None and is_claude(model):
+            # Claude takes the Anthropic adapter's thinking fields, passed through as they are.
+            fields, reserve = claude_thinking_fields(
+                reasoning, adaptive=bool(claude_adaptive(model)), think=_can_think(messages)
+            )
+            if fields:
+                body["additionalModelRequestFields"] = fields
+            body["inferenceConfig"]["maxTokens"] = reserve + DEFAULT_MAX_TOKENS
         operation = "converse-stream" if stream else "converse"
         path = f"/model/{quote(model, safe='')}/{operation}"
         response = self._send("POST", path, json.dumps(body).encode("utf-8"))
@@ -530,10 +541,22 @@ def _reply_events(data: Any) -> Iterator[ChatEvent]:
             raise LlmError(INVALID_RESPONSE, "The provider's chat reply was malformed.")
         if block.get("text"):
             yield TextDelta(str(block["text"]))
+        elif thought := _reasoning_text(block.get("reasoningContent")):
+            yield ReasoningDelta(thought)
         elif isinstance(block.get("toolUse"), dict):
             use = block["toolUse"]
             yield ToolCallEvent(_tool_call(use, use.get("input")))
     yield Done(_usage(data.get("usage")), _finish(data.get("stopReason")))
+
+
+def _reasoning_text(content: Any) -> str:
+    """The text of a ``reasoningContent`` block (``reasoningText.text``) or stream delta
+    (``text``); empty for a signature or redacted reasoning."""
+    if not isinstance(content, dict):
+        return ""
+    block = content.get("reasoningText")
+    value = block.get("text") if isinstance(block, dict) else content.get("text")
+    return str(value) if isinstance(value, str) else ""
 
 
 # -- Streaming (AWS event stream) ------------------------------------------------------
@@ -636,6 +659,8 @@ def _stream_events(response: HttpResponse, redact: Callable[[str], str]) -> Iter
             delta = delta if isinstance(delta, dict) else {}
             if delta.get("text"):
                 yield TextDelta(str(delta["text"]))
+            elif thought := _reasoning_text(delta.get("reasoningContent")):
+                yield ReasoningDelta(thought)
             elif isinstance(delta.get("toolUse"), dict) and index in tools:
                 tools[index]["json"] += str(delta["toolUse"].get("input") or "")
         elif kind == "contentBlockStop":

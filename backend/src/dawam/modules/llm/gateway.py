@@ -157,14 +157,16 @@ REASONING_EFFORTS = ("low", "medium", "high")
 @dataclass(frozen=True)
 class ReasoningSettings:
     """How a reasoning model is asked to think. An adapter turns it into its provider's
-    request: Anthropic extended thinking (``budget_tokens``), OpenAI-style
-    ``reasoning_effort``, or, for Qwen3 and DeepSeek-R1 style servers, the splitting of
-    ``<think>`` tags out of the reply."""
+    request: Anthropic adaptive thinking with ``output_config.effort`` (Claude 4.6 and newer)
+    or a ``budget_tokens`` (older Claude), the same through Bedrock, Gemini's ``thinkingLevel``
+    (Gemini 3) or ``thinkingBudget`` (Gemini 2.5), or OpenAI-style ``reasoning_effort``.
+    ``<think>`` tags (Qwen3, DeepSeek-R1 style servers) are split out of every reply."""
 
     effort: str | None = None
     """``low``, ``medium`` or ``high``; ``None``: the provider's default."""
     budget_tokens: int | None = None
-    """A cap on thinking tokens, for providers that take one (Anthropic)."""
+    """A cap on thinking tokens, for providers that take one (older Claude, Gemini 2.5);
+    ``None``: derived from the effort."""
     show: bool = False
     """Stream the reasoning as ``ReasoningDelta`` events; off: it is counted, then dropped."""
 
@@ -178,6 +180,9 @@ class Capabilities:
     json_schema: bool | None = None
     context_window: int | None = None
     embedding_dimension: int | None = None
+    reasoning: bool | None = None
+    """``True``: "Test connection" found the model reasons; never ``False`` from a test (a
+    missed detection must not untick the admin's choice)."""
 
 
 @dataclass(frozen=True)
@@ -221,6 +226,9 @@ class Adapter(Protocol):
     # adapter without it, or raising ``ListingUnsupported``, is typed by hand.
     # Optional: ``ollama_context(self, model) -> OllamaContext | None`` (``None``: the
     # server is not Ollama).
+    # Optional: ``reasoning_support(self, model) -> bool | None`` (whether the provider's
+    # model metadata says the model reasons; ``None``: it does not say; raises ``LlmError``
+    # when the provider cannot be asked).
 
 
 def _takes_reasoning(adapter: Adapter) -> bool:
@@ -293,6 +301,15 @@ class Gateway:
         except LlmError:
             return None
 
+    def server_reasoning(self) -> bool | None:
+        """Whether the provider's model metadata says the model reasons (``None``: it does
+        not say, or the adapter cannot ask). Raises ``LlmError`` when the provider fails."""
+        reader = getattr(self._adapter, "reasoning_support", None)
+        if reader is None:
+            return None
+        value = reader(self._model)
+        return value if isinstance(value, bool) else None
+
     def count_tokens(self, text: str) -> int:
         """Tokens in ``text``: the provider's own count when its adapter has one, else the
         chars/4 estimate. Never fails: an unknown model or a down endpoint only costs accuracy."""
@@ -314,12 +331,14 @@ class Gateway:
         *,
         json_schema: dict[str, Any] | None = None,
         max_retries: int | None = None,
+        keep_reasoning: bool = False,
     ) -> Iterator[ChatEvent]:
         """Send the conversation and yield events. A rate limit or an unavailable provider
         is retried with backoff, but only until the first event: a stream already begun
         is never restarted. ``max_retries`` overrides the gateway's own for this call (``0``:
         no retry and no wait, when another model can take over). Token usage is estimated
-        when the provider reports none."""
+        when the provider reports none. ``keep_reasoning``: yield ``ReasoningDelta`` even when
+        the model is not set to show it (the probe looks for it)."""
         extra: dict[str, Any] = (
             {"reasoning": self._reasoning} if self._reasoning and self._takes_reasoning else {}
         )
@@ -332,7 +351,7 @@ class Gateway:
             ),
             messages,
         )
-        show = self._reasoning is not None and self._reasoning.show
+        show = keep_reasoning or (self._reasoning is not None and self._reasoning.show)
         for event in events:
             if show or not isinstance(event, ReasoningDelta):
                 yield event
@@ -480,6 +499,21 @@ def _collect(events: Iterator[ChatEvent]) -> tuple[str, list[ToolCall]]:
     return "".join(text), calls
 
 
+def _collect_reasoning(events: Iterator[ChatEvent]) -> tuple[str, bool]:
+    """The reply's text, and whether it shows reasoning: reasoning text (``reasoning_content``
+    / ``reasoning`` fields, ``<think>`` blocks, thinking or thought parts) or reasoning tokens."""
+    text: list[str] = []
+    reasoned = False
+    for event in events:
+        if isinstance(event, TextDelta):
+            text.append(event.text)
+        elif isinstance(event, ReasoningDelta):
+            reasoned = reasoned or bool(event.text.strip())
+        elif isinstance(event, Done) and event.usage is not None:
+            reasoned = reasoned or event.usage.reasoning_tokens > 0
+    return "".join(text), reasoned
+
+
 def probe(
     gateway: Gateway,
     *,
@@ -498,13 +532,18 @@ def probe(
     ``context_window`` (the admin's input) wins over the server's metadata.
     ``confirmed_only`` (agent and light models): tool calling and JSON schema are ``False``
     only when confirmed (the provider rejects them, or the model fails twice); a temporary
-    error leaves them ``None`` and adds a warning naming the error."""
-    tool_calling = streaming = json_schema = dimension = None
+    error leaves them ``None`` and adds a warning naming the error. Reasoning is detected for
+    them too, and is only ever ``True`` or ``None`` (see ``_detect_reasoning``)."""
+    tool_calling = streaming = json_schema = dimension = reasoning = None
     warnings: list[str] = []
     try:
         if chat:
-            reply, _ = _collect(
-                gateway.chat([Message("user", "Reply with the single word OK.")], stream=False)
+            reply, reasoned = _collect_reasoning(
+                gateway.chat(
+                    [Message("user", "Reply with the single word OK.")],
+                    stream=False,
+                    keep_reasoning=True,
+                )
             )
             if not reply.strip():
                 raise LlmError(INVALID_RESPONSE, "The model answered with an empty reply.")
@@ -516,6 +555,7 @@ def probe(
             if confirmed_only:
                 tool_calling = _confirmed(_try_tool_call(gateway), "tool calling", warnings)
                 json_schema = _confirmed(_try_json_schema(gateway), "JSON schema", warnings)
+                reasoning = _detect_reasoning(gateway, reasoned, warnings)
             else:
                 tool_calling = _supported(_try_tool_call(gateway))
                 json_schema = _supported(_try_json_schema(gateway))
@@ -555,9 +595,26 @@ def probe(
             json_schema=json_schema,
             context_window=window,
             embedding_dimension=dimension,
+            reasoning=reasoning,
         ),
         warnings=tuple(warnings),
     )
+
+
+def _detect_reasoning(gateway: Gateway, reasoned: bool, warnings: list[str]) -> bool | None:
+    """``True`` when the provider's model metadata says the model reasons, or the probe's
+    reply showed reasoning; otherwise ``None`` (never ``False``: a missed detection must not
+    untick the admin's choice). A temporary error asking the provider adds a warning."""
+    try:
+        if gateway.server_reasoning():
+            return True
+    except LlmError as exc:
+        if not reasoned and exc.code != BAD_REQUEST:
+            warnings.append(
+                f"Reasoning could not be checked ({exc.code}: {exc.message}). Its previous "
+                "value is kept; test the connection again."
+            )
+    return True if reasoned else None
 
 
 def _try_tool_call(gateway: Gateway) -> Callable[[], bool]:
