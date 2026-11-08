@@ -243,7 +243,13 @@ class OpenAICompatibleAdapter:
         return data if isinstance(data, dict) else None
 
     def list_models(self) -> list[str]:
-        response = self._send("GET", "/models", None)
+        """``GET /models``, asking for every output modality: OpenRouter's plain list holds
+        only text models, hiding its embedding and rerank ones. Other servers ignore the
+        filter; one that rejects it (400/404/422) is asked again without it."""
+        response = self._send("GET", "/models?output_modalities=all", None)
+        if response.status in (400, 404, 422):
+            response.close()
+            response = self._send("GET", "/models", None)
         try:
             if response.status >= 400:
                 raise error_for(response)
