@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import {
   useAddLlmModel,
@@ -657,6 +657,7 @@ function AddModelDialog({
         </NativeSelect>
       </label>
       <ModelNamePicker
+        key={chosen}
         providerId={chosen}
         open={open}
         value={name}
@@ -709,6 +710,8 @@ function ModelNamePicker({
   onChange: (name: string) => void;
 }) {
   const listing = useLlmProviderModels(providerId, { enabled: open });
+  const [query, setQuery] = useState("");
+  const selectId = useId();
 
   if (listing.isPending && listing.fetchStatus !== "idle") {
     return (
@@ -739,21 +742,37 @@ function ModelNamePicker({
       </>
     );
   }
+  const needle = query.trim().toLowerCase();
+  const shown = needle
+    ? data.models.filter(
+        (m) => m.name === value || m.name.toLowerCase().includes(needle),
+      )
+    : data.models;
   return (
-    <label className={labelClasses}>
-      Model name
+    <div className={labelClasses}>
+      <label htmlFor={selectId}>Model name</label>
+      <Input
+        type="search"
+        aria-label="Search models"
+        placeholder={`Search ${data.models.length} models`}
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
       <NativeSelect
+        id={selectId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">Choose a model</option>
-        {data.models.map((m) => (
+        <option value="">
+          {needle && shown.length === 0 ? "No models match" : "Choose a model"}
+        </option>
+        {shown.map((m) => (
           <option key={m.name} value={m.name} disabled={m.registered}>
             {m.registered ? `${m.name} (already added)` : m.name}
           </option>
         ))}
       </NativeSelect>
-    </label>
+    </div>
   );
 }
 

@@ -409,6 +409,39 @@ describe("language models page", () => {
       expect(out.post?.body).toEqual({ name: "mistral", roles: ["agent"] });
     });
 
+    it("narrows the provider's models with a search", async () => {
+      openDialog(
+        json({
+          supported: true,
+          models: [
+            { name: "llama-3", registered: false },
+            { name: "Qwen3", registered: false },
+            { name: "mistral", registered: false },
+          ],
+        }),
+      );
+
+      const dialog = await open();
+      const pick = await within(dialog).findByLabelText("Model name");
+      fireEvent.change(within(dialog).getByLabelText("Search models"), {
+        target: { value: "qwe" },
+      });
+      expect(
+        within(pick)
+          .getAllByRole("option")
+          .map((o) => o.textContent),
+      ).toEqual(["Choose a model", "Qwen3"]);
+
+      fireEvent.change(within(dialog).getByLabelText("Search models"), {
+        target: { value: "zzz" },
+      });
+      expect(
+        within(pick)
+          .getAllByRole("option")
+          .map((o) => o.textContent),
+      ).toEqual(["No models match"]);
+    });
+
     it("asks for a choice before adding", async () => {
       const out: { post?: ApiRequest } = {};
       openDialog(
