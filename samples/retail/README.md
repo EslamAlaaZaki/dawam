@@ -102,14 +102,7 @@ async function api(method, path, body) {
 
 7. **Profiling (UI).** In **Source Schema**, open `loyalty_customers`, `sales_receipts` and `receipt_lines` and press **Profile this table** on each. Tick **Keep the most frequent values of this table** and profile again to capture top values. *Point out:* null % (`email`, `customer_id` for anonymous purchases), min/max dates and amounts, negative quantities on returns, and the skew in `tier`, `receipt_type` and `payment_method`; personal-data columns never get top values or min/max.
 
-8. **Relationship inference (API, then Assistant).** With a system's folder open, start inference and, once the job has finished, list the candidates:
-
-   ```js
-   await api("POST", `/systems/${sys}/relationship-inference`, {});
-   (await api("GET", `/systems/${sys}/relationships?status=suggested`)).items;
-   ```
-
-   Then ask the Assistant: "Review the suggested relationships of POS: accept the ones that hold and reject any that don't", and review the Change Set. *Point out:* undeclared relationships in each system, each with its evidence (matching names and types, and the JOINs in the view and routine): `sales_receipts.store_id`, `sales_receipts.customer_id`, `receipt_lines.product_id` and `loyalty_customers.home_store_id` in POS; `payments.order_id`, `shipments.order_id` and `shipments.carrier_code` in E-commerce. `loyalty_customers.home_store_id` is found only because the view joins it. Accepted relationships appear in the **ER diagram** as "inferred, accepted".
+8. **Relationships (UI, or Assistant).** In each system's **ER diagram** folder, press **Find relationships** and wait for the background job to finish. Review the **Suggested** tab of the **Relationships** panel and press **Accept** or **Reject** on each row; or ask the Assistant: "Review the suggested relationships of POS: accept the ones that hold and reject any that don't", and review the Change Set. *Point out:* undeclared relationships in each system, each with its evidence (matching names and types, and the JOINs in the view and routine): `sales_receipts.store_id`, `sales_receipts.customer_id`, `receipt_lines.product_id` and `loyalty_customers.home_store_id` in POS; `payments.order_id`, `shipments.order_id` and `shipments.carrier_code` in E-commerce. `loyalty_customers.home_store_id` is found only because the view joins it. Accepted relationships appear in the **ER diagram** as "inferred, accepted".
 
 9. **PII review (API).** Name rules flagged the obvious columns at extraction. Run the value scan on every table of the open system, then list the review queue:
 

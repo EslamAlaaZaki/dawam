@@ -16,7 +16,15 @@ import { useSourceSchema } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
 import { PiiMarker } from "../diagrams/PiiMarker";
-import { EmptyState, Hint, NativeSelect, Panel, h3Classes, labelClasses, ErrorText } from "./parts";
+import {
+  EmptyState,
+  Hint,
+  NativeSelect,
+  Panel,
+  h3Classes,
+  labelClasses,
+  ErrorText,
+} from "./parts";
 import {
   filterGraph,
   qualified,
@@ -24,8 +32,11 @@ import {
   type ErEdge,
 } from "./erGraph";
 import { Loading } from "../shell/Loading";
+import { RelationshipReview } from "./RelationshipReview";
 
-type SourceTable = NonNullable<ReturnType<typeof useSourceSchema>["data"]>["tables"][number];
+type SourceTable = NonNullable<
+  ReturnType<typeof useSourceSchema>["data"]
+>["tables"][number];
 
 const NODE_WIDTH = 180;
 const NODE_HEIGHT = 40;
@@ -34,7 +45,11 @@ const COLUMNS = 4;
 /** Declared foreign keys are solid; accepted inferred relationships are dashed. */
 const EDGE_STYLE: Record<ErEdge["kind"], React.CSSProperties> = {
   declared: { strokeWidth: 2, stroke: "var(--muted-foreground)" },
-  inferred: { strokeWidth: 2, strokeDasharray: "6 4", stroke: "var(--tag-mapped)" },
+  inferred: {
+    strokeWidth: 2,
+    strokeDasharray: "6 4",
+    stroke: "var(--tag-mapped)",
+  },
 };
 
 /**
@@ -101,7 +116,10 @@ export function SourceErDiagram({
     animated: false,
     markerEnd: {
       type: MarkerType.ArrowClosed,
-      color: edge.kind === "declared" ? "var(--muted-foreground)" : "var(--tag-mapped)",
+      color:
+        edge.kind === "declared"
+          ? "var(--muted-foreground)"
+          : "var(--tag-mapped)",
     },
     ariaLabel: `${edge.kind} relationship`,
   }));
@@ -111,86 +129,98 @@ export function SourceErDiagram({
       <h3 id="folder-title" className={h3Classes}>
         ER diagram
       </h3>
-      <div className="flex max-w-xl flex-col gap-3.5">
-        <label htmlFor="er-schema" className={labelClasses}>
-          Database Schema
-        </label>
-        <NativeSelect
-          id="er-schema"
-          value={dbSchema}
-          onChange={(event) => {
-            setDbSchema(event.target.value);
-            setTableId("");
-          }}
-        >
-          <option value="">All Database Schemas</option>
-          {schema.data.db_schemas.map((s) => (
-            <option key={s.id} value={s.name}>
-              {s.name}
-            </option>
-          ))}
-        </NativeSelect>
-        <label htmlFor="er-table" className={labelClasses}>
-          Focus on a table
-        </label>
-        <NativeSelect
-          id="er-table"
-          value={tableId}
-          onChange={(event) => setTableId(event.target.value)}
-        >
-          <option value="">All tables</option>
-          {present
-            .filter((t) => dbSchema === "" || t.db_schema === dbSchema)
-            .map((t) => (
-              <option key={t.id} value={t.id}>
-                {qualified(t)}
-              </option>
-            ))}
-        </NativeSelect>
-      </div>
-      <Hint>
-        Solid lines are foreign keys declared in the Snapshot; dashed lines are
-        accepted inferred relationships. A shield marks a table with Protected Columns.
-      </Hint>
-      {tables.length === 0 ? (
-        <EmptyState>No tables match these filters.</EmptyState>
-      ) : (
-        <div
-          className="dawam-flow"
-          style={{ height: 480 }}
-          aria-label="ER diagram canvas"
-        >
-          <ReactFlow
-            nodes={nodes}
-            edges={flowEdges}
-            nodesConnectable={false}
-            nodesDraggable
-            fitView
-            proOptions={{ hideAttribution: true }}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="flex min-w-0 flex-col gap-3.5 lg:col-span-2">
+          <div className="flex max-w-xl flex-col gap-3.5">
+            <label htmlFor="er-schema" className={labelClasses}>
+              Database Schema
+            </label>
+            <NativeSelect
+              id="er-schema"
+              value={dbSchema}
+              onChange={(event) => {
+                setDbSchema(event.target.value);
+                setTableId("");
+              }}
+            >
+              <option value="">All Database Schemas</option>
+              {schema.data.db_schemas.map((s) => (
+                <option key={s.id} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+            </NativeSelect>
+            <label htmlFor="er-table" className={labelClasses}>
+              Focus on a table
+            </label>
+            <NativeSelect
+              id="er-table"
+              value={tableId}
+              onChange={(event) => setTableId(event.target.value)}
+            >
+              <option value="">All tables</option>
+              {present
+                .filter((t) => dbSchema === "" || t.db_schema === dbSchema)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {qualified(t)}
+                  </option>
+                ))}
+            </NativeSelect>
+          </div>
+          <Hint>
+            Solid lines are foreign keys declared in the Snapshot; dashed lines
+            are accepted inferred relationships. A shield marks a table with
+            Protected Columns.
+          </Hint>
+          {tables.length === 0 ? (
+            <EmptyState>No tables match these filters.</EmptyState>
+          ) : (
+            <div
+              className="dawam-flow"
+              style={{ height: 480 }}
+              aria-label="ER diagram canvas"
+            >
+              <ReactFlow
+                nodes={nodes}
+                edges={flowEdges}
+                nodesConnectable={false}
+                nodesDraggable
+                fitView
+                proOptions={{ hideAttribution: true }}
+              >
+                <Background />
+                <Controls showInteractive={false} />
+              </ReactFlow>
+            </div>
+          )}
+          <ul
+            aria-label="Relationships"
+            className="font-mono text-mono text-muted-foreground"
           >
-            <Background />
-            <Controls showInteractive={false} />
-          </ReactFlow>
+            {edges.map((edge) => (
+              <li key={edge.id}>
+                {qualified(byId.get(edge.from)!)} to{" "}
+                {qualified(byId.get(edge.to)!)}
+                {" ("}
+                {edge.label}
+                {"), "}
+                {edge.kind === "declared" ? "declared" : "inferred, accepted"}
+              </li>
+            ))}
+          </ul>
         </div>
-      )}
-      <ul aria-label="Relationships" className="font-mono text-mono text-muted-foreground">
-        {edges.map((edge) => (
-          <li key={edge.id}>
-            {qualified(byId.get(edge.from)!)} to {qualified(byId.get(edge.to)!)}
-            {" ("}
-            {edge.label}
-            {"), "}
-            {edge.kind === "declared" ? "declared" : "inferred, accepted"}
-          </li>
-        ))}
-      </ul>
+        <RelationshipReview workspace={workspace} systemId={system.id} />
+      </div>
     </Panel>
   );
 }
 
 /** A table's name, with the PII marker when it has Protected Columns (named in its label). */
 function ErNode({ table }: { table: SourceTable }) {
-  const protectedNames = table.columns.filter((c) => c.is_protected).map((c) => c.name);
+  const protectedNames = table.columns
+    .filter((c) => c.is_protected)
+    .map((c) => c.name);
   return (
     <span className="inline-flex items-center font-mono text-mono">
       {qualified(table)}

@@ -102,14 +102,7 @@ async function api(method, path, body) {
 
 7. **Profiling (UI).** In **Source Schema**, open `customers`, `accounts` and `transactions` and press **Profile this table** on each. Tick **Keep the most frequent values of this table** and profile again to capture top values. *Point out:* null % (`email`, `closed_on`, `merchant_category`), min/max dates and amounts, and the skew in `segment` and `status`; personal-data columns never get top values or min/max.
 
-8. **Relationship inference (API, then Assistant).** With a system's folder open, start inference and, once the job has finished, list the candidates:
-
-   ```js
-   await api("POST", `/systems/${sys}/relationship-inference`, {});
-   (await api("GET", `/systems/${sys}/relationships?status=suggested`)).items;
-   ```
-
-   Then ask the Assistant: "Review the suggested relationships of Core Banking: accept the ones that hold and reject any that don't", and review the Change Set. *Point out:* three undeclared relationships per system, each with its evidence (matching names and types, and the JOINs in the view and routine): `accounts.branch_id`, `customers.home_branch_id` and `transactions.txn_type_code` in Core Banking; `contacts.rm_id`, `campaign_responses.contact_id` and `complaints.category_code` in CRM. `customers.home_branch_id` is found only because the view joins it. Accepted relationships appear in the **ER diagram** as "inferred, accepted".
+8. **Relationships (UI, or Assistant).** In each system's **ER diagram** folder, press **Find relationships** and wait for the background job to finish. Review the **Suggested** tab of the **Relationships** panel and press **Accept** or **Reject** on each row; or ask the Assistant: "Review the suggested relationships of Core Banking: accept the ones that hold and reject any that don't", and review the Change Set. *Point out:* three undeclared relationships per system, each with its evidence (matching names and types, and the JOINs in the view and routine): `accounts.branch_id`, `customers.home_branch_id` and `transactions.txn_type_code` in Core Banking; `contacts.rm_id`, `campaign_responses.contact_id` and `complaints.category_code` in CRM. `customers.home_branch_id` is found only because the view joins it. Accepted relationships appear in the **ER diagram** as "inferred, accepted".
 
 9. **PII review (API).** Name rules flagged the obvious columns at extraction. Run the value scan on every table of the open system, then list the review queue:
 

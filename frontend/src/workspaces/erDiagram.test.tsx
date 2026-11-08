@@ -271,3 +271,148 @@ describe("Source ER diagram", () => {
     expect(await screen.findByText("No tables match these filters.")).toBeInTheDocument();
   });
 });
+
+const EDITOR: Workspace = {
+  ...WORKSPACE,
+  role: "editor",
+  permissions: ["workspace.view", "source_system.profile", "source_schema.enhance"],
+};
+
+const SUGGESTED: Relationship = {
+  ...INFERRED,
+  id: "77777777-7777-4777-8777-777777777777",
+  from_column: { ...INFERRED.from_column, column: "customer_ref" },
+  to_column: {
+    column_id: "c3",
+    table_id: "t-cust",
+    db_schema: "core",
+    table: "customers",
+    column: "ref",
+  },
+  origin: "routine",
+  confidence: 0.82,
+  status: "suggested",
+  version: 1,
+  decided_by: null,
+  decided_at: null,
+  evidence: {
+    signals: {
+      name: { score: 0.8, detail: "customer_ref ~ customers.ref" },
+      type: { score: 1, detail: "int / int" },
+      unique: { score: 1, detail: "primary key" },
+      join: { score: 1, objects: ["core.v_balances", "core.sp_close"] },
+      overlap: { ratio: 0.97, values_checked: 40, target_rows_sampled: 100 },
+    },
+    threshold: 0.6,
+  },
+};
+
+function review(workspace: Workspace, inferenceJobStatus = "succeeded") {
+  const state = { rows: [SUGGESTED, INFERRED] as Relationship[], started: 0, hidden: false };
+  const handler = (r: ApiRequest): Response | undefined => {
+    const route = `${r.method} ${r.path}`;
+    if (route === `GET ${API}`) return json(workspace);
+    if (route === `GET ${API}/jobs`) {
+      return json({
+        items:
+          state.started > 0
+            ? [{ id: "j1", status: inferenceJobStatus, type: "infer_relationships" }]
+            : [],
+        next_cursor: null,
+      });
+    }
+    if (route === `GET ${SYSTEM}/relationships`) {
+      return json({
+        items: state.hidden
+          ? []
+          : state.rows.filter((x) => x.status === r.query.status),
+      });
+    }
+    if (route === `POST ${SYSTEM}/relationship-inference`) {
+      state.started += 1;
+      state.hidden = false;
+      return json({ job_id: "j1", status: "queued" }, 202);
+    }
+    const decision = r.path.match(/relationships\/([^/]+)\/(accept|reject)$/);
+    if (r.method === "POST" && decision) {
+      const status = decision[2] === "accept" ? "accepted" : "rejected";
+      state.rows = state.rows.map((x) =>
+        x.id === decision[1] ? { ...x, status } : x,
+      ) as Relationship[];
+      return json(state.rows.find((x) => x.id === decision[1]));
+    }
+    return api(r);
+  };
+  return { state, handler };
+}
+
+describe("Relationship review", () => {
+  it("lists suggestions with their evidence, never data values", async () => {
+    renderApp(review(EDITOR).handler, FOLDER);
+    const panel = within(await screen.findByRole("region", { name: "Relationships" }));
+    const row = within(await panel.findByRole("listitem"));
+    expect(row.getByText("core.transactions.customer_ref")).toBeInTheDocument();
+    expect(row.getByText("core.customers.ref")).toBeInTheDocument();
+    expect(row.getByText("82%")).toBeInTheDocument();
+    expect(row.getByText("routine")).toBeInTheDocument();
+    for (const chip of ["name", "type", "unique", "join: core.v_balances, core.sp_close", "overlap 97%"]) {
+      expect(row.getByText(chip)).toBeInTheDocument();
+    }
+  });
+
+  it("Find relationships starts the job and the list refills when it finishes", async () => {
+    const { handler, state } = review(EDITOR);
+    state.hidden = true;
+    const requests = renderApp(handler, FOLDER);
+    fireEvent.click(await screen.findByRole("button", { name: "Find relationships" }));
+    await waitFor(() => expect(state.started).toBe(1));
+    const panel = within(screen.getByRole("region", { name: "Relationships" }));
+    expect(await panel.findByText("core.transactions.customer_ref")).toBeInTheDocument();
+    expect(
+      requests.find((r) => r.path === `${SYSTEM}/relationship-inference`)?.csrf,
+    ).toBe(CSRF_TOKEN);
+  });
+
+  it("Accept moves a row to Accepted and the diagram lists it", async () => {
+    renderApp(review(EDITOR).handler, FOLDER);
+    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument(),
+    );
+    const list = await relationships();
+    expect(
+      await list.findByText(/core\.transactions to core\.customers.*, inferred, accepted/),
+    ).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Accepted" }), { button: 0 });
+    fireEvent.click(screen.getByRole("tab", { name: "Accepted" }));
+    expect(await screen.findByText("core.transactions.customer_ref")).toBeInTheDocument();
+  });
+
+  it("Reject moves a row to Rejected", async () => {
+    renderApp(review(EDITOR).handler, FOLDER);
+    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument(),
+    );
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Rejected" }), { button: 0 });
+    fireEvent.click(screen.getByRole("tab", { name: "Rejected" }));
+    expect(await screen.findByText("core.transactions.customer_ref")).toBeInTheDocument();
+  });
+
+  it("shows the lists without buttons to a member without the right", async () => {
+    renderApp(review(WORKSPACE).handler, FOLDER);
+    const panel = within(await screen.findByRole("region", { name: "Relationships" }));
+    expect(await panel.findByText("core.transactions.customer_ref")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Find relationships" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+  });
+
+  it("is read-only in an archived Workspace", async () => {
+    renderApp(review({ ...EDITOR, status: "archived" }).handler, FOLDER);
+    const panel = within(await screen.findByRole("region", { name: "Relationships" }));
+    expect(await panel.findByText("core.transactions.customer_ref")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Find relationships" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+  });
+});
