@@ -91,6 +91,30 @@ def test_bedrock_lists_on_the_control_plane_endpoint():
     ]
 
 
+def test_openai_compatible_asks_for_every_output_modality():
+    """OpenRouter's plain ``/models`` lists only text models, hiding its embedding and
+    rerank models; ``output_modalities=all`` lists them too, and other servers ignore it."""
+    transport = Script(*_ok("openai_compatible"))
+
+    _make("openai_compatible", transport).list_models()
+
+    assert transport.urls == ["http://x/v1/models?output_modalities=all"]
+
+
+@pytest.mark.parametrize("status", [400, 404, 422])
+def test_a_server_that_rejects_the_modality_filter_is_asked_plainly(status):
+    transport = Script(
+        reply(status, {"error": {"message": "unknown parameter"}}),
+        reply(200, {"data": [{"id": "a"}, {"id": "b"}]}),
+    )
+
+    assert _make("openai_compatible", transport).list_models() == ["a", "b"]
+    assert transport.urls == [
+        "http://x/v1/models?output_modalities=all",
+        "http://x/v1/models",
+    ]
+
+
 @pytest.mark.parametrize("kind", list(OK))
 def test_a_rejected_key_while_listing_is_an_auth_error(kind):
     transport = Script(reply(401, {"error": {"message": "bad key"}}))
