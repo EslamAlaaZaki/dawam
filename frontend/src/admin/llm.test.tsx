@@ -389,17 +389,22 @@ describe("language models page", () => {
       );
 
       const dialog = await open();
-      const pick = await within(dialog).findByLabelText("Model name");
-      const options = within(pick).getAllByRole("option");
+      const pick = await within(dialog).findByRole("combobox", {
+        name: "Model name",
+      });
+      fireEvent.click(pick);
+      const options = within(
+        screen.getByRole("listbox", { name: "Models" }),
+      ).getAllByRole("option");
       expect(options.map((o) => o.textContent)).toEqual([
-        "Choose a model",
         "llama",
         "qwen3 (already added)",
         "mistral",
       ]);
-      expect(options[2]).toBeDisabled();
+      expect(options[1]).toHaveAttribute("aria-disabled", "true");
 
-      fireEvent.change(pick, { target: { value: "mistral" } });
+      fireEvent.click(options[2]!);
+      expect(pick).toHaveValue("mistral");
       fireEvent.click(within(dialog).getByLabelText("Agent"));
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Add model" }),
@@ -407,6 +412,39 @@ describe("language models page", () => {
 
       await waitFor(() => expect(out.post).toBeDefined());
       expect(out.post?.body).toEqual({ name: "mistral", roles: ["agent"] });
+    });
+
+    it("narrows the provider's models as you type in the dropdown", async () => {
+      openDialog(
+        json({
+          supported: true,
+          models: [
+            { name: "llama-3", registered: false },
+            { name: "Qwen3", registered: false },
+            { name: "mistral", registered: false },
+          ],
+        }),
+      );
+
+      const dialog = await open();
+      const pick = await within(dialog).findByRole("combobox", {
+        name: "Model name",
+      });
+      const listed = () =>
+        within(screen.getByRole("listbox", { name: "Models" }))
+          .queryAllByRole("option")
+          .map((o) => o.textContent);
+
+      fireEvent.change(pick, { target: { value: "qwe" } });
+      expect(listed()).toEqual(["Qwen3"]);
+
+      fireEvent.keyDown(pick, { key: "ArrowDown" });
+      fireEvent.keyDown(pick, { key: "Enter" });
+      expect(pick).toHaveValue("Qwen3");
+
+      fireEvent.change(pick, { target: { value: "zzz" } });
+      expect(listed()).toEqual([]);
+      expect(screen.getByText("No models match")).toBeInTheDocument();
     });
 
     it("asks for a choice before adding", async () => {
@@ -420,7 +458,7 @@ describe("language models page", () => {
       );
 
       const dialog = await open();
-      await within(dialog).findByRole("option", { name: "llama" });
+      await within(dialog).findByRole("combobox", { name: "Model name" });
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Add model" }),
       );
