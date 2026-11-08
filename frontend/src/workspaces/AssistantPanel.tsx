@@ -491,9 +491,12 @@ function Bubble({
   fellBack = false,
   busy = false,
   actions = null,
+  mine = false,
   children,
 }: {
   email: string | null;
+  /** On a member's message: the viewer sent it, so it is labelled "You". */
+  mine?: boolean;
   at: string;
   /** On a reply: the model that answered. */
   model?: string | null;
@@ -507,14 +510,14 @@ function Bubble({
   if (email !== null) {
     return (
       <li
-        aria-label={`Message from ${email}`}
+        aria-label={mine ? "Message from you" : `Message from ${email}`}
         className="flex flex-row-reverse gap-3 ps-12"
       >
         <Avatar email={email} />
         <div className="flex min-w-0 flex-col items-end gap-1">
           <p className="flex max-w-full items-baseline gap-2">
             <span className="truncate text-xs font-medium text-muted-foreground">
-              {email}
+              {mine ? "You" : email}
             </span>
             <MessageTime at={at} />
           </p>
@@ -666,8 +669,11 @@ function Turn({
   workspaceId,
   conversationId,
   canRate,
+  meEmail,
 }: {
   message: ChatMessage;
+  /** The signed-in user's email, so their own messages read "You". */
+  meEmail: string | undefined;
   answer: ChatMessage | undefined;
   workspaceId: string;
   conversationId: string;
@@ -678,6 +684,7 @@ function Turn({
     <>
       <Bubble
         email={message.sender?.email ?? "former member"}
+        mine={meEmail !== undefined && message.sender?.email === meEmail}
         at={message.created_at}
       >
         {message.content}
@@ -1113,6 +1120,7 @@ export function AssistantPanel({
               <Turn
                 key={message.id}
                 message={message}
+                meEmail={me.data?.email}
                 workspaceId={workspace.id}
                 conversationId={selected ?? ""}
                 canRate={!archived}
@@ -1121,7 +1129,7 @@ export function AssistantPanel({
             ))}
             {draft && (
               <>
-                <Bubble email={me.data?.email ?? "you"} at={draft.askedAt}>
+                <Bubble email={me.data?.email ?? "you"} mine at={draft.askedAt}>
                   {draft.question}
                 </Bubble>
                 <Bubble email={null} at={draft.askedAt} busy>
