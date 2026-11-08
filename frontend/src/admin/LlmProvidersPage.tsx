@@ -1,7 +1,7 @@
 "use client";
 
-import { Plus } from "lucide-react";
-import { useId, useState } from "react";
+import { Check, ChevronDown, Plus } from "lucide-react";
+import { useId, useRef, useState } from "react";
 
 import {
   useAddLlmModel,
@@ -30,7 +30,13 @@ import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "../components/ui/popover";
 import { toast } from "../components/ui/sonner";
+import { cn } from "../lib/utils";
 import { LlmFallbacks } from "./LlmFallbacks";
 import { ErrorText, NativeSelect, WarningNote, labelClasses } from "./parts";
 import {
@@ -710,8 +716,6 @@ function ModelNamePicker({
   onChange: (name: string) => void;
 }) {
   const listing = useLlmProviderModels(providerId, { enabled: open });
-  const [query, setQuery] = useState("");
-  const selectId = useId();
 
   if (listing.isPending && listing.fetchStatus !== "idle") {
     return (
@@ -742,37 +746,147 @@ function ModelNamePicker({
       </>
     );
   }
+  return (
+    <ModelCombobox models={data.models} value={value} onChange={onChange} />
+  );
+}
+
+/** A dropdown of the provider's models that filters as you type in it. */
+function ModelCombobox({
+  models,
+  value,
+  onChange,
+}: {
+  models: { name: string; registered: boolean }[];
+  value: string;
+  onChange: (name: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(-1);
+  const listId = useId();
+  const anchor = useRef<HTMLDivElement>(null);
+
   const needle = query.trim().toLowerCase();
   const shown = needle
-    ? data.models.filter(
-        (m) => m.name === value || m.name.toLowerCase().includes(needle),
-      )
-    : data.models;
+    ? models.filter((m) => m.name.toLowerCase().includes(needle))
+    : models;
+
+  function openList() {
+    setQuery("");
+    setActive(models.findIndex((m) => m.name === value));
+    setExpanded(true);
+  }
+  function choose(name: string) {
+    onChange(name);
+    setExpanded(false);
+  }
+  function move(step: number) {
+    if (!expanded) return openList();
+    let next = active;
+    for (let i = 0; i < shown.length; i++) {
+      next = (next + step + shown.length) % shown.length;
+      if (!shown[next]?.registered) return setActive(next);
+    }
+  }
+
   return (
-    <div className={labelClasses}>
-      <label htmlFor={selectId}>Model name</label>
-      <Input
-        type="search"
-        aria-label="Search models"
-        placeholder={`Search ${data.models.length} models`}
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
-      <NativeSelect
-        id={selectId}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
+    <Popover open={expanded} onOpenChange={setExpanded}>
+      <label className={labelClasses}>
+        Model name
+        <PopoverAnchor asChild>
+          <div ref={anchor} className="relative">
+            <Input
+              role="combobox"
+              aria-expanded={expanded}
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={
+                expanded && active >= 0 ? `${listId}-${active}` : undefined
+              }
+              autoComplete="off"
+              className="pe-8"
+              placeholder={
+                expanded ? value || "Search models" : "Choose a model"
+              }
+              value={expanded ? query : value}
+              onClick={() => !expanded && openList()}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setActive(-1);
+                setExpanded(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  move(1);
+                } else if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  move(-1);
+                } else if (event.key === "Enter" && expanded) {
+                  event.preventDefault();
+                  const pick = shown[active];
+                  if (pick && !pick.registered) choose(pick.name);
+                }
+              }}
+            />
+            <ChevronDown
+              aria-hidden
+              className="pointer-events-none absolute end-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+          </div>
+        </PopoverAnchor>
+      </label>
+      <PopoverContent
+        align="start"
+        sideOffset={4}
+        className="w-(--radix-popover-trigger-width) p-1"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onInteractOutside={(event) => {
+          if (
+            event.target instanceof Node &&
+            anchor.current?.contains(event.target)
+          )
+            event.preventDefault();
+        }}
       >
-        <option value="">
-          {needle && shown.length === 0 ? "No models match" : "Choose a model"}
-        </option>
-        {shown.map((m) => (
-          <option key={m.name} value={m.name} disabled={m.registered}>
-            {m.registered ? `${m.name} (already added)` : m.name}
-          </option>
-        ))}
-      </NativeSelect>
-    </div>
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label="Models"
+          className="max-h-64 overflow-y-auto"
+        >
+          {shown.length === 0 && (
+            <li className="px-2 py-1.5 text-sm text-muted-foreground">
+              No models match
+            </li>
+          )}
+          {shown.map((m, i) => (
+            <li
+              key={m.name}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={m.name === value}
+              aria-disabled={m.registered || undefined}
+              className={cn(
+                "flex cursor-default items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
+                i === active && "bg-muted",
+                m.registered && "opacity-60",
+              )}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => !m.registered && setActive(i)}
+              onClick={() => !m.registered && choose(m.name)}
+            >
+              {m.registered ? `${m.name} (already added)` : m.name}
+              {m.name === value && (
+                <Check className="size-4 shrink-0 text-primary" aria-hidden />
+              )}
+            </li>
+          ))}
+        </ul>
+      </PopoverContent>
+    </Popover>
   );
 }
 
