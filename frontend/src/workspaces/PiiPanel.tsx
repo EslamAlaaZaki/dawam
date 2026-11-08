@@ -3,6 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { ApiError } from "../api/client";
 import { isActive, useJobs } from "../api/jobs";
 import {
   piiFindingsKey,
@@ -79,7 +80,7 @@ export function PiiPanel({
   const canReview = allows(workspace, "pii.review");
   const [tab, setTab] = useState<PiiStatus>("suggested");
   const [scanOpen, setScanOpen] = useState(false);
-  const findings = usePiiFindings(workspace.id, system.id, tab);
+  const findings = usePiiFindings(workspace.id, system.id, tab, canReview);
   const scan = useStartPiiScan(workspace.id, system.id);
   const decide = useDecidePiiFinding(workspace.id, system.id);
   const jobs = useJobs(workspace.id);
@@ -99,6 +100,10 @@ export function PiiPanel({
     }
   }, [finished, queryClient, workspace.id, system.id]);
 
+  // The list endpoint answers 403 to members without the right: say so calmly.
+  const hidden =
+    !canReview ||
+    (findings.error instanceof ApiError && findings.error.status === 403);
   const current = TABS.find((t) => t.status === tab)!;
 
   return (
@@ -139,99 +144,112 @@ export function PiiPanel({
           }
         />
       )}
-      <Tabs value={tab} onValueChange={(value) => setTab(value as PiiStatus)}>
-        <TabsList className="px-0">
-          {TABS.map((t) => (
-            <TabsTrigger key={t.status} value={t.status}>
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-      {decide.isError && <ErrorText>{decide.error.message}</ErrorText>}
-      {findings.isPending && <Loading className="p-0" />}
-      {findings.isError && (
-        <ErrorText>
-          Could not load the findings: {findings.error.message}
-        </ErrorText>
-      )}
-      {findings.isSuccess && findings.data.length === 0 && (
-        <EmptyState>{current.empty}</EmptyState>
-      )}
-      {findings.isSuccess && findings.data.length > 0 && (
-        <TableCard>
-          <Table aria-label={`${current.label} findings`}>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Column</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Rule</TableHead>
-                <TableHead className="text-right">Confidence</TableHead>
-                <TableHead>Evidence</TableHead>
-                {canReview && <TableHead />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {findings.data.map((finding) => (
-                <TableRow key={finding.id}>
-                  <TableCell className={`${monoClasses} max-w-64 truncate`}>
-                    {finding.db_schema}.{finding.table}.{finding.column}
-                    {finding.is_protected && (
-                      <>
-                        {" "}
-                        <Badge variant="pii" className="font-sans">
-                          Protected
-                        </Badge>
-                      </>
-                    )}
-                  </TableCell>
-                  <TableCell>{CATEGORY_LABELS[finding.category]}</TableCell>
-                  <TableCell className={monoClasses}>{finding.rule}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {Math.round(finding.confidence * 100)}%
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {finding.evidence}
-                  </TableCell>
-                  {canReview && (
-                    <TableCell>
-                      <Actions>
-                        {finding.status !== "confirmed" && (
-                          <Button
-                            type="button"
-                            disabled={decide.isPending}
-                            onClick={() =>
-                              decide.mutate({
-                                id: finding.id,
-                                decision: "confirm",
-                              })
-                            }
-                          >
-                            Confirm
-                          </Button>
-                        )}
-                        {finding.status !== "dismissed" && (
-                          <Button
-                            type="button"
-                            disabled={decide.isPending}
-                            onClick={() =>
-                              decide.mutate({
-                                id: finding.id,
-                                decision: "dismiss",
-                              })
-                            }
-                          >
-                            Dismiss
-                          </Button>
-                        )}
-                      </Actions>
-                    </TableCell>
-                  )}
-                </TableRow>
+      {hidden ? (
+        <EmptyState>
+          Only members who can review PII see the findings.
+        </EmptyState>
+      ) : (
+        <>
+          <Tabs
+            value={tab}
+            onValueChange={(value) => setTab(value as PiiStatus)}
+          >
+            <TabsList className="px-0">
+              {TABS.map((t) => (
+                <TabsTrigger key={t.status} value={t.status}>
+                  {t.label}
+                </TabsTrigger>
               ))}
-            </TableBody>
-          </Table>
-        </TableCard>
+            </TabsList>
+          </Tabs>
+          {decide.isError && <ErrorText>{decide.error.message}</ErrorText>}
+          {findings.isPending && <Loading className="p-0" />}
+          {findings.isError && !hidden && (
+            <ErrorText>
+              Could not load the findings: {findings.error.message}
+            </ErrorText>
+          )}
+          {findings.isSuccess && findings.data.length === 0 && (
+            <EmptyState>{current.empty}</EmptyState>
+          )}
+          {findings.isSuccess && findings.data.length > 0 && (
+            <TableCard>
+              <Table aria-label={`${current.label} findings`}>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Column</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Rule</TableHead>
+                    <TableHead className="text-right">Confidence</TableHead>
+                    <TableHead>Evidence</TableHead>
+                    {canReview && <TableHead />}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {findings.data.map((finding) => (
+                    <TableRow key={finding.id}>
+                      <TableCell className={`${monoClasses} max-w-64 truncate`}>
+                        {finding.db_schema}.{finding.table}.{finding.column}
+                        {finding.is_protected && (
+                          <>
+                            {" "}
+                            <Badge variant="pii" className="font-sans">
+                              Protected
+                            </Badge>
+                          </>
+                        )}
+                      </TableCell>
+                      <TableCell>{CATEGORY_LABELS[finding.category]}</TableCell>
+                      <TableCell className={monoClasses}>
+                        {finding.rule}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {Math.round(finding.confidence * 100)}%
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {finding.evidence}
+                      </TableCell>
+                      {canReview && (
+                        <TableCell>
+                          <Actions>
+                            {finding.status !== "confirmed" && (
+                              <Button
+                                type="button"
+                                disabled={decide.isPending}
+                                onClick={() =>
+                                  decide.mutate({
+                                    id: finding.id,
+                                    decision: "confirm",
+                                  })
+                                }
+                              >
+                                Confirm
+                              </Button>
+                            )}
+                            {finding.status !== "dismissed" && (
+                              <Button
+                                type="button"
+                                disabled={decide.isPending}
+                                onClick={() =>
+                                  decide.mutate({
+                                    id: finding.id,
+                                    decision: "dismiss",
+                                  })
+                                }
+                              >
+                                Dismiss
+                              </Button>
+                            )}
+                          </Actions>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableCard>
+          )}
+        </>
       )}
     </section>
   );

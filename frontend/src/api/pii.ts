@@ -20,11 +20,13 @@ export function usePiiFindings(
   workspaceId: string,
   systemId: string,
   status: PiiStatus,
+  enabled = true,
 ) {
   const client = useApiClient();
   return useQuery({
     queryKey: [...piiFindingsKey(workspaceId, systemId), status] as const,
     retry: false,
+    enabled,
     queryFn: async () => {
       const { data, error, response } = await client.GET(
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings",

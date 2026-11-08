@@ -226,10 +226,22 @@ describe("the PII folder", () => {
     expect(await screen.findByText("crm.contacts.id_number")).toBeInTheDocument();
   });
 
-  it("shows findings without the buttons to a member without the review right", async () => {
-    renderApp(backend(VIEWER, { scans: [], decisions: [] }), FOLDER);
+  it("tells a member without the review right so, calmly, with no buttons", async () => {
+    const forbidden = json(
+      { error: { code: "forbidden", message: "Not allowed", details: {} } },
+      403,
+    );
+    const ok = backend(VIEWER, { scans: [], decisions: [] });
+    renderApp(
+      (r) => (r.path === `${SYSTEM}/pii-findings` ? forbidden : ok(r)),
+      FOLDER,
+    );
 
-    expect(await screen.findByText("crm.contacts.id_number")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Only members who can review PII see the findings."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Could not load/)).toBeNull();
+    expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Scan values" })).toBeNull();
@@ -266,7 +278,9 @@ describe("the PII folder", () => {
     const archived = workspace("owner", ["workspace.view"], "archived");
     renderApp(backend(archived, { scans: [], decisions: [] }), FOLDER);
 
-    expect(await screen.findByText("crm.contacts.id_number")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Only members who can review PII see the findings."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Scan values" })).toBeNull();
   });
 });
