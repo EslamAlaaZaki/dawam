@@ -33,6 +33,7 @@ import { KpiCatalog } from "./KpiPanels";
 import { useWorkspaceFolders } from "./useWorkspaceFolders";
 import { SourceErDiagram } from "./SourceErDiagram";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
+import { PiiPanel } from "./PiiPanel";
 import { SourceSummaryPanel } from "./SourceSummaryPanel";
 import { MembersPanel } from "./MembersPanel";
 import { ModelPanel } from "./ModelPanel";
@@ -200,6 +201,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   // `systems/<id>/er-diagram`: a Source System's tables and relationships.
   const erSystem = systemList.find(
     (system) => folder.id === `systems/${system.id}/er-diagram`,
+  );
+
+  // `systems/<id>/pii`: a Source System's PII findings and value scan.
+  const piiSystem = systemList.find(
+    (system) => folder.id === `systems/${system.id}/pii`,
   );
 
   // `systems/<id>/documents`: a Source System's uploaded documents.
@@ -379,6 +385,12 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               key={folder.id}
               workspace={workspace.data}
               system={erSystem}
+            />
+          ) : piiSystem ? (
+            <PiiPanel
+              key={folder.id}
+              workspace={workspace.data}
+              system={piiSystem}
             />
           ) : (
             <Panel aria-labelledby="folder-title">

@@ -104,19 +104,7 @@ async function api(method, path, body) {
 
 8. **Relationships (UI, or Assistant).** In each system's **ER diagram** folder, press **Find relationships** and wait for the background job to finish. Review the **Suggested** tab of the **Relationships** panel and press **Accept** or **Reject** on each row; or ask the Assistant: "Review the suggested relationships of POS: accept the ones that hold and reject any that don't", and review the Change Set. *Point out:* undeclared relationships in each system, each with its evidence (matching names and types, and the JOINs in the view and routine): `sales_receipts.store_id`, `sales_receipts.customer_id`, `receipt_lines.product_id` and `loyalty_customers.home_store_id` in POS; `payments.order_id`, `shipments.order_id` and `shipments.carrier_code` in E-commerce. `loyalty_customers.home_store_id` is found only because the view joins it. Accepted relationships appear in the **ER diagram** as "inferred, accepted".
 
-9. **PII review (API).** Name rules flagged the obvious columns at extraction. Run the value scan on every table of the open system, then list the review queue:
-
-   ```js
-   var tables = (await api("GET", `/systems/${sys}/schema`)).tables.filter((t) => t.kind === "table");
-   await api("POST", `/systems/${sys}/pii-scans`, { table_ids: tables.map((t) => t.id) });
-   (await api("GET", `/systems/${sys}/pii-findings?status=suggested`)).items;
-   ```
-
-   Confirm or dismiss each finding by its `id`:
-
-   ```js
-   await api("POST", `/systems/${sys}/pii-findings/${id}/confirm`);   // or .../dismiss
-   ```
+9. **PII review (UI).** Name rules flagged the obvious columns at extraction. In each system's **PII** folder, press **Scan values** (every table is ticked; untick any to narrow the scan) and **Start scan**. When the job finishes, the **To review** tab lists the findings, most confident first: **Confirm** or **Dismiss** each, and watch it move to the **Confirmed** or **Dismissed** tab and the Source summary's "PII found" count drop.
 
    *Point out:* `+966` and `05` mobile numbers, emails and dates of birth are found with their category and the share of sampled rows that matched, while names, genders (POS) and delivery addresses and postal codes (E-commerce) are flagged by their column names alone. Sampled values are never stored, and the ER diagram marks tables with protected columns.
 
