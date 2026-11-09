@@ -20,7 +20,6 @@ from dawam.modules.workspaces import WorkspaceService
 from .workspace_ai import (
     ApprovedModel,
     ChosenModel,
-    DataSharingLevel,
     WorkspaceAiService,
     WorkspaceAiView,
     new_workspace_choices,
@@ -111,13 +110,17 @@ class WorkspaceAiSettings(BaseModel):
         description="Every model role (agent, light, embedding, vision, rerank) is refused an "
         "external provider."
     )
-    data_sharing_level: DataSharingLevel = Field(
-        description="What the AI may see, cumulative: `metadata` < `profiles` < `documents` "
-        "< `samples`."
+    share_profiles: bool = Field(
+        description="The AI may see profile statistics. Metadata is always shared."
+    )
+    share_documents: bool = Field(description="The AI may read the text of uploaded documents.")
+    share_samples: bool = Field(
+        description="The AI may see sample rows (and run `run_source_query`); top-N values and "
+        "min/max need it too."
     )
     auto_retrieve: bool = Field(
         description="On: the first message of an assistant conversation carries the top 3 "
-        "document passages for it, quoted as data (needs the `documents` level)."
+        "document passages for it, quoted as data (needs `share_documents`)."
     )
     agent_models: list[WorkspaceModel] = Field(
         description="The Workspace's agent models; the default answers unless a message "
@@ -164,7 +167,15 @@ class WorkspaceAiSettingsRequest(BaseModel):
     """Model fields left out keep their current value."""
 
     internal_only: bool
-    data_sharing_level: DataSharingLevel
+    share_profiles: bool | None = Field(
+        default=None, description="Left out: keeps the current value (off for a new Workspace)."
+    )
+    share_documents: bool | None = Field(
+        default=None, description="Left out: keeps the current value (off for a new Workspace)."
+    )
+    share_samples: bool | None = Field(
+        default=None, description="Left out: keeps the current value (off for a new Workspace)."
+    )
     auto_retrieve: bool | None = Field(
         default=None, description="Left out: keeps the current value."
     )
@@ -227,7 +238,9 @@ def _out(view: WorkspaceAiView) -> WorkspaceAiSettings:
     rerank = view.chosen["rerank"]
     return WorkspaceAiSettings(
         internal_only=settings.internal_only,
-        data_sharing_level=settings.data_sharing_level,
+        share_profiles=settings.policy.profiles,
+        share_documents=settings.policy.documents,
+        share_samples=settings.policy.samples,
         auto_retrieve=settings.auto_retrieve,
         agent_models=[_chosen(m) for m in view.chosen["agent"]],
         light_models=[_chosen(m) for m in view.chosen["light"]],
@@ -279,7 +292,9 @@ def set_ai_settings(
             user,
             workspace_id,
             internal_only=body.internal_only,
-            data_sharing_level=body.data_sharing_level,
+            share_profiles=body.share_profiles,
+            share_documents=body.share_documents,
+            share_samples=body.share_samples,
             auto_retrieve=body.auto_retrieve,
             agent_model_ids=body.agent_model_ids if agents else list(current.agent),
             default_agent_model_id=(

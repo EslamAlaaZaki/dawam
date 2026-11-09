@@ -67,7 +67,9 @@ def use_agents(roles: RoleClients, workspace_id, *models, internal_only=False, l
         f"/api/v1/workspaces/{workspace_id}/ai-settings",
         json={
             "internal_only": internal_only,
-            "data_sharing_level": "metadata",
+            "share_profiles": False,
+            "share_documents": False,
+            "share_samples": False,
             "agent_model_ids": [m["id"] for m in models],
             "default_agent_model_id": models[0]["id"],
             "light_model_ids": [m["id"] for m in light],

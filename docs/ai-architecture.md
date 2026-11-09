@@ -65,7 +65,7 @@ flowchart TD
     A1 & A2 & A3 & A4 & A5 & A6 --> TR["UrllibTransport"] --> P(["Model provider over HTTPS"])
 
     LOOP -->|"execute(name, args)"| TOOLS["BoundTools / ToolRegistry<br/>read tools run in parallel"]
-    TOOLS --> AUTHZ{"Policy action allowed?<br/>Data-sharing level allowed?"}
+    TOOLS --> AUTHZ{"Policy action allowed?<br/>Data kind shared?"}
     AUTHZ -->|no| REF["refused result"]
     AUTHZ -->|yes| SL["Service layer<br/>same one the REST API uses"]
     SL --> S1["sources: catalog, profiles,<br/>PII, guarded SQL"]
@@ -172,6 +172,7 @@ flowchart LR
 
 - **Roles:** `agent` (the assistant and jobs), `light` (a cheaper model; falls back to the default agent model; used for conversation compaction (§4.3), passage context headers (§8.2) and query rewriting (§8.4); no fallback to the agent role for those) and `embedding` (document vectors), `vision` (reads page and image bytes for OCR and image descriptions, §8.1; optional, with no fallback: a Workspace without one uses the self-hosted OCR engine and leaves images undescribed) and `rerank` (a cross-encoder that reorders search results, §8.4; optional, with no fallback: a Workspace without one keeps the fused order, #373). Gateway `vision(prompt, images)` is implemented by the OpenAI-compatible, Anthropic, Bedrock and Gemini adapters, goes through the `MeteredGateway` like `chat`, and "Test connection" probes it. Gateway `rerank(query, documents)` returns one score per document; only the OpenAI-compatible adapter implements it (`POST /rerank`, Cohere, Jina and vLLM reply shapes; malformed, partial, duplicate or non-finite scores are rejected), the others refuse with `bad_request`. It is retried like `chat`, goes through the `MeteredGateway` (budgets, internal-only, tokens recorded under `rerank`), and "Test connection" ranks two documents; a rerank-only model is never asked to chat.
 - **Light role uses:** besides the above, the light model writes **conversation titles** after the first answer (the first-line title stays until then, on any failure, and for member-named conversations; listed in the AI settings light features) and takes **simple chat questions** (see routing below). Summaries run on it too (#354).
+- **AI privacy tab** (#565): the Workspace settings tab "AI privacy" (between "AI" and "RAG settings") shows metadata as always shared and three switches, Profile statistics, Documents and Sample rows, each independent and off for a new Workspace. Owners of an active Workspace change them (editors, viewers and archived Workspaces see them read-only); turning one on asks for confirmation, turning one off does not. It is saved with its own Save through `PUT ai-settings` (`share_profiles`, `share_documents`, `share_samples`; left out keeps the current value), and the AI tab no longer sends them. The change is audited as `share_*` in the Workspace AI settings audit entry.
 - **Internal-only switch** (#526): an owner of an active Workspace turns `internal_only` on and off in the AI settings panel (editors, viewers and archived Workspaces see it read-only). Both directions ask for confirmation; it is saved with the panel's Save through `PUT ai-settings`. Turning it on drops every external model from the form, so the owner picks internal ones in the same save (the API refuses an external model with 422 `model_not_allowed`); a changed embedding model embeds indexed documents again in the background (ADR 0006). The switch cannot be turned on while `internal_agent_available` is false (API: 422 `no_internal_model`). The change is audited as `internal_only` in the Workspace AI settings audit entry.
 - **Fallback chain** (#406, #550): admins set an ordered fallback list per role (`agent`, `light`) in `llm_role_fallbacks` (`GET/PUT /admin/llm/fallbacks`, "Fallback models" on the Language models page). The candidates of a run are that list, in its order, kept to the models the Workspace uses for the role (`llm_workspace_models`) that are still enabled and tested (external ones are skipped in an internal-only Workspace), minus every model that already failed in the run. Any `LlmError` before the first event (unavailable, timeout, rate limit, auth, rejected request, invalid reply, and a context overflow after the agent's shorten-and-retry) hands over to the next candidate; budget and internal-only refusals (`ApiError`) never do, and a reply already begun is never restarted. Only a model whose candidate list was empty from the start gets the usual 3 retries with backoff; otherwise every model, the last fallback included, is asked once with no gateway retry and no wait (`Gateway.chat(max_retries=0)`). The `MeteredGateway` serves one run (a chat answer or an `assistant_task` job, its specialists included): the model that answered keeps serving it, and `model_id` / `fell_back` say which one that is. A member's pick falls back like the default. When every model fails, the error names each model and its failure. `run_agent` calls with `fall_back=False` and hands over itself (`fall_back_from`), then re-reads the new model's capabilities (context window, streaming, native or prompted tool calling; a native history is rewritten in the prompted form) and fits the step again (`fit_messages`). The answer stores the model in `assistant_messages.model_id` with `fell_back`; the chat labels it `<model> (fallback)` and, for an agent answer, the conversation's pick (`last_model_id`) and the picker move to that model (`done.pick_moved`; never for the light model's answer; the member can switch back). A job logs "`<model>` took over from `<model>`, which failed: …" and repeats it in its summary. A job keeps the run's models in its checkpoint (`models`: the one serving and the ones that failed, redacted), so a job resumed after `ask_member` or a worker restart carries on with the model that took over while it is still a candidate, else the next one; older checkpoints without it start from the primary. Tool-call ids are made portable by every adapter (`[A-Za-z0-9_-]`, never empty, at most 64 characters; an id that had to change ends with a short hash of the original so distinct ids stay distinct: `wire.received_call_id`, and `sent_call_id` for Anthropic and Bedrock), so a history one provider wrote is accepted by the next. Gemini keeps each call's `thoughtSignature` on `ToolCall.thought_signature` and gets it back; a call Gemini did not make is sent Google's placeholder `skip_thought_signature_validator` (to verify against a real Gemini 3 model before release).
 - **Task routing** (`assistant/internal/routing.py`): a short single-line question goes to the light model when one with tool calling exists; generation goes to the agent model; a member's explicit model pick always wins.
@@ -208,18 +209,18 @@ flowchart TD
     CALL --> U["Record tokens in llm_usage<br/>workspace, user, model"]
 ```
 
-### 3.6 Data-sharing levels
+### 3.6 Data sharing (AI privacy)
 
-`DataSharingLevel` is cumulative and set per Workspace by its owners:
+`DataSharingLevel` names four kinds of data. `metadata` is always shared; the other three are independent opt-ins an owner turns on per Workspace (`share_profiles`, `share_documents`, `share_samples` on `llm_workspace_settings`, all off for a new Workspace; migration `d7a3f5b2c618` converted the old cumulative level so no Workspace lost access). `DataSharingPolicy.allows(kind)` answers for one kind:
 
-| Level | What the model may see |
+| Kind | What the model may see |
 |---|---|
-| `metadata` | schemas, names, descriptions, KPIs, lineage, scores |
-| `profiles` | + profile statistics (null share, distinct counts, lengths, patterns) |
-| `documents` | + document text (enables `search_documents`, `read_file`, `describe_image`, and **embedding** documents; also sending page and image bytes to a non-internal vision model) |
-| `samples` | + real values: top-N values, min/max, and `run_source_query` (see ADR 0002) |
+| `metadata` | schemas, names, descriptions, KPIs, lineage, scores (always) |
+| `profiles` | profile statistics (null share, distinct counts, lengths, patterns) |
+| `documents` | document text (enables `search_documents`, `read_file`, `describe_image`, and **embedding** documents; also sending page and image bytes to a non-internal vision model) |
+| `samples` | real values: top-N values, min/max, and `run_source_query` (see ADR 0002) |
 
-Tools declare the level they need; the tool registry hides and refuses tools above the Workspace's level.
+Tools declare the level they need; the tool registry hides and refuses tools whose kind the Workspace does not share (403 `data_sharing_level`).
 
 ---
 
@@ -463,7 +464,7 @@ Tool(name, description, arguments: type[BaseModel], kind: "read"|"write",
 
 - The JSON Schema sent to the model is `arguments.model_json_schema()` (Pydantic). A `compact` flag (set on `generate_dw_schema`, `draft_mappings` and `propose_changes`) drops generated `title` keywords to keep these large schemas short, since schemas are re-sent on every call; long guidance such as the column data-type list lives in the tool's first-phase result.
 - `ToolRegistry` holds the installation's tools; `bind(user, workspace_id, policy, conversation_id, job=)` returns a `BoundTools` (the `ToolSet` for one run).
-- **`specs()`** offers only the tools this user may use right now (policy action + data-sharing level); `start_job` is hidden inside jobs.
+- **`specs()`** offers only the tools this user may use right now (policy action + shared data kind); `start_job` is hidden inside jobs.
 - **`execute()`** checks again regardless of what was offered: unknown tool → `error`; not allowed → `refused`; Pydantic validation failure → `error` with the field problems; `ApiError` 401/403 → `refused`, other → `error`; unexpected exception → logged, generic `error`. Tools never raise into the loop.
 - Tools call the **same service layer as the REST API**, as the requesting user, so the assistant can never do more than the member could do in the UI.
 - Every object a tool returns carries a `link` (an app path) the answer cites.
@@ -471,8 +472,8 @@ Tool(name, description, arguments: type[BaseModel], kind: "read"|"write",
 flowchart TD
     C["execute(name, arguments)"] --> E1{"Tool exists and is<br/>offered in this mode?"}
     E1 -->|no| O1(["error: no such tool"])
-    E1 -->|yes| E2{"Workspace data-sharing<br/>level high enough?"}
-    E2 -->|no| O2(["refused: data_sharing_level"])
+    E1 -->|yes| E2{"Workspace shares<br/>this kind of data?"}
+    E2 -->|no| O2(["refused: data_sharing_level (kind not shared)"])
     E2 -->|yes| E3{"Member may perform<br/>the tool's policy action?"}
     E3 -->|no| O3(["refused"])
     E3 -->|yes| E4{"Arguments valid<br/>for the Pydantic model?"}
@@ -658,7 +659,7 @@ With `DAWAM_PII_NER_ENABLED` on (#385), `redact_text` also masks person names an
 
 ### 7.5 Data residency
 
-Internal-only Workspaces (default when the installation has a tested internal agent model) refuse external providers for **every** role, including embeddings. Combined with the data-sharing level, an owner controls whether anything leaves the network.
+Internal-only Workspaces (default when the installation has a tested internal agent model) refuse external providers for **every** role, including embeddings. Combined with the AI privacy opt-ins, an owner controls whether anything leaves the network.
 
 ### 7.6 Rate limits
 
@@ -746,7 +747,7 @@ Extracted text is capped at 2,000,000 characters. Text made only of Docling's im
 - **Self-hosted:** `DoclingOcr`, Docling with RapidOCR (PP-OCR models on ONNX Runtime, CPU or an NVIDIA GPU). RapidOCR has no recognizer that reads both scripts, so each page is read once for English and once for Arabic, and the reading with the higher mean confidence is kept. Pages that have their own text keep it. This is the default; `document_ocr=off` disables it.
 - **Vision model:** `VisionOcr` renders each scanned page at 150 dpi and sends it, one page per call, to the Workspace's `vision` model through the `MeteredGateway` (budgets, usage and internal-only apply), asking for the page as Markdown. The prompt tells the model to ignore instructions written on the page, and the reply is untrusted text like any document text.
 
-Which engine runs, per file (`_ocr_engine`): if the Workspace has a tested vision model **and** the policy lets the document reach its provider (an internal provider always does; an external one needs level `documents` or above and a Workspace that is not internal-only), the vision model reads the scans. Otherwise, or if the vision call fails (budget, provider error), the self-hosted engine reads them. If that is off too, the scan stays unread. Whenever the choice was not the plain one, the file's `index_note` says why (for example "…does not let documents reach its vision model's provider, so the self-hosted OCR engine read the scanned pages."), and the note is shown with the file. If OCR fails altogether, the text found without it stands. The device for Docling and RapidOCR is the `document_accelerator` setting (`auto`, `cpu`, `cuda`); the backend image is built for CPU or CUDA and bundles the pinned layout and table models, so nothing is downloaded at run time. The engine choices are environment settings and code constants (the OCR trigger threshold is not one of the Document AI settings, §8.4); the self-hosted engine is RapidOCR, chosen by the maintainer (the OCR bake-off, #450, was closed as not planned).
+Which engine runs, per file (`_ocr_engine`): if the Workspace has a tested vision model **and** the policy lets the document reach its provider (an internal provider always does; an external one needs `share_documents` and a Workspace that is not internal-only), the vision model reads the scans. Otherwise, or if the vision call fails (budget, provider error), the self-hosted engine reads them. If that is off too, the scan stays unread. Whenever the choice was not the plain one, the file's `index_note` says why (for example "…does not let documents reach its vision model's provider, so the self-hosted OCR engine read the scanned pages."), and the note is shown with the file. If OCR fails altogether, the text found without it stands. The device for Docling and RapidOCR is the `document_accelerator` setting (`auto`, `cpu`, `cuda`); the backend image is built for CPU or CUDA and bundles the pinned layout and table models, so nothing is downloaded at run time. The engine choices are environment settings and code constants (the OCR trigger threshold is not one of the Document AI settings, §8.4); the self-hosted engine is RapidOCR, chosen by the maintainer (the OCR bake-off, #450, was closed as not planned).
 
 **Images and diagrams** (`describe_image` in `internal/ocr.py`). An uploaded PNG, JPEG, GIF or WebP is sent to the vision model under the same policy rule as scans, with a prompt that asks for tables, columns, keys, relationships, boxes, arrows and labels (ERDs, architecture diagrams, report mock-ups). The reply, headed `# Description of <file name>`, is stored as the file's `extracted_text`, so it is chunked, indexed and found by `search_documents` like any document text. With no usable vision model, or if the call fails, the image stays unread (`none`) and the `index_note` says why. The assistant's **`describe_image(file_id)`** tool (level `documents`) returns the stored description or, when there is none, asks the vision model afresh if the policy allows (nothing is stored). It answers 422 `no_vision` when it cannot, and 422 `not_an_image` for other files. The description reaches the model as quoted data like all retrieved text.
 
@@ -778,7 +779,7 @@ Which engine runs, per file (`_ocr_engine`): if the Workspace has a tested visio
 **Stemming** (#374, `stemmed()` / `stems()` in `files/internal/arabic.py`), run after normalisation, so a query word matches its other forms (`loans` / `loan`, `used` / `uses`, Arabic words with a prefix or suffix). Arabic: a light10-style stemmer that strips one prefix and one suffix and keeps at least 3 letters. English: a small suffix stripper. Digits, codes and mixed tokens are left alone. Indexing stores the stemmed text in `search_text`, and the query's `tsquery` is built from the stemmed words, so both sides share one code path. It is lossy: some Arabic words over-stem. Migration `e4b8a1c6d937` re-stemmed existing passages; its downgrade does nothing (a re-index restores the old form).
 
 **Embeddings are optional and policy-gated.** A passage is embedded only when all of these hold:
-- the Workspace's data-sharing level is `documents` or above;
+- the Workspace shares documents (`share_documents`);
 - the Workspace has an embedding model that passed "Test connection";
 - the model is internal, or the Workspace isn't internal-only.
 
@@ -836,13 +837,13 @@ flowchart TD
 
 Retrieval is a **tool** (`search_documents`) the agent decides to call, so it can search several times with different words, then `read_file` the whole document. The model cites passages as *document + section*, linked to the file.
 
-**Auto-retrieve** (#378, optional). A per-Workspace AI setting, `auto_retrieve` (default off; audited; on the AI settings GET and PUT, no UI toggle; its passage count stays a code constant). When it is on, the assistant runs `search_documents` as the member on the **first message of a chat** (limit 3) and appends the passages to that message as quoted, untrusted data, with no tool-call round trip. A refusal (for example a data-sharing level below `documents`), an error or an empty result leaves the message unchanged. Follow-up messages get none, and the stored message is never modified.
+**Auto-retrieve** (#378, optional). A per-Workspace AI setting, `auto_retrieve` (default off; audited; on the AI settings GET and PUT, no UI toggle; its passage count stays a code constant). When it is on, the assistant runs `search_documents` as the member on the **first message of a chat** (limit 3) and appends the passages to that message as quoted, untrusted data, with no tool-call round trip. A refusal (for example documents not shared), an error or an empty result leaves the message unchanged. Follow-up messages get none, and the stored message is never modified.
 
 **Graph retrieval** (#379). The `explore_graph` tool (§6.2) adds a structured route beside documents: it returns an object's neighbours up to 2 hops away (lineage, KPI links, source column relationships, and the documents that mention it).
 
 **Document AI settings** (#380, `llm/document_ai.py`, `document_ai_api.py`). The knobs of the RAG pipeline live in one registry (`KNOBS`), grouped as chunking, indexing, retrieval and reranking, instead of code constants. Defaults are in `DocumentAiConfig`: `chunking_strategy`, `chunk_size`, `chunk_overlap`, `contextual_headers`, `embed_batch`, `max_extracted_chars`, `max_pdf_pages`, `top_k`, `fts_candidates`, `vector_candidates`, `fts_weight`, `vector_weight`, `rrf_k`, `mmr_lambda`, `min_text_rank`, `min_vector_similarity`, `rerank`, `rerank_top_n`. Two layers:
 - **Installation** (`GET|PUT /admin/llm/document-ai`, admins): the values, plus owner min/max bounds for each numeric knob owners may override. Table `llm_document_ai_settings`.
-- **Workspace overrides** (`GET|PUT /workspaces/{id}/document-ai`; members read, owners write; table `llm_workspace_document_ai`). Owners may override the chunking and retrieval knobs and `rerank`; `embed_batch`, the extraction caps, `rrf_k` and `rerank_top_n` stay admin-only. An unknown key is 422 `unknown_setting`, a known knob owners cannot override 422 `not_overridable`, a value outside the bounds 422 `out_of_bounds`, and a write naming an older `version` 409 `settings_changed`.
+- **Workspace overrides** (`GET|PUT /workspaces/{id}/document-ai`; the Workspace settings tab "RAG settings"; members read, owners write; table `llm_workspace_document_ai`). Owners may override the chunking and retrieval knobs and `rerank`; `embed_batch`, the extraction caps, `rrf_k` and `rerank_top_n` stay admin-only. An unknown key is 422 `unknown_setting`, a known knob owners cannot override 422 `not_overridable`, a value outside the bounds 422 `out_of_bounds`, and a write naming an older `version` 409 `settings_changed`.
 
 `document_ai_config(engine, workspace_id)` is the one effective-settings lookup that indexing (chunking, overlap, headers, embed batch, extraction caps) and search (candidates, weights, MMR, floors, rerank, top-k) read: code defaults, then the installation's values, then the Workspace's overrides clamped to the current bounds (an admin may tighten them after an owner chose). Changes are audited: installation changes as a `document_ai_settings_changed` security event, Workspace changes in the audit trail and activity feed. Migration `c8f2a4d6e913` created the tables and moved `chunking_strategy` out of the Workspace AI settings (`PUT /ai-settings` no longer accepts it). Still code constants: the OCR trigger threshold, parent-chunk sizes and the auto-retrieve passage count. UI: the admin page "Document AI" and a "Document AI" tab in Workspace settings.
 

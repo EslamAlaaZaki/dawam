@@ -3171,6 +3171,14 @@ FOLDER_TOOLS: dict[str, frozenset[str]] = {
 ``systems/<id>/source-schema``, ...); any other folder gets only the base."""
 
 
+_SHARED_KIND = {
+    DataSharingLevel.METADATA: "metadata",
+    DataSharingLevel.PROFILES: "profile statistics",
+    DataSharingLevel.DOCUMENTS: "documents",
+    DataSharingLevel.SAMPLES: "sample rows",
+}
+
+
 class ToolRegistry:
     """The tools of one installation, ready to be bound to a user in a Workspace."""
 
@@ -3217,8 +3225,8 @@ class ToolRegistry:
             return ApiError(
                 403,
                 "data_sharing_level",
-                f"The Workspace's data-sharing level does not allow `{tool.name}`: an owner "
-                f"must raise it to `{tool.level.value}`.",
+                f"The Workspace does not share {_SHARED_KIND[tool.level]} with the AI, so "
+                f"`{tool.name}` is off: an owner must turn it on under AI privacy.",
             )
         try:
             self._workspaces.authorize(ctx.user, tool.action, ctx.workspace_id)

@@ -20273,17 +20273,6 @@
         ],
         "title": "CustomPiiRule"
       },
-      "DataSharingLevel": {
-        "type": "string",
-        "enum": [
-          "metadata",
-          "profiles",
-          "documents",
-          "samples"
-        ],
-        "title": "DataSharingLevel",
-        "description": "What the AI may see, cumulative: each level includes every one before it."
-      },
       "DataWarehouse": {
         "properties": {
           "set_up": {
@@ -33030,14 +33019,25 @@
             "title": "Internal Only",
             "description": "Every model role (agent, light, embedding, vision, rerank) is refused an external provider."
           },
-          "data_sharing_level": {
-            "$ref": "#/components/schemas/DataSharingLevel",
-            "description": "What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`."
+          "share_profiles": {
+            "type": "boolean",
+            "title": "Share Profiles",
+            "description": "The AI may see profile statistics. Metadata is always shared."
+          },
+          "share_documents": {
+            "type": "boolean",
+            "title": "Share Documents",
+            "description": "The AI may read the text of uploaded documents."
+          },
+          "share_samples": {
+            "type": "boolean",
+            "title": "Share Samples",
+            "description": "The AI may see sample rows (and run `run_source_query`); top-N values and min/max need it too."
           },
           "auto_retrieve": {
             "type": "boolean",
             "title": "Auto Retrieve",
-            "description": "On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs the `documents` level)."
+            "description": "On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs `share_documents`)."
           },
           "agent_models": {
             "items": {
@@ -33119,7 +33119,9 @@
         "type": "object",
         "required": [
           "internal_only",
-          "data_sharing_level",
+          "share_profiles",
+          "share_documents",
+          "share_samples",
           "auto_retrieve",
           "agent_models",
           "light_models",
@@ -33140,8 +33142,41 @@
             "type": "boolean",
             "title": "Internal Only"
           },
-          "data_sharing_level": {
-            "$ref": "#/components/schemas/DataSharingLevel"
+          "share_profiles": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Profiles",
+            "description": "Left out: keeps the current value (off for a new Workspace)."
+          },
+          "share_documents": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Documents",
+            "description": "Left out: keeps the current value (off for a new Workspace)."
+          },
+          "share_samples": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Samples",
+            "description": "Left out: keeps the current value (off for a new Workspace)."
           },
           "auto_retrieve": {
             "anyOf": [
@@ -33241,8 +33276,7 @@
         },
         "type": "object",
         "required": [
-          "internal_only",
-          "data_sharing_level"
+          "internal_only"
         ],
         "title": "WorkspaceAiSettingsRequest",
         "description": "Model fields left out keep their current value."

@@ -36,19 +36,17 @@ ROLES = ("agent", "light", "embedding", "vision", "rerank")
 
 
 class DataSharingLevel(StrEnum):
-    """What the AI may see, cumulative: each level includes every one before it."""
+    """What data the AI may see. Metadata is always shared; the other three are independent
+    opt-ins an owner turns on one by one (all off for a new Workspace)."""
 
     METADATA = "metadata"
+    """Always shared."""
     PROFILES = "profiles"
-    """+ profile statistics."""
+    """Profile statistics."""
     DOCUMENTS = "documents"
-    """+ document text."""
+    """Document text."""
     SAMPLES = "samples"
-    """+ sample rows (enables ``run_source_query``)."""
-
-    @property
-    def rank(self) -> int:
-        return tuple(DataSharingLevel).index(self)
+    """Sample rows (enables ``run_source_query``); top-N values and min/max need it too."""
 
 
 @dataclass(frozen=True)
@@ -56,11 +54,21 @@ class DataSharingPolicy:
     """The one question other modules ask before sending data to a model:
     ``policy.allows(DataSharingLevel.SAMPLES)``."""
 
-    level: DataSharingLevel
+    profiles: bool = False
+    documents: bool = False
+    samples: bool = False
 
     def allows(self, needed: DataSharingLevel) -> bool:
-        """True when the Workspace's level is ``needed`` or higher."""
-        return self.level.rank >= needed.rank
+        """True for metadata, and for the other kinds only when the owner turned them on."""
+        match needed:
+            case DataSharingLevel.METADATA:
+                return True
+            case DataSharingLevel.PROFILES:
+                return self.profiles
+            case DataSharingLevel.DOCUMENTS:
+                return self.documents
+            case DataSharingLevel.SAMPLES:
+                return self.samples
 
 
 @dataclass(frozen=True)
@@ -85,15 +93,11 @@ class WorkspaceModels:
 class WorkspaceAiSettings:
     workspace_id: uuid.UUID
     internal_only: bool
-    data_sharing_level: DataSharingLevel
+    policy: DataSharingPolicy
     models: WorkspaceModels
     updated_at: datetime | None
     auto_retrieve: bool = False
     """The first message of a conversation carries the top document passages."""
-
-    @property
-    def policy(self) -> DataSharingPolicy:
-        return DataSharingPolicy(self.data_sharing_level)
 
     @property
     def embedding_model_id(self) -> uuid.UUID | None:
@@ -189,11 +193,15 @@ def load_settings(db: Session, workspace_id: uuid.UUID) -> WorkspaceAiSettings:
     record = db.get(WorkspaceAiSettingsRecord, workspace_id)
     models = _models(_model_rows(db, workspace_id))
     if record is None:
-        return WorkspaceAiSettings(workspace_id, False, DataSharingLevel.METADATA, models, None)
+        return WorkspaceAiSettings(workspace_id, False, DataSharingPolicy(), models, None)
     return WorkspaceAiSettings(
         workspace_id=record.workspace_id,
         internal_only=record.internal_only,
-        data_sharing_level=DataSharingLevel(record.data_sharing_level),
+        policy=DataSharingPolicy(
+            profiles=record.share_profiles,
+            documents=record.share_documents,
+            samples=record.share_samples,
+        ),
         models=models,
         updated_at=record.updated_at,
         auto_retrieve=record.auto_retrieve,
@@ -437,7 +445,9 @@ def new_workspace_settings(
     return WorkspaceAiSettingsRecord(
         workspace_id=workspace_id,
         internal_only=_internal_agent_available(db),
-        data_sharing_level=DataSharingLevel.METADATA.value,
+        share_profiles=False,
+        share_documents=False,
+        share_samples=False,
         auto_retrieve=False,
         updated_at=at,
     )
@@ -552,7 +562,9 @@ class WorkspaceAiService:
         workspace_id: uuid.UUID,
         *,
         internal_only: bool,
-        data_sharing_level: DataSharingLevel,
+        share_profiles: bool | None = None,
+        share_documents: bool | None = None,
+        share_samples: bool | None = None,
         agent_model_ids: list[uuid.UUID] | None = None,
         default_agent_model_id: uuid.UUID | None = None,
         light_model_ids: list[uuid.UUID] | None = None,
@@ -596,7 +608,12 @@ class WorkspaceAiService:
             )
             old = _audited(record, current)
             record.internal_only = internal_only
-            record.data_sharing_level = data_sharing_level.value
+            if share_profiles is not None:
+                record.share_profiles = share_profiles
+            if share_documents is not None:
+                record.share_documents = share_documents
+            if share_samples is not None:
+                record.share_samples = share_samples
             if auto_retrieve is not None:
                 record.auto_retrieve = auto_retrieve
             record.updated_at = now
@@ -664,7 +681,9 @@ def _audited(record: WorkspaceAiSettingsRecord, models: WorkspaceModels) -> dict
 
     return {
         "internal_only": record.internal_only,
-        "data_sharing_level": record.data_sharing_level,
+        "share_profiles": record.share_profiles,
+        "share_documents": record.share_documents,
+        "share_samples": record.share_samples,
         "auto_retrieve": record.auto_retrieve,
         "agent_model_ids": ids(models.agent),
         "default_agent_model_id": one(models.default_agent),

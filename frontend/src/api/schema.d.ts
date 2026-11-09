@@ -6106,12 +6106,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /**
-         * DataSharingLevel
-         * @description What the AI may see, cumulative: each level includes every one before it.
-         * @enum {string}
-         */
-        DataSharingLevel: "metadata" | "profiles" | "documents" | "samples";
         /** DataWarehouse */
         DataWarehouse: {
             /**
@@ -11627,11 +11621,24 @@ export interface components {
              * @description Every model role (agent, light, embedding, vision, rerank) is refused an external provider.
              */
             internal_only: boolean;
-            /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
-            data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Share Profiles
+             * @description The AI may see profile statistics. Metadata is always shared.
+             */
+            share_profiles: boolean;
+            /**
+             * Share Documents
+             * @description The AI may read the text of uploaded documents.
+             */
+            share_documents: boolean;
+            /**
+             * Share Samples
+             * @description The AI may see sample rows (and run `run_source_query`); top-N values and min/max need it too.
+             */
+            share_samples: boolean;
             /**
              * Auto Retrieve
-             * @description On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs the `documents` level).
+             * @description On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs `share_documents`).
              */
             auto_retrieve: boolean;
             /**
@@ -11680,7 +11687,21 @@ export interface components {
         WorkspaceAiSettingsRequest: {
             /** Internal Only */
             internal_only: boolean;
-            data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Share Profiles
+             * @description Left out: keeps the current value (off for a new Workspace).
+             */
+            share_profiles?: boolean | null;
+            /**
+             * Share Documents
+             * @description Left out: keeps the current value (off for a new Workspace).
+             */
+            share_documents?: boolean | null;
+            /**
+             * Share Samples
+             * @description Left out: keeps the current value (off for a new Workspace).
+             */
+            share_samples?: boolean | null;
             /**
              * Auto Retrieve
              * @description Left out: keeps the current value.

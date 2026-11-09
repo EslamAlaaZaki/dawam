@@ -50,7 +50,6 @@ def choose(roles: RoleClients, model_id: str | None):
         f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
         json={
             "internal_only": current["internal_only"],
-            "data_sharing_level": current["data_sharing_level"],
             "embedding_model_id": model_id,
         },
     )

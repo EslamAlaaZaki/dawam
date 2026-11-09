@@ -28,9 +28,10 @@ Public interface. Other modules import only what is re-exported here:
 - ``WorkspaceAiService``: a Workspace's AI settings (its Workspace Models, internal-only,
   data-sharing level; owners only, audited). ``policy(workspace_id)`` is the one
   ``DataSharingPolicy`` other modules ask before sending data to a model:
-  ``policy.allows(DataSharingLevel.SAMPLES)`` (levels are cumulative: metadata < profiles <
-  documents < samples). An internal-only Workspace takes only internal models, and its gateway
-  refuses external providers for every role (409 ``external_provider_refused``).
+  ``policy.allows(DataSharingLevel.SAMPLES)`` (metadata is always shared; profiles,
+  documents and samples are independent owner opt-ins). An internal-only Workspace takes only
+  internal models, and its gateway refuses external providers for every role (409
+  ``external_provider_refused``).
   ``on_workspace_created`` is the ``WorkspaceCreatedHook`` the composition root sets
   (``app.state.on_workspace_created``): it stores the creator's embedding, default agent and
   light models, and makes the Workspace internal-only when the installation has a tested

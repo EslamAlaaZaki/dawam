@@ -34,9 +34,12 @@ FULL_NAME = "Amira Hassan"
 
 
 def level(roles: RoleClients, value: str) -> None:
+    """Shares ``value`` and every kind below it (metadata < profiles < documents < samples)."""
+    kinds = ("profiles", "documents", "samples")
+    shared = kinds[: kinds.index(value) + 1] if value in kinds else ()
     response = roles.client("owner").put(
         f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
-        json={"internal_only": False, "data_sharing_level": value},
+        json={"internal_only": False, **{f"share_{k}": k in shared for k in kinds}},
     )
     assert response.status_code == 200, response.text
 

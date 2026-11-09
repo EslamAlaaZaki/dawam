@@ -20,6 +20,7 @@ import {
 } from "../components/ui/dialog";
 import { toast } from "../components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { AiPrivacyPanel } from "./AiPrivacyPanel";
 import { AiSettingsPanel } from "./AiSettingsPanel";
 import { DetailsFields, readDetails } from "./DetailsFields";
 import { DocumentAiPanel } from "./DocumentAiPanel";
@@ -69,7 +70,7 @@ export function WorkspaceSettingsDialog({
         <DialogHeader>
           <DialogTitle>Workspace settings</DialogTitle>
           <DialogDescription className="sr-only">
-            Details, AI settings and, for those allowed, archiving and deleting
+            Details, AI settings, AI privacy, RAG settings and, for those allowed, archiving and deleting
             this Workspace.
           </DialogDescription>
         </DialogHeader>
@@ -88,8 +89,11 @@ export function WorkspaceSettingsDialog({
             <TabsTrigger value="ai" className={tabClasses}>
               AI
             </TabsTrigger>
+            <TabsTrigger value="ai-privacy" className={tabClasses}>
+              AI privacy
+            </TabsTrigger>
             <TabsTrigger value="document-ai" className={tabClasses}>
-              Document AI
+              RAG settings
             </TabsTrigger>
             {showLifecycle && (
               <TabsTrigger value="lifecycle" className={tabClasses}>
@@ -103,6 +107,9 @@ export function WorkspaceSettingsDialog({
             </TabsContent>
             <TabsContent value="ai">
               <AiSettingsPanel workspace={workspace} />
+            </TabsContent>
+            <TabsContent value="ai-privacy">
+              <AiPrivacyPanel workspace={workspace} />
             </TabsContent>
             <TabsContent value="document-ai">
               <DocumentAiPanel workspace={workspace} />

@@ -130,7 +130,7 @@ describe("the Workspace's Document AI settings", () => {
       PATH,
     );
 
-    const dialog = await openSettings("Document AI");
+    const dialog = await openSettings("RAG settings");
 
     expect(await within(dialog).findByText("Chunk size")).toBeInTheDocument();
     expect(within(dialog).getByText("250")).toBeInTheDocument();
@@ -157,7 +157,7 @@ describe("the Workspace's Document AI settings", () => {
       PATH,
     );
 
-    const dialog = await openSettings("Document AI");
+    const dialog = await openSettings("RAG settings");
     const size = await within(dialog).findByLabelText("Chunk size");
     expect(size).toBeDisabled();
     expect(size).toHaveValue(250);
@@ -212,7 +212,7 @@ describe("the Workspace's Document AI settings", () => {
       }),
       PATH,
     );
-    const dialog = await openSettings("Document AI");
+    const dialog = await openSettings("RAG settings");
     fireEvent.click(
       await within(dialog).findByLabelText("Override Chunk size"),
     );
@@ -264,7 +264,7 @@ describe("the Workspace's Document AI settings", () => {
       PATH,
     );
 
-    const dialog = await openSettings("Document AI");
+    const dialog = await openSettings("RAG settings");
     fireEvent.change(await within(dialog).findByLabelText("Results"), {
       target: { value: "15" },
     });

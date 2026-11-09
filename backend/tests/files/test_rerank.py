@@ -41,7 +41,6 @@ def register_rerank_model(
         path,
         json={
             "internal_only": current["internal_only"],
-            "data_sharing_level": current["data_sharing_level"],
             "rerank_model_id": model.json()["id"],
         },
     )
@@ -182,7 +181,6 @@ def test_only_a_model_enabled_for_the_rerank_role_can_be_chosen(roles, policy, f
         path,
         json={
             "internal_only": current["internal_only"],
-            "data_sharing_level": current["data_sharing_level"],
             "rerank_model_id": model["id"],
         },
     )

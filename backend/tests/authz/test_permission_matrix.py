@@ -757,7 +757,7 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/ai-settings",
         "Choose the Workspace Models, data-sharing level and internal-only restriction",
         workspace(admin=False, owner=True, editor=False, viewer=False),
-        json=lambda roles: {"internal_only": False, "data_sharing_level": "profiles"},
+        json=lambda roles: {"internal_only": False, "share_profiles": True},
     ),
     # Document AI overrides of a Workspace (24.1).
     Row(

@@ -65,7 +65,6 @@ def register_embedding_model(
             path,
             json={
                 "internal_only": current["internal_only"],
-                "data_sharing_level": current["data_sharing_level"],
                 "embedding_model_id": model.json()["id"],
             },
         )

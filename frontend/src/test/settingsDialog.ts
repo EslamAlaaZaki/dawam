@@ -2,7 +2,12 @@ import { fireEvent, screen, within } from "@testing-library/react";
 
 /** Opens the Workspace settings dialog, on `tab` when given, and returns the dialog. */
 export async function openSettings(
-  tab?: "Details" | "AI" | "Document AI" | "Archive & delete",
+  tab?:
+    | "Details"
+    | "AI"
+    | "AI privacy"
+    | "RAG settings"
+    | "Archive & delete",
 ) {
   fireEvent.click(
     await screen.findByRole("button", { name: "Workspace settings" }),

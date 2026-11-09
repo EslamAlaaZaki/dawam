@@ -119,7 +119,9 @@ def test_a_light_model_falling_back_leaves_the_pick_alone(
         f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
         json={
             "internal_only": False,
-            "data_sharing_level": "metadata",
+            "share_profiles": False,
+            "share_documents": False,
+            "share_samples": False,
             "agent_model_ids": [model["id"]],
             "light_model_ids": [light["id"], spare["id"]],
             "default_light_model_id": light["id"],

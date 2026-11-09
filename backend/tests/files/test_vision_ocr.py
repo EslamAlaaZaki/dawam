@@ -47,12 +47,11 @@ def use_vision(roles: RoleClients, *, internal: bool) -> dict:
     model = register(roles.client("admin"), "qwen-vl", internal=internal, roles=("vision",))
     owner = roles.client("owner")
     path = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
-    current = owner.get(path).json()
+    owner.get(path).json()
     chosen = owner.put(
         path,
         json={
             "internal_only": False,
-            "data_sharing_level": current["data_sharing_level"],
             "vision_model_id": model["id"],
         },
     )
