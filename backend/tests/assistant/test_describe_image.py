@@ -73,15 +73,15 @@ def test_a_description_that_carries_instructions_stays_inside_the_data_block(
     assert seen.count("</data>") == 1 and seen.rstrip().endswith("</data>")
 
 
-def test_describe_image_is_refused_below_the_documents_level(
+def test_describe_image_is_refused_when_documents_are_not_shared(
     roles,
     model,
     fake_llm,
     source,
     worker,
 ):
+    # Documents are off, so even an internal vision model gets nothing at upload either.
     use_vision(roles, internal=True)
-    fake_llm.script(Reply(text=ERD))
     file_id = upload_image(roles, source)
     worker()
 
