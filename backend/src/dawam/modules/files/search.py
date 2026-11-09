@@ -3,16 +3,17 @@
 Every document with extracted text is cut into passages (``document_chunks``). Each
 passage is indexed with Postgres full-text search after Arabic normalisation (the query
 gets the same treatment). It is also embedded into pgvector, but only when the
-Workspace's data-sharing level includes documents and the embedding model passes the
+Workspace shares documents with the AI (AI privacy) and the embedding model passes the
 Workspace's internal-only check (spec §6.17, §6.18); otherwise that Workspace is
 searched with full-text only and nothing is sent to a model. Search fuses both rankings
 (reciprocal rank fusion) and returns cited passages: the document and its section.
 
-Which data level and internal-only setting a Workspace has is not this module's to know:
+Which AI privacy and internal-only settings a Workspace has is not this module's to know:
 it asks a ``DocumentAiPolicy``, and which embedding and vision models are registered it asks
 an ``EmbeddingModels`` and a ``VisionModels``; the composition root chooses them. The same
 rule covers scanned pages: their images go to the Workspace's vision model only when the
-policy would let the document's text reach that provider (an internal one always may);
+policy would let the document's text reach that provider (internal or external: with
+Documents off no model role receives a document);
 otherwise, or when the vision model fails, the self-hosted OCR engine reads them and the
 file's ``index_note`` says so.
 
@@ -566,7 +567,7 @@ class DocumentSearchService:
         self, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> EmbeddingModel | None:
         """The model to embed this Workspace's documents (and queries) with, or ``None``:
-        the data level excludes documents, no embedding model is registered, or the
+        the Workspace does not share documents, no embedding model is registered, or the
         Workspace is internal-only and the model's provider is external."""
         settings = self._ai.document_settings(workspace_id)
         if not settings.includes_documents:
@@ -578,20 +579,21 @@ class DocumentSearchService:
 
     def _vision_model(self, workspace_id: uuid.UUID) -> VisionModel | None:
         """The Workspace's vision model if it may be sent a document's image, else ``None``:
-        the rule of ``_ocr_engine`` (an internal model always may)."""
+        the rule of ``_ocr_engine`` (the Workspace shares documents, and an external model
+        needs a Workspace that is not internal-only)."""
         model = self._vision.current(workspace_id)
         return model if model is not None and self._may_send(workspace_id, model) else None
 
     def _light_model(self, workspace_id: uuid.UUID) -> LightModel | None:
         """The light model that writes passage context, or ``None`` (the feature is off): the
-        Workspace has none, or the data level / internal-only keeps documents from it."""
+        Workspace has none, or AI privacy / internal-only keeps documents from it."""
         model = self._light.current(workspace_id)
         if model is None:
             return None
         settings = self._ai.document_settings(workspace_id)
         if settings.internal_only and not model.is_internal:
             return None
-        if not (model.is_internal or settings.includes_documents):
+        if not settings.includes_documents:
             return None
         return model
 
@@ -624,7 +626,7 @@ class DocumentSearchService:
 
     def _may_send(self, workspace_id: uuid.UUID, model: VisionModel) -> bool:
         settings = self._ai.document_settings(workspace_id)
-        return model.is_internal or (settings.includes_documents and not settings.internal_only)
+        return settings.includes_documents and (model.is_internal or not settings.internal_only)
 
     def _describe(
         self, workspace_id: uuid.UUID, name: str, mime: str, data: bytes
@@ -678,8 +680,9 @@ class DocumentSearchService:
         self, workspace_id: uuid.UUID, note: Callable[[str], None]
     ) -> tuple[OcrEngine | None, str | None]:
         """The engine for this Workspace's scanned pages, and the note to keep if it reads
-        any: the vision model when the Workspace has one and may send it the document (an
-        internal model always may: the policy rule of ``_embedder``), otherwise the
+        any: the vision model when the Workspace has one and may send it the document (the
+        policy rule of ``_embedder``: Documents shared, and an external model needs a
+        Workspace that is not internal-only), otherwise the
         self-hosted engine; when that is off too, nothing reads them, and the note says so."""
         fallback = self._ocr()
         model = self._vision.current(workspace_id)
@@ -1352,7 +1355,7 @@ class DocumentSearchService:
         filters: PassageFilters | None = None,
     ) -> SearchTrace:
         """Run a real search and return what each stage produced (any member): the same
-        pipeline, settings, permissions and data-sharing rules as ``search``."""
+        pipeline, settings, permissions and AI privacy rules as ``search``."""
         trace = SearchTrace(queries=[query])
         self.search(
             user,
@@ -1405,8 +1408,8 @@ class DocumentSearchService:
     ) -> list[Passage]:
         """Reorder the fused top passages (``rerank_top_n``) by the Workspace's rerank model,
         best first, each passage's score becoming the model's. With reranking switched off in
-        the Document AI settings, without a rerank model, one the data-sharing
-        level (an internal model always may) or internal-only setting keeps from the
+        the Document AI settings, without a rerank model, one that AI privacy
+        (Documents off, for internal models too) or the internal-only setting keeps from the
         documents, or when the call fails or the
         budget is used up, the fused order stands."""
         if not config.rerank:
@@ -1416,7 +1419,7 @@ class DocumentSearchService:
         if (
             len(passages) < 2
             or model is None
-            or not (model.is_internal or settings.includes_documents)
+            or not settings.includes_documents
             or (settings.internal_only and not model.is_internal)
         ):
             return passages

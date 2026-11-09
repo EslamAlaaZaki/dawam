@@ -5,8 +5,12 @@ sent to a model, and documents uploaded earlier are indexed again when it is tur
 
 from __future__ import annotations
 
-from tests.files.test_files import system
+from tests.files.test_chunk_context import DOC, headers, light_calls, use_light
+from tests.files.test_files import blank_pdf, system, upload
+from tests.files.test_indexing import worker  # noqa: F401  (fixture)
+from tests.files.test_rerank import documents, order, register_rerank_model, rerank_calls  # noqa: F401
 from tests.files.test_search import chunk_rows, register_embedding_model, upload_ok
+from tests.files.test_vision_ocr import ocr, use_vision, vision_calls  # noqa: F401
 from tests.roles import RoleClients
 
 
@@ -72,3 +76,48 @@ def test_saving_while_documents_stay_on_does_not_index_again(roles, fake_llm):
     share_documents(roles, True)
 
     assert len(reindex_jobs(roles)) == 1
+
+
+def test_with_documents_off_an_internal_vision_model_receives_no_page(
+    roles,
+    ocr,  # noqa: F811
+    fake_llm,
+    worker,  # noqa: F811
+):
+    use_vision(roles, internal=True)
+    before = len(vision_calls(fake_llm))
+    sid = system(roles)
+
+    upload(roles, sid, "scan.pdf", blank_pdf())
+    worker()
+
+    assert vision_calls(fake_llm)[before:] == []
+    assert ocr.pages == [[1]]
+
+
+def test_with_documents_off_an_internal_light_model_receives_no_passage(
+    roles,
+    admin_client,
+    fake_llm,
+    worker,  # noqa: F811
+):
+    use_light(roles, admin_client, internal=True)
+    sid = system(roles)
+
+    upload(roles, sid, "loans.md", DOC)
+    worker()
+
+    assert light_calls(fake_llm) == []
+    assert headers(roles) == [None]
+
+
+def test_with_documents_off_an_internal_rerank_model_receives_no_passage(
+    roles,
+    fake_llm,
+    documents,  # noqa: F811
+):
+    register_rerank_model(roles, internal=True)
+    fake_llm.calls.clear()
+
+    assert order(roles) == ["a.md", "b.md", "c.md"]
+    assert rerank_calls(fake_llm) == []

@@ -12505,7 +12505,7 @@
           "files"
         ],
         "summary": "Search Documents",
-        "description": "Search the Workspace's uploaded documents (any member). Full-text search with Arabic\nnormalisation, combined with vector search when the Workspace's data-sharing level\nincludes documents and its internal-only setting allows the embedding provider. Each\nresult is a cited passage: the document and its section.",
+        "description": "Search the Workspace's uploaded documents (any member). Full-text search with Arabic\nnormalisation, combined with vector search when the Workspace shares documents (AI privacy)\nincludes documents and its internal-only setting allows the embedding provider. Each\nresult is a cited passage: the document and its section.",
         "operationId": "searchDocuments",
         "parameters": [
           {
@@ -12702,7 +12702,7 @@
           "files"
         ],
         "summary": "Explain Document Search",
-        "description": "The retrieval playground (any member): runs a real search with the Workspace's\neffective Document AI settings and returns each stage's ranking and scores (full-text,\nvector, fused, reranked, final). Permissions and data-sharing levels apply as in search.",
+        "description": "The retrieval playground (any member): runs a real search with the Workspace's\neffective Document AI settings and returns each stage's ranking and scores (full-text,\nvector, fused, reranked, final). Permissions and AI privacy apply as in search.",
         "operationId": "explainDocumentSearch",
         "parameters": [
           {
@@ -33088,7 +33088,7 @@
                 "type": "null"
               }
             ],
-            "description": "The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them."
+            "description": "The Workspace's vision model, which reads scanned pages when the Workspace shares documents (AI privacy) and its provider is allowed (internal-only takes internal ones); null, or not allowed: the self-hosted OCR engine reads them."
           },
           "rerank_model": {
             "anyOf": [
@@ -33099,7 +33099,7 @@
                 "type": "null"
               }
             ],
-            "description": "The Workspace's rerank model, which reorders the top document-search results by relevance when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: results keep their fused order."
+            "description": "The Workspace's rerank model, which reorders the top document-search results by relevance when the Workspace shares documents (AI privacy); null, or not allowed: results keep their fused order."
           },
           "choices": {
             "$ref": "#/components/schemas/ModelChoices",

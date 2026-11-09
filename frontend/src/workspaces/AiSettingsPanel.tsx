@@ -373,7 +373,7 @@ function OwnerForm({
         </NativeSelect>
       </label>
       <Hint>
-        Reads the scanned pages of uploaded PDFs. An external model gets the
+        Reads the scanned pages of uploaded PDFs. A vision model gets the
         page images only when the Workspace shares documents (AI privacy); otherwise
         the self-hosted OCR engine reads them.
       </Hint>

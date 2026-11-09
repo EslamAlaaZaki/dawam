@@ -456,7 +456,7 @@ def search_documents(
     tag: Annotated[str | None, Query(description="Only documents with this label.")] = None,
 ) -> DocumentSearchResults:
     """Search the Workspace's uploaded documents (any member). Full-text search with Arabic
-    normalisation, combined with vector search when the Workspace's data-sharing level
+    normalisation, combined with vector search when the Workspace shares documents (AI privacy)
     includes documents and its internal-only setting allows the embedding provider. Each
     result is a cited passage: the document and its section."""
     filters = PassageFilters(document_type, language, page, sheet, tag)
@@ -508,7 +508,7 @@ def explain_document_search(
 ) -> RetrievalTrace:
     """The retrieval playground (any member): runs a real search with the Workspace's
     effective Document AI settings and returns each stage's ranking and scores (full-text,
-    vector, fused, reranked, final). Permissions and data-sharing levels apply as in search."""
+    vector, fused, reranked, final). Permissions and AI privacy apply as in search."""
     t = search.explain(user, workspace_id, q, system_id=system_id, limit=limit)
     return RetrievalTrace(
         queries=t.queries,

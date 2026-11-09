@@ -3441,7 +3441,7 @@ export interface paths {
         /**
          * Search Documents
          * @description Search the Workspace's uploaded documents (any member). Full-text search with Arabic
-         *     normalisation, combined with vector search when the Workspace's data-sharing level
+         *     normalisation, combined with vector search when the Workspace shares documents (AI privacy)
          *     includes documents and its internal-only setting allows the embedding provider. Each
          *     result is a cited passage: the document and its section.
          */
@@ -3465,7 +3465,7 @@ export interface paths {
          * Explain Document Search
          * @description The retrieval playground (any member): runs a real search with the Workspace's
          *     effective Document AI settings and returns each stage's ranking and scores (full-text,
-         *     vector, fused, reranked, final). Permissions and data-sharing levels apply as in search.
+         *     vector, fused, reranked, final). Permissions and AI privacy apply as in search.
          */
         get: operations["explainDocumentSearch"];
         put?: never;
@@ -11663,9 +11663,9 @@ export interface components {
              * @description The documents are being embedded again with a new embedding model; document search matches text only until they all are.
              */
             embedding_rebuilding: boolean;
-            /** @description The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them. */
+            /** @description The Workspace's vision model, which reads scanned pages when the Workspace shares documents (AI privacy) and its provider is allowed (internal-only takes internal ones); null, or not allowed: the self-hosted OCR engine reads them. */
             vision_model: components["schemas"]["WorkspaceModel"] | null;
-            /** @description The Workspace's rerank model, which reorders the top document-search results by relevance when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: results keep their fused order. */
+            /** @description The Workspace's rerank model, which reorders the top document-search results by relevance when the Workspace shares documents (AI privacy); null, or not allowed: results keep their fused order. */
             rerank_model: components["schemas"]["WorkspaceModel"] | null;
             /** @description Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones). */
             choices: components["schemas"]["ModelChoices"];

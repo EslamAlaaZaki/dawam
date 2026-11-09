@@ -141,14 +141,13 @@ class WorkspaceAiSettings(BaseModel):
     )
     vision_model: WorkspaceModel | None = Field(
         description="The Workspace's vision model, which reads scanned pages when the "
-        "data-sharing level allows sending documents to its provider (an internal one always "
-        "may); null, or not allowed: the self-hosted OCR engine reads them."
+        "Workspace shares documents (AI privacy) and its provider is allowed (internal-only "
+        "takes internal ones); null, or not allowed: the self-hosted OCR engine reads them."
     )
     rerank_model: WorkspaceModel | None = Field(
         description="The Workspace's rerank model, which reorders the top document-search "
-        "results by relevance when the data-sharing level allows sending documents to its "
-        "provider (an internal one always may); null, or not allowed: results keep their "
-        "fused order."
+        "results by relevance when the Workspace shares documents (AI privacy); null, or not "
+        "allowed: results keep their fused order."
     )
     choices: ModelChoices = Field(
         description="Per role, the tested models an admin enabled for it, for an owner to choose "
