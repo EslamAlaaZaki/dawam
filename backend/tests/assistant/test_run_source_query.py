@@ -465,7 +465,7 @@ def test_the_tool_needs_the_samples_level(roles, model, fake_llm, source, value)
     )
 
     assert "run_source_query" not in tool_names(fake_llm)
-    assert status == "refused" and "samples" in seen
+    assert status == "refused" and "sample rows" in seen
 
 
 def test_a_system_without_a_live_connection_cannot_be_queried(roles, model, fake_llm, source):

@@ -1044,16 +1044,23 @@ class DocumentSearchService:
             raise ApiError(404, "not_found", "File not found.")
         self.queue_index(workspace_id, file_id)
 
-    def start_reembed(self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    def start_reembed(
+        self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID, *, extract: bool = False
+    ) -> None:
         """The ``EmbeddingModelChangedHook`` (ADR 0006), inside the transaction that changes
         the Workspace's embedding model: from then on search matches text only, and a
         ``reindex_documents`` job builds the new vectors, then switches to them at once. A
-        rebuild already running is superseded: only the newest one switches."""
+        rebuild already running is superseded: only the newest one switches. With
+        ``extract`` (Documents were just shared) the job runs the whole ``index_document``
+        pipeline on every file, so scans are read and images described too."""
         rebuild_id = self._mark_rebuild(db, workspace_id)
+        params = {"workspace_id": str(workspace_id), "rebuild_id": str(rebuild_id)}
+        if extract:
+            params["extract"] = True
         self._jobs.submit(
             workspace_id,
             REINDEX_JOB,
-            {"workspace_id": str(workspace_id), "rebuild_id": str(rebuild_id)},
+            params,
             title="Re-embed documents",
             created_by=actor_id,
             priority=PRIORITY_LOW,
@@ -1079,11 +1086,46 @@ class DocumentSearchService:
         workspace_id = uuid.UUID(params["workspace_id"])
         rebuild = uuid.UUID(params["rebuild_id"]) if "rebuild_id" in params else None
         try:
-            self._reindex(workspace_id, rebuild, ctx)
+            if params.get("extract"):
+                self._reindex_from_bytes(workspace_id, rebuild, ctx)
+            else:
+                self._reindex(workspace_id, rebuild, ctx)
         finally:
             if rebuild is not None:
                 with Session(self._engine) as db, db.begin():
                     self._switch(db, workspace_id, rebuild)
+
+    def _reindex_from_bytes(
+        self, workspace_id: uuid.UUID, rebuild: uuid.UUID | None, ctx: JobContext
+    ) -> None:
+        """Run the whole ``index_document`` pipeline on each of the Workspace's files, so
+        scans go through OCR or the vision model and images are described under the
+        settings now in force. A file that fails keeps its own ``failed`` status; the rest
+        carry on."""
+        with Session(self._engine) as db:
+            files = list(
+                db.execute(
+                    sa.select(WorkspaceFileRecord.id, WorkspaceFileRecord.storage_key)
+                    .where(WorkspaceFileRecord.workspace_id == workspace_id)
+                    .order_by(WorkspaceFileRecord.updated_at)
+                )
+            )
+        for done, (file_id, key) in enumerate(files, start=1):
+            ctx.raise_if_cancelled()
+            if rebuild is not None and not self._rebuild_current(workspace_id, rebuild):
+                ctx.log("A newer change of the embedding model took over; stopping.")
+                return
+            try:
+                self.run_index(
+                    {"workspace_id": str(workspace_id), "file_id": str(file_id), "key": key}, ctx
+                )
+            except JobCancelledError:
+                raise
+            except Exception as exc:
+                ctx.log(f"Document {done} of {len(files)} could not be indexed: {exc}")
+            else:
+                ctx.log(f"Indexed document {done} of {len(files)}.")
+            ctx.progress(done * 100 // len(files))
 
     def _reindex(self, workspace_id: uuid.UUID, rebuild: uuid.UUID | None, ctx: JobContext) -> None:
         with Session(self._engine) as db:

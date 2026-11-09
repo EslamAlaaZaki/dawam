@@ -5,9 +5,13 @@ sent to a model, and documents uploaded earlier are indexed again when it is tur
 
 from __future__ import annotations
 
+from dawam.modules.llm import Reply
 from tests.files.test_chunk_context import DOC, headers, light_calls, use_light
-from tests.files.test_files import blank_pdf, system, upload
-from tests.files.test_indexing import worker  # noqa: F401  (fixture)
+from tests.files.test_files import PNG, blank_pdf, system, upload
+from tests.files.test_indexing import (
+    listed,
+    worker,  # noqa: F401  (fixture)
+)
 from tests.files.test_rerank import documents, order, register_rerank_model, rerank_calls  # noqa: F401
 from tests.files.test_search import chunk_rows, register_embedding_model, upload_ok
 from tests.files.test_vision_ocr import ocr, use_vision, vision_calls  # noqa: F401
@@ -60,6 +64,28 @@ def test_turning_documents_on_indexes_the_documents_uploaded_earlier(roles, fake
 
     assert {(str(m), d) for m, d in chunk_rows(app)} == {(model_id, 4)}
     assert len(reindex_jobs(roles)) == 1
+
+
+def test_turning_documents_on_reads_the_scans_and_images_uploaded_earlier(
+    roles,
+    ocr,  # noqa: F811
+    fake_llm,
+    worker,  # noqa: F811
+):
+    use_vision(roles, internal=True)
+    sid = system(roles)
+    upload(roles, sid, "erd.png", PNG)
+    worker()
+    assert listed(roles, sid)["erd.png"]["text_status"] == "none"
+    before = len(vision_calls(fake_llm))
+    fake_llm.script(Reply(text="Customer and account tables joined by customer_id."))
+
+    share_documents(roles, True)
+    worker()
+
+    assert len(vision_calls(fake_llm)) == before + 1
+    done = listed(roles, sid)["erd.png"]
+    assert done["text_status"] == "extracted" and done["index_note"] is None
 
 
 def test_turning_documents_on_without_documents_queues_nothing(roles, fake_llm):

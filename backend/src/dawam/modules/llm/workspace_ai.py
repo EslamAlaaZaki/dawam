@@ -251,14 +251,11 @@ def workspace_document_sharing(engine: sa.Engine, workspace_id: uuid.UUID) -> tu
 
 
 def has_uploaded_documents(db: Session, workspace_id: uuid.UUID) -> bool:
-    """Whether the Workspace has any document with extracted text (the files module owns
-    them; this only reads them, by SQL)."""
+    """Whether the Workspace has any uploaded file (the files module owns them; this only
+    reads them, by SQL)."""
     return bool(
         db.scalar(
-            sa.text(
-                "SELECT EXISTS (SELECT 1 FROM workspace_files "
-                "WHERE workspace_id = :w AND extracted_text IS NOT NULL)"
-            ),
+            sa.text("SELECT EXISTS (SELECT 1 FROM workspace_files WHERE workspace_id = :w)"),
             {"w": workspace_id},
         )
     )
@@ -302,10 +299,14 @@ def embedding_rebuilding(db: Session, workspace_id: uuid.UUID) -> bool:
 
 
 class EmbeddingModelChangedHook(Protocol):
-    def __call__(self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    def __call__(
+        self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID, *, extract: bool = False
+    ) -> None:
         """Called inside the transaction that changes the embedding model of a Workspace
-        with indexed documents, so its documents are embedded again (ADR 0006). The files
-        module, which imports this one, fills it."""
+        with indexed documents, so its documents are embedded again (ADR 0006), and when
+        Documents are newly shared, with ``extract``: every document is then indexed from
+        its bytes again, scans and images included. The files module, which imports this
+        one, fills it."""
         ...
 
 
@@ -641,15 +642,18 @@ class WorkspaceAiService:
                 record.auto_retrieve = auto_retrieve
             record.updated_at = now
             _store_models(db, workspace_id, models)
-            # Documents uploaded while they were not shared are embedded (and their scans
-            # read) now, by the same reindex job as a changed embedding model.
+            # Documents uploaded while they were not shared are indexed from their bytes
+            # again now (embedded, scans read, images described), by the reindex job.
             newly_shared = (
                 share_documents is True
                 and not was_sharing_documents
                 and has_uploaded_documents(db, workspace_id)
             )
             if (reembed or newly_shared) and self._on_embedding_changed is not None:
-                self._on_embedding_changed(db, workspace_id, user.id)
+                if newly_shared:
+                    self._on_embedding_changed(db, workspace_id, user.id, extract=True)
+                else:
+                    self._on_embedding_changed(db, workspace_id, user.id)
             new = _audited(record, models)
             changed = sorted(k for k in new if new[k] != old[k])
             if changed:

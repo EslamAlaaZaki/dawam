@@ -30,6 +30,19 @@ def upgrade() -> None:
         "share_documents = data_sharing_level IN ('documents', 'samples'), "
         "share_samples = data_sharing_level = 'samples'"
     )
+    # Before this change no document was ever embedded or read by a vision model, so a
+    # Workspace that already shared documents has files nobody indexed under that rule:
+    # queue one index-from-bytes job for each (the worker picks it up after the deploy).
+    op.execute(
+        "INSERT INTO jobs (id, workspace_id, type, title, params, status, priority, progress, "
+        "log, created_at) "
+        "SELECT gen_random_uuid(), s.workspace_id, 'reindex_documents', 'Re-index documents', "
+        "jsonb_build_object('workspace_id', s.workspace_id::text, 'extract', true), "
+        "'queued', 0, 0, '', now() "
+        "FROM llm_workspace_settings s JOIN workspaces w ON w.id = s.workspace_id "
+        "WHERE s.share_documents AND w.status = 'active' "
+        "AND EXISTS (SELECT 1 FROM workspace_files f WHERE f.workspace_id = s.workspace_id)"
+    )
     for column in ("share_profiles", "share_documents", "share_samples"):
         op.alter_column(_TABLE, column, server_default=None)
     op.drop_constraint(op.f("ck_llm_workspace_settings_data_sharing_level"), _TABLE, type_="check")
@@ -43,10 +56,12 @@ def downgrade() -> None:
             "data_sharing_level", sa.String(length=16), nullable=False, server_default="metadata"
         ),
     )
+    # Never widen access: the old levels were cumulative, so a row maps to the highest
+    # level whose kinds are all on, counting from the bottom (documents alone: metadata).
     op.execute(
         "UPDATE llm_workspace_settings SET data_sharing_level = CASE "
-        "WHEN share_samples THEN 'samples' "
-        "WHEN share_documents THEN 'documents' "
+        "WHEN share_profiles AND share_documents AND share_samples THEN 'samples' "
+        "WHEN share_profiles AND share_documents THEN 'documents' "
         "WHEN share_profiles THEN 'profiles' ELSE 'metadata' END"
     )
     op.alter_column(_TABLE, "data_sharing_level", server_default=None)
