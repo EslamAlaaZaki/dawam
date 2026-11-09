@@ -138,7 +138,9 @@ def test_the_light_model_always_thinks_at_low(roles: RoleClients, model, admin_c
         f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
         json={
             "internal_only": False,
-            "data_sharing_level": "metadata",
+            "share_profiles": False,
+            "share_documents": False,
+            "share_samples": False,
             "agent_model_ids": [model["id"]],
             "light_model_ids": [light["id"]],
         },

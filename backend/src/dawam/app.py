@@ -90,8 +90,8 @@ class Services:
     llm_adapters: AdapterFactory | None = None
     """Builds the LLM adapter for a provider; ``None`` uses the real ones (tests pass a fake)."""
     document_ai: DocumentAiPolicy | None = None
-    """What each Workspace lets documents share with a model; ``None``: nothing (full-text
-    search only) until the Workspace AI settings exist."""
+    """What each Workspace lets documents share with a model; ``None``: its AI privacy
+    settings (``WorkspaceDocumentAi``)."""
     document_parser: DocumentParser | None = None
     """Layout-aware parser for indexed documents; ``None`` uses the one the settings name
     (tests pass a fake)."""

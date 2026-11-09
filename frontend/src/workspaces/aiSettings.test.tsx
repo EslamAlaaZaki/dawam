@@ -66,7 +66,9 @@ function settings(
 ): WorkspaceAiSettings {
   return {
     internal_only: false,
-    data_sharing_level: "metadata",
+    share_profiles: false,
+    share_documents: false,
+    share_samples: false,
     auto_retrieve: false,
     agent_models: [chosen(BIG, "Big", true), chosen(SMALL, "Small", false)],
     light_models: [chosen(SMALL, "Small", true)],
@@ -237,7 +239,6 @@ describe("the Workspace AI settings card", () => {
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
       internal_only: false,
-      data_sharing_level: "metadata",
       agent_model_ids: [SMALL],
       default_agent_model_id: SMALL,
       light_model_ids: [],
@@ -259,7 +260,7 @@ describe("the Workspace AI settings card", () => {
     const picker = within(card).getByLabelText("Vision model");
     expect(picker).toHaveValue("");
     expect(card).toHaveTextContent(
-      "only when the data-sharing level allows documents",
+      "only when the Workspace shares documents",
     );
     fireEvent.change(picker, { target: { value: VISION } });
     fireEvent.click(within(card).getByRole("button", { name: "Save" }));

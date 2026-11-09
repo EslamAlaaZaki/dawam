@@ -20,7 +20,8 @@ policy = test_vision_ocr.policy
 ERD = "Table `orders` has a foreign key `customer_id` referencing `customers.id`."
 
 
-def test_an_erds_description_is_found_by_search(roles: RoleClients, fake_llm, worker):
+def test_an_erds_description_is_found_by_search(roles: RoleClients, fake_llm, policy, worker):
+    policy.includes_documents = True
     use_vision(roles, internal=True)
     before = len(vision_calls(fake_llm))
     fake_llm.script(Reply(text=ERD))
@@ -81,8 +82,9 @@ def test_an_image_is_not_described_when_the_workspace_has_no_vision_model(
 
 
 def test_a_failing_vision_model_leaves_the_image_indexed_without_a_description(
-    roles: RoleClients, fake_llm, worker
+    roles: RoleClients, fake_llm, policy, worker
 ):
+    policy.includes_documents = True
     use_vision(roles, internal=True)
     fake_llm.script(LlmError("bad_request", "The model refused the image."))
     system_id = system(roles)

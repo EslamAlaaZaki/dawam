@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "c5d8e2a1f347"
+  "d7a3f5b2c618"
  ],
  "modules": [
   {
@@ -10480,29 +10480,6 @@ a.tlink:hover { text-decoration: underline; }
      "fk": []
     },
     {
-     "name": "data_sharing_level",
-     "type": "character varying(16)",
-     "nullable": false,
-     "default": null,
-     "identity": null,
-     "generated": null,
-     "enum": {
-      "source": "CHECK ck_llm_workspace_settings_data_sharing_level",
-      "values": [
-       "metadata",
-       "profiles",
-       "documents",
-       "samples"
-      ]
-     },
-     "in_orm": true,
-     "attribute": "data_sharing_level",
-     "app_default": null,
-     "description": null,
-     "pk": false,
-     "fk": []
-    },
-    {
      "name": "updated_at",
      "type": "timestamp with time zone",
      "nullable": false,
@@ -10531,6 +10508,51 @@ a.tlink:hover { text-decoration: underline; }
      "description": "On: the first message of a conversation carries the top document passages.",
      "pk": false,
      "fk": []
+    },
+    {
+     "name": "share_profiles",
+     "type": "boolean",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "share_profiles",
+     "app_default": null,
+     "description": "True: the AI may see profile statistics (null rates, ranges, distributions).",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "share_documents",
+     "type": "boolean",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "share_documents",
+     "app_default": null,
+     "description": "True: the AI may read the text of uploaded documents.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "share_samples",
+     "type": "boolean",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "share_samples",
+     "app_default": null,
+     "description": "True: the AI may see sample rows, top-N values and min/max, and run source queries.\nMetadata (names, types, keys) is always shared and has no column.",
+     "pk": false,
+     "fk": []
     }
    ],
    "primary_key": [
@@ -10551,14 +10573,6 @@ a.tlink:hover { text-decoration: underline; }
     }
    ],
    "constraints": [
-    {
-     "name": "ck_llm_workspace_settings_data_sharing_level",
-     "kind": "CHECK",
-     "columns": [
-      "data_sharing_level"
-     ],
-     "definition": "CHECK (((data_sharing_level)::text = ANY ((ARRAY['metadata'::character varying, 'profiles'::character varying, 'documents'::character varying, 'samples'::character varying])::text[])))"
-    },
     {
      "name": "fk_llm_workspace_settings_workspace_id_workspaces",
      "kind": "FOREIGN KEY",

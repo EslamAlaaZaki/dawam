@@ -33,7 +33,6 @@ def choose_vision(roles: RoleClients, model: dict | None, **fields):
         settings_path(roles),
         json={
             "internal_only": current["internal_only"],
-            "data_sharing_level": current["data_sharing_level"],
             "vision_model_id": model["id"] if model else None,
             **fields,
         },

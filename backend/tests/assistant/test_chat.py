@@ -397,9 +397,7 @@ def test_reading_documents_needs_the_documents_data_sharing_level(roles, model, 
     assert [d["status"] for n, d in events if n == "tool"] == ["refused"]
     assert "read_file" not in tool_names(fake_llm)
     settings_url = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
-    changed = owner.put(
-        settings_url, json={"internal_only": False, "data_sharing_level": "documents"}
-    )
+    changed = owner.put(settings_url, json={"internal_only": False, "share_documents": True})
     assert changed.status_code == 200, changed.text
     fake_llm.script(Reply(tool_calls=(read,)), Reply(text="yes"))
 
@@ -926,7 +924,9 @@ def workspace_agents(owner, roles, *agents) -> None:
         f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
         json={
             "internal_only": False,
-            "data_sharing_level": "metadata",
+            "share_profiles": False,
+            "share_documents": False,
+            "share_samples": False,
             "agent_model_ids": [a["id"] for a in agents],
             "default_agent_model_id": agents[0]["id"],
         },

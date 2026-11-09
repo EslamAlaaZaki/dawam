@@ -34,9 +34,12 @@ FULL_NAME = "Amira Hassan"
 
 
 def level(roles: RoleClients, value: str) -> None:
+    """Shares ``value`` and every kind below it (metadata < profiles < documents < samples)."""
+    kinds = ("profiles", "documents", "samples")
+    shared = kinds[: kinds.index(value) + 1] if value in kinds else ()
     response = roles.client("owner").put(
         f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
-        json={"internal_only": False, "data_sharing_level": value},
+        json={"internal_only": False, **{f"share_{k}": k in shared for k in kinds}},
     )
     assert response.status_code == 200, response.text
 
@@ -189,7 +192,31 @@ def test_get_profile_is_refused_below_the_profiles_level(roles, model, fake_llm,
         roles, fake_llm, "get_profile", system_id=system_id(profiled), table_id=customers["id"]
     )
 
-    assert status == "refused" and "profiles" in seen
+    assert status == "refused" and "profile statistics" in seen
+    assert "get_profile" not in tool_names(fake_llm)
+
+
+def test_get_profile_is_refused_with_samples_shared_but_profiles_not(
+    roles, model, fake_llm, profiled
+):
+    """The kinds are independent: sample rows do not imply profile statistics."""
+    response = roles.client("owner").put(
+        f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
+        json={
+            "internal_only": False,
+            "share_profiles": False,
+            "share_documents": False,
+            "share_samples": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    customers = table_of(roles, profiled)
+
+    status, seen = use(
+        roles, fake_llm, "get_profile", system_id=system_id(profiled), table_id=customers["id"]
+    )
+
+    assert status == "refused" and "profile statistics" in seen
     assert "get_profile" not in tool_names(fake_llm)
 
 

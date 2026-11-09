@@ -3,16 +3,17 @@
 Every document with extracted text is cut into passages (``document_chunks``). Each
 passage is indexed with Postgres full-text search after Arabic normalisation (the query
 gets the same treatment). It is also embedded into pgvector, but only when the
-Workspace's data-sharing level includes documents and the embedding model passes the
+Workspace shares documents with the AI (AI privacy) and the embedding model passes the
 Workspace's internal-only check (spec §6.17, §6.18); otherwise that Workspace is
 searched with full-text only and nothing is sent to a model. Search fuses both rankings
 (reciprocal rank fusion) and returns cited passages: the document and its section.
 
-Which data level and internal-only setting a Workspace has is not this module's to know:
+Which AI privacy and internal-only settings a Workspace has is not this module's to know:
 it asks a ``DocumentAiPolicy``, and which embedding and vision models are registered it asks
 an ``EmbeddingModels`` and a ``VisionModels``; the composition root chooses them. The same
 rule covers scanned pages: their images go to the Workspace's vision model only when the
-policy would let the document's text reach that provider (an internal one always may);
+policy would let the document's text reach that provider (internal or external: with
+Documents off no model role receives a document);
 otherwise, or when the vision model fails, the self-hosted OCR engine reads them and the
 file's ``index_note`` says so.
 
@@ -50,6 +51,7 @@ from dawam.modules.llm import (
     ProviderService,
     RoleService,
     document_ai_config,
+    workspace_document_sharing,
     workspace_embedding_model_id,
     workspace_model_id,
 )
@@ -140,13 +142,24 @@ class DocumentAiSettings:
     """What a Workspace's AI settings say about documents."""
 
     includes_documents: bool
-    """The data-sharing level is *documents* or above."""
+    """The Workspace shares documents with the AI (``share_documents``, AI privacy)."""
     internal_only: bool
     """The Workspace may use internal providers only."""
 
 
 class DocumentAiPolicy(Protocol):
     def document_settings(self, workspace_id: uuid.UUID) -> DocumentAiSettings: ...
+
+
+class WorkspaceDocumentAi:
+    """The production policy: a Workspace's AI privacy and internal-only settings."""
+
+    def __init__(self, engine: sa.Engine) -> None:
+        self._engine = engine
+
+    def document_settings(self, workspace_id: uuid.UUID) -> DocumentAiSettings:
+        shared, internal_only = workspace_document_sharing(self._engine, workspace_id)
+        return DocumentAiSettings(includes_documents=shared, internal_only=internal_only)
 
 
 class NoDocumentAi:
@@ -253,8 +266,8 @@ class RegisteredVisionModels:
 
 
 VISION_REFUSED = (
-    "The Workspace's data-sharing level does not let documents reach its vision model's "
-    "provider, so {fallback}."
+    "The Workspace does not share documents with its vision model's provider (AI privacy: "
+    "Documents is off), so {fallback}."
 )
 VISION_FAILED = "The vision model could not read the scanned pages ({reason}), so {fallback}."
 SELF_HOSTED = "the self-hosted OCR engine read the scanned pages"
@@ -293,8 +306,8 @@ class _VisionThenSelfHosted:
 
 
 IMAGE_NOT_DESCRIBED = (
-    "The image was not described: the Workspace has no vision model that its data-sharing "
-    "level lets the image reach."
+    "The image was not described: the Workspace has no vision model that AI privacy "
+    "lets the image reach."
 )
 
 
@@ -554,7 +567,7 @@ class DocumentSearchService:
         self, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> EmbeddingModel | None:
         """The model to embed this Workspace's documents (and queries) with, or ``None``:
-        the data level excludes documents, no embedding model is registered, or the
+        the Workspace does not share documents, no embedding model is registered, or the
         Workspace is internal-only and the model's provider is external."""
         settings = self._ai.document_settings(workspace_id)
         if not settings.includes_documents:
@@ -566,20 +579,21 @@ class DocumentSearchService:
 
     def _vision_model(self, workspace_id: uuid.UUID) -> VisionModel | None:
         """The Workspace's vision model if it may be sent a document's image, else ``None``:
-        the rule of ``_ocr_engine`` (an internal model always may)."""
+        the rule of ``_ocr_engine`` (the Workspace shares documents, and an external model
+        needs a Workspace that is not internal-only)."""
         model = self._vision.current(workspace_id)
         return model if model is not None and self._may_send(workspace_id, model) else None
 
     def _light_model(self, workspace_id: uuid.UUID) -> LightModel | None:
         """The light model that writes passage context, or ``None`` (the feature is off): the
-        Workspace has none, or the data level / internal-only keeps documents from it."""
+        Workspace has none, or AI privacy / internal-only keeps documents from it."""
         model = self._light.current(workspace_id)
         if model is None:
             return None
         settings = self._ai.document_settings(workspace_id)
         if settings.internal_only and not model.is_internal:
             return None
-        if not (model.is_internal or settings.includes_documents):
+        if not settings.includes_documents:
             return None
         return model
 
@@ -612,7 +626,7 @@ class DocumentSearchService:
 
     def _may_send(self, workspace_id: uuid.UUID, model: VisionModel) -> bool:
         settings = self._ai.document_settings(workspace_id)
-        return model.is_internal or (settings.includes_documents and not settings.internal_only)
+        return settings.includes_documents and (model.is_internal or not settings.internal_only)
 
     def _describe(
         self, workspace_id: uuid.UUID, name: str, mime: str, data: bytes
@@ -666,8 +680,9 @@ class DocumentSearchService:
         self, workspace_id: uuid.UUID, note: Callable[[str], None]
     ) -> tuple[OcrEngine | None, str | None]:
         """The engine for this Workspace's scanned pages, and the note to keep if it reads
-        any: the vision model when the Workspace has one and may send it the document (an
-        internal model always may: the policy rule of ``_embedder``), otherwise the
+        any: the vision model when the Workspace has one and may send it the document (the
+        policy rule of ``_embedder``: Documents shared, and an external model needs a
+        Workspace that is not internal-only), otherwise the
         self-hosted engine; when that is off too, nothing reads them, and the note says so."""
         fallback = self._ocr()
         model = self._vision.current(workspace_id)
@@ -1029,16 +1044,23 @@ class DocumentSearchService:
             raise ApiError(404, "not_found", "File not found.")
         self.queue_index(workspace_id, file_id)
 
-    def start_reembed(self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    def start_reembed(
+        self, db: Session, workspace_id: uuid.UUID, actor_id: uuid.UUID, *, extract: bool = False
+    ) -> None:
         """The ``EmbeddingModelChangedHook`` (ADR 0006), inside the transaction that changes
         the Workspace's embedding model: from then on search matches text only, and a
         ``reindex_documents`` job builds the new vectors, then switches to them at once. A
-        rebuild already running is superseded: only the newest one switches."""
+        rebuild already running is superseded: only the newest one switches. With
+        ``extract`` (Documents were just shared) the job runs the whole ``index_document``
+        pipeline on every file, so scans are read and images described too."""
         rebuild_id = self._mark_rebuild(db, workspace_id)
+        params = {"workspace_id": str(workspace_id), "rebuild_id": str(rebuild_id)}
+        if extract:
+            params["extract"] = True
         self._jobs.submit(
             workspace_id,
             REINDEX_JOB,
-            {"workspace_id": str(workspace_id), "rebuild_id": str(rebuild_id)},
+            params,
             title="Re-embed documents",
             created_by=actor_id,
             priority=PRIORITY_LOW,
@@ -1064,11 +1086,46 @@ class DocumentSearchService:
         workspace_id = uuid.UUID(params["workspace_id"])
         rebuild = uuid.UUID(params["rebuild_id"]) if "rebuild_id" in params else None
         try:
-            self._reindex(workspace_id, rebuild, ctx)
+            if params.get("extract"):
+                self._reindex_from_bytes(workspace_id, rebuild, ctx)
+            else:
+                self._reindex(workspace_id, rebuild, ctx)
         finally:
             if rebuild is not None:
                 with Session(self._engine) as db, db.begin():
                     self._switch(db, workspace_id, rebuild)
+
+    def _reindex_from_bytes(
+        self, workspace_id: uuid.UUID, rebuild: uuid.UUID | None, ctx: JobContext
+    ) -> None:
+        """Run the whole ``index_document`` pipeline on each of the Workspace's files, so
+        scans go through OCR or the vision model and images are described under the
+        settings now in force. A file that fails keeps its own ``failed`` status; the rest
+        carry on."""
+        with Session(self._engine) as db:
+            files = list(
+                db.execute(
+                    sa.select(WorkspaceFileRecord.id, WorkspaceFileRecord.storage_key)
+                    .where(WorkspaceFileRecord.workspace_id == workspace_id)
+                    .order_by(WorkspaceFileRecord.updated_at)
+                )
+            )
+        for done, (file_id, key) in enumerate(files, start=1):
+            ctx.raise_if_cancelled()
+            if rebuild is not None and not self._rebuild_current(workspace_id, rebuild):
+                ctx.log("A newer change of the embedding model took over; stopping.")
+                return
+            try:
+                self.run_index(
+                    {"workspace_id": str(workspace_id), "file_id": str(file_id), "key": key}, ctx
+                )
+            except JobCancelledError:
+                raise
+            except Exception as exc:
+                ctx.log(f"Document {done} of {len(files)} could not be indexed: {exc}")
+            else:
+                ctx.log(f"Indexed document {done} of {len(files)}.")
+            ctx.progress(done * 100 // len(files))
 
     def _reindex(self, workspace_id: uuid.UUID, rebuild: uuid.UUID | None, ctx: JobContext) -> None:
         with Session(self._engine) as db:
@@ -1340,7 +1397,7 @@ class DocumentSearchService:
         filters: PassageFilters | None = None,
     ) -> SearchTrace:
         """Run a real search and return what each stage produced (any member): the same
-        pipeline, settings, permissions and data-sharing rules as ``search``."""
+        pipeline, settings, permissions and AI privacy rules as ``search``."""
         trace = SearchTrace(queries=[query])
         self.search(
             user,
@@ -1393,8 +1450,8 @@ class DocumentSearchService:
     ) -> list[Passage]:
         """Reorder the fused top passages (``rerank_top_n``) by the Workspace's rerank model,
         best first, each passage's score becoming the model's. With reranking switched off in
-        the Document AI settings, without a rerank model, one the data-sharing
-        level (an internal model always may) or internal-only setting keeps from the
+        the Document AI settings, without a rerank model, one that AI privacy
+        (Documents off, for internal models too) or the internal-only setting keeps from the
         documents, or when the call fails or the
         budget is used up, the fused order stands."""
         if not config.rerank:
@@ -1404,7 +1461,7 @@ class DocumentSearchService:
         if (
             len(passages) < 2
             or model is None
-            or not (model.is_internal or settings.includes_documents)
+            or not settings.includes_documents
             or (settings.internal_only and not model.is_internal)
         ):
             return passages

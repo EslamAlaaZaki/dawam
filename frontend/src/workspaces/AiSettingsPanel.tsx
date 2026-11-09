@@ -240,7 +240,6 @@ function OwnerForm({
     save
       .mutateAsync({
         internal_only: internalOnly,
-        data_sharing_level: settings.data_sharing_level,
         agent_model_ids: agent.ids,
         default_agent_model_id: agent.defaultId,
         light_model_ids: light.ids,
@@ -374,8 +373,8 @@ function OwnerForm({
         </NativeSelect>
       </label>
       <Hint>
-        Reads the scanned pages of uploaded PDFs. An external model gets the
-        page images only when the data-sharing level allows documents; otherwise
+        Reads the scanned pages of uploaded PDFs. A vision model gets the
+        page images only when the Workspace shares documents (AI privacy); otherwise
         the self-hosted OCR engine reads them.
       </Hint>
       <label className={labelClasses}>
@@ -396,8 +395,8 @@ function OwnerForm({
       </label>
       <Hint>
         Reorders the best document-search results by relevance. An external
-        model gets the passages only when the data-sharing level allows
-        documents.
+        model gets the passages only when the Workspace shares
+        documents (AI privacy).
       </Hint>
       {internalOnly && (
         <Hint>

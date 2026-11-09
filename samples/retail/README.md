@@ -75,22 +75,9 @@ async function api(method, path, body) {
 
 1. **Workspace (UI).** On **Workspaces**, create a Workspace named "Rimal Retail" with business domain "Retail", and pick the models. *Point out:* the Workspace holds the source systems, the warehouse and everyone's work; the stepper at the top tracks Source Analysis, KPIs and DW Modeling.
 
-2. **What the AI may see (API).** A new Workspace lets the AI see metadata only. For the document questions and profile-aware suggestions below, an owner raises it to documents (there is no button for it yet):
+2. **What the AI may see (UI).** A new Workspace lets the AI see metadata only. For the document questions and profile-aware suggestions below, open **Workspace settings > AI privacy**, turn on **Documents** and **Profile statistics** (each asks you to confirm), and press **Save**. Only an owner can change them.
 
-   ```js
-   var ai = await api("GET", "/ai-settings");
-   await api("PUT", "/ai-settings", {
-     internal_only: ai.internal_only,
-     data_sharing_level: "documents",
-     agent_model_ids: ai.agent_models.map((m) => m.id),
-     default_agent_model_id: ai.agent_models.find((m) => m.is_default)?.id ?? null,
-     light_model_ids: ai.light_models.map((m) => m.id),
-     default_light_model_id: ai.light_models.find((m) => m.is_default)?.id ?? null,
-     embedding_model_id: ai.embedding_model?.id ?? null,
-   });
-   ```
-
-   *Point out:* the level (metadata, profiles, documents, sample rows) applies to every model role, so data exposure is a deliberate choice.
+   *Point out:* metadata is always shared, and profile statistics, documents and sample rows are three separate opt-ins that apply to every model role, so data exposure is a deliberate choice.
 
 3. **Source Systems (UI).** Open **Systems** and use **Add Source System** twice: "POS" with System Code `pos`, and "E-commerce" with System Code `ecom`. *Point out:* the System Code is what generated names use (`stg_pos_retail_products`).
 

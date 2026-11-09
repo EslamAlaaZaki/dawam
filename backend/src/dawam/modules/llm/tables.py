@@ -117,19 +117,19 @@ class WorkspaceAiSettingsRecord(Base):
     created, deciding ``internal_only`` in code from the installation's models."""
 
     __tablename__ = "llm_workspace_settings"
-    __table_args__ = (
-        sa.CheckConstraint(
-            "data_sharing_level IN ('metadata', 'profiles', 'documents', 'samples')",
-            name="data_sharing_level",
-        ),
-    )
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
     )
     internal_only: Mapped[bool]
     """True: the gateway refuses every external provider for every model role."""
-    data_sharing_level: Mapped[str] = mapped_column(sa.String(16))
+    share_profiles: Mapped[bool]
+    """True: the AI may see profile statistics (null rates, ranges, distributions)."""
+    share_documents: Mapped[bool]
+    """True: the AI may read the text of uploaded documents."""
+    share_samples: Mapped[bool]
+    """True: the AI may see sample rows, top-N values and min/max, and run source queries.
+    Metadata (names, types, keys) is always shared and has no column."""
     auto_retrieve: Mapped[bool] = mapped_column(server_default=sa.false())
     """On: the first message of a conversation carries the top document passages."""
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

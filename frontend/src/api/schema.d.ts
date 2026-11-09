@@ -3441,7 +3441,7 @@ export interface paths {
         /**
          * Search Documents
          * @description Search the Workspace's uploaded documents (any member). Full-text search with Arabic
-         *     normalisation, combined with vector search when the Workspace's data-sharing level
+         *     normalisation, combined with vector search when the Workspace shares documents (AI privacy)
          *     includes documents and its internal-only setting allows the embedding provider. Each
          *     result is a cited passage: the document and its section.
          */
@@ -3465,7 +3465,7 @@ export interface paths {
          * Explain Document Search
          * @description The retrieval playground (any member): runs a real search with the Workspace's
          *     effective Document AI settings and returns each stage's ranking and scores (full-text,
-         *     vector, fused, reranked, final). Permissions and data-sharing levels apply as in search.
+         *     vector, fused, reranked, final). Permissions and AI privacy apply as in search.
          */
         get: operations["explainDocumentSearch"];
         put?: never;
@@ -6106,12 +6106,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /**
-         * DataSharingLevel
-         * @description What the AI may see, cumulative: each level includes every one before it.
-         * @enum {string}
-         */
-        DataSharingLevel: "metadata" | "profiles" | "documents" | "samples";
         /** DataWarehouse */
         DataWarehouse: {
             /**
@@ -11627,11 +11621,24 @@ export interface components {
              * @description Every model role (agent, light, embedding, vision, rerank) is refused an external provider.
              */
             internal_only: boolean;
-            /** @description What the AI may see, cumulative: `metadata` < `profiles` < `documents` < `samples`. */
-            data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Share Profiles
+             * @description The AI may see profile statistics. Metadata is always shared.
+             */
+            share_profiles: boolean;
+            /**
+             * Share Documents
+             * @description The AI may read the text of uploaded documents.
+             */
+            share_documents: boolean;
+            /**
+             * Share Samples
+             * @description The AI may see sample rows (and run `run_source_query`); top-N values and min/max need it too.
+             */
+            share_samples: boolean;
             /**
              * Auto Retrieve
-             * @description On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs the `documents` level).
+             * @description On: the first message of an assistant conversation carries the top 3 document passages for it, quoted as data (needs `share_documents`).
              */
             auto_retrieve: boolean;
             /**
@@ -11656,9 +11663,9 @@ export interface components {
              * @description The documents are being embedded again with a new embedding model; document search matches text only until they all are.
              */
             embedding_rebuilding: boolean;
-            /** @description The Workspace's vision model, which reads scanned pages when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: the self-hosted OCR engine reads them. */
+            /** @description The Workspace's vision model, which reads scanned pages when the Workspace shares documents (AI privacy) and its provider is allowed (internal-only takes internal ones); null, or not allowed: the self-hosted OCR engine reads them. */
             vision_model: components["schemas"]["WorkspaceModel"] | null;
-            /** @description The Workspace's rerank model, which reorders the top document-search results by relevance when the data-sharing level allows sending documents to its provider (an internal one always may); null, or not allowed: results keep their fused order. */
+            /** @description The Workspace's rerank model, which reorders the top document-search results by relevance when the Workspace shares documents (AI privacy); null, or not allowed: results keep their fused order. */
             rerank_model: components["schemas"]["WorkspaceModel"] | null;
             /** @description Per role, the tested models an admin enabled for it, for an owner to choose from (an internal-only Workspace takes only internal ones). */
             choices: components["schemas"]["ModelChoices"];
@@ -11680,7 +11687,21 @@ export interface components {
         WorkspaceAiSettingsRequest: {
             /** Internal Only */
             internal_only: boolean;
-            data_sharing_level: components["schemas"]["DataSharingLevel"];
+            /**
+             * Share Profiles
+             * @description Left out: keeps the current value (off for a new Workspace).
+             */
+            share_profiles?: boolean | null;
+            /**
+             * Share Documents
+             * @description Left out: keeps the current value (off for a new Workspace).
+             */
+            share_documents?: boolean | null;
+            /**
+             * Share Samples
+             * @description Left out: keeps the current value (off for a new Workspace).
+             */
+            share_samples?: boolean | null;
             /**
              * Auto Retrieve
              * @description Left out: keeps the current value.

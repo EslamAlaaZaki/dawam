@@ -151,7 +151,7 @@ Roles apply to the whole Workspace (all Source Systems and the Data Warehouse). 
 | Delete a conversation (only one they started) | ❌ | ✅ | ✅ | ✅ |
 | Let the assistant run source queries, generate files and propose changes | ❌ | ✅ | ✅ | ❌ |
 | Accept / reject Change Set items (owner-only items need an Owner) | ❌ | ✅ | ✅ | ❌ |
-| Choose the Workspace's agent and light models, data-sharing level and internal-only restriction | ❌ | ✅ | ❌ | ❌ |
+| Choose the Workspace's agent and light models, what the AI may see (AI privacy) and internal-only restriction | ❌ | ✅ | ❌ | ❌ |
 | Upload, edit, delete Workspace files | ❌ | ✅ | ✅ | ❌ |
 | Configure LLM providers, models, roles and budgets (system-wide) | ✅ | ❌ | ❌ | ❌ |
 | Set a Workspace's Allowed Models; remove a model in use (choosing its replacement) | ✅ | ❌ | ❌ | ❌ |
@@ -453,7 +453,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 - Stores aggregates only: counts, null %, distinct count, min/max (except for protected columns), and length statistics.
 - Top-N values are **off by default**. They can be enabled per table by an owner and are never captured for protected columns.
 - Sampling uses `TABLESAMPLE` or a `LIMIT`-based approach with a configurable cap (default 100 000 rows).
-- Top-N values and min/max are real data: they are sent to the AI only at the *sample rows* data-sharing level, never at *profile statistics*.
+- Top-N values and min/max are real data: they are sent to the AI only when the owner shares *sample rows* with the AI, never with *profile statistics* alone.
 
 ### 6.6 Relationship inference
 
@@ -486,7 +486,7 @@ The output is a confidence score from 0 to 1 with its evidence. Only candidates 
 
 See [ADR 0002](./adr/0002-ai-may-read-source-sample-rows.md).
 
-- Available only for Source Systems with a live Connection, and only when the Workspace's data-sharing level includes **sample rows**.
+- Available only for Source Systems with a live Connection, and only when the Workspace shares **sample rows** with the AI (AI privacy).
 - **Before any exploration**, the name-based PII rules (§6.12) run automatically on the Source System if they haven't run on its latest Snapshot.
 - **Query guard.** The AI's `run_source_query` tool accepts SQL that is parsed with sqlglot and must be a **single `SELECT`** statement. Then:
   - Every function call must be on a per-engine allow-list of side-effect-free functions (e.g. no `pg_terminate_backend`, `dblink`, `nextval`, `OPENROWSET`, `OPENQUERY`, or user-defined functions).
@@ -687,7 +687,7 @@ Disabled checks are excluded from the formula and listed separately with their r
 | `update_file` | write (file) | Propose a new content for a text file, shown as a diff and saved only when accepted |
 
 - **Human in the loop.** Write tools that touch the model never write directly. They create a `ChangeSet` in `pending` state, shown as a diff in the chat. An editor accepts all or some items, which applies them in one transaction and records them in the audit trail. There is no revert (§6.10).
-- **Data-sharing levels** (owner setting): *metadata*; *+ profile statistics*; *+ documents*; *+ sample rows* (enables `run_source_query`). They apply to **every model role**: the agent model, the light model and the embedding model. The assistant never receives connection credentials. Protected columns (§6.5) are always masked in sample rows (§6.8) and sent by name and category only. When a Workspace is restricted to internal providers, the restriction also covers every model role and upload-time indexing, so nothing leaves the organisation's network.
+- **AI privacy** (owner setting, the "AI privacy" tab of the Workspace settings): *metadata* (names, types, keys) is always shared; *profile statistics*, *documents* and *sample rows* (enables `run_source_query`) are three independent opt-ins, all off for a new Workspace, so documents can be shared without profile statistics. They apply to **every model role**: the agent model, the light model and the embedding model. The assistant never receives connection credentials. Protected columns (§6.5) are always masked in sample rows (§6.8) and sent by name and category only. When a Workspace is restricted to internal providers, the restriction also covers every model role and upload-time indexing, so nothing leaves the organisation's network.
 - **Prompt-injection posture.** Document text, comments, descriptions, routine code and query results are passed as quoted data, and the system prompt tells the model to treat them as data. Permissions are enforced in the tool executor, source queries are parsed and limited to a single `SELECT`, and every model write needs human approval, so an injected instruction cannot escalate access or change anything silently.
 - **Context.** The object on the current page is sent as context. The agent pulls everything else through tools instead of having the whole Workspace placed in the prompt.
 - **Language.** The assistant replies in the language of the user's message. Generated identifiers follow the naming rules regardless of language.
@@ -899,7 +899,7 @@ ChangeSetItem(id, change_set_id, object_type, object_id?, operation[create|updat
                                                   -- creates are one item per table, columns nested
 ```
 
-**Source identity vs Snapshots.** `SrcDbSchema`, `SrcTable`, `SrcColumn` and `SrcRoutine` are stable identities per Source System; they carry descriptions, tags, classifications, PII, relationships and mappings. Each Snapshot stores its own immutable `Snapshot*` rows pointing at those identities, so any two Snapshots can be diffed. On re-extraction or re-import, objects are matched to identities by exact name first, then case-insensitively only when that is unambiguous and the engine folds case (so PostgreSQL's `"Customer"` and `customer` stay two objects), or by a confirmed rename or manual merge. A type change updates the identity's current definition. Objects missing from the new Snapshot become `source_removed`; objects outside the allowed Database Schemas become `out_of_scope`; neither is ever deleted automatically. Mappings therefore never break because of a type change or a confirmed rename. The data-sharing levels are cumulative: `samples` includes `documents`, which includes `profiles`, which includes `metadata`.
+**Source identity vs Snapshots.** `SrcDbSchema`, `SrcTable`, `SrcColumn` and `SrcRoutine` are stable identities per Source System; they carry descriptions, tags, classifications, PII, relationships and mappings. Each Snapshot stores its own immutable `Snapshot*` rows pointing at those identities, so any two Snapshots can be diffed. On re-extraction or re-import, objects are matched to identities by exact name first, then case-insensitively only when that is unambiguous and the engine folds case (so PostgreSQL's `"Customer"` and `customer` stay two objects), or by a confirmed rename or manual merge. A type change updates the identity's current definition. Objects missing from the new Snapshot become `source_removed`; objects outside the allowed Database Schemas become `out_of_scope`; neither is ever deleted automatically. Mappings therefore never break because of a type change or a confirmed rename. Metadata is always shared with the AI; profile statistics, documents and sample rows are independent opt-ins.
 
 ---
 
@@ -1012,7 +1012,7 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel   POST /jobs/{id}/answer
 | Install | `docker compose up` with a documented `.env.example`. Works offline after image pull. With a self-hosted LLM (vLLM, SGLang or Ollama), the whole tool, AI included, runs fully offline and air-gapped. Cloud models need outbound access to the chosen provider only. |
 | Assistant | First streamed token in < 3 s for simple questions. |
 | Scoring | Recalculation in < 2 s for a 200-table DW Schema. |
-| AI data exposure | Only what the Workspace's data-sharing level allows is sent to the provider. Credentials are never sent; confirmed PII is always masked. New Workspaces are internal-only by default. |
+| AI data exposure | Only what the Workspace shares with the AI (AI privacy) is sent to the provider. Credentials are never sent; confirmed PII is always masked. New Workspaces are internal-only by default. |
 | LLM portability | Full agent mode works with any model that has native tool calling and a context window of at least 32k tokens. Other models run in limited mode. |
 
 ---
@@ -1054,7 +1054,7 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel   POST /jobs/{id}/answer
 
 **Phase 1: Auth, Admin & Workspaces** (Epics A, B, C). Bootstrap admin, sessions, invitations, password reset, admin console, Workspaces, membership, folder-tree shell, authorization policy with the full permission test suite, activity log.
 
-**Phase 2: LLM Gateway & Assistant foundations** (Epic Q core). Provider registry; the `openai_compatible` adapter (vLLM, SGLang, Ollama, OpenAI and other compatible APIs) and the `anthropic` adapter first, with `azure_openai`, `gemini` and `bedrock` added later in Release 1 through the same plugin interface; capability detection, prompted-tool fallback, model roles, budgets, internal-only Workspaces, data-sharing levels, the agent loop and Change Sets. The AI is required, so it comes before the features that use it.
+**Phase 2: LLM Gateway & Assistant foundations** (Epic Q core). Provider registry; the `openai_compatible` adapter (vLLM, SGLang, Ollama, OpenAI and other compatible APIs) and the `anthropic` adapter first, with `azure_openai`, `gemini` and `bedrock` added later in Release 1 through the same plugin interface; capability detection, prompted-tool fallback, model roles, budgets, internal-only Workspaces, the AI privacy opt-ins, the agent loop and Change Sets. The AI is required, so it comes before the features that use it.
 
 **Phase 3: Source Analysis & PII** (Epics D, E, F, G, P scanning and review). Connector interface with PostgreSQL, MySQL/MariaDB, SQL Server and Oracle; Schema Import with templates and helper queries; encrypted credentials; background jobs; extraction incl. routines and views; Snapshots & diff; Source Schema browsing; profiling; relationship inference incl. routine JOIN parsing; ER diagram; documentation; documents with text extraction and search; PII scans, review queue and custom rules; AI source exploration, drafting and gaps reports.
 

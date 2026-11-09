@@ -25,12 +25,12 @@ from dawam.modules.files import (
     DocumentAiPolicy,
     DocumentParser,
     DocumentSearchService,
-    NoDocumentAi,
     OcrEngine,
     RegisteredEmbeddingModels,
     RegisteredLightModels,
     RegisteredRerankModels,
     RegisteredVisionModels,
+    WorkspaceDocumentAi,
 )
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
@@ -93,9 +93,9 @@ def build_document_search(
     parser: Callable[[], DocumentParser | None] | None = None,
     ocr: Callable[[], OcrEngine | None] | None = None,
 ) -> DocumentSearchService:
-    """The document search service, as the API and the worker build it. Until the
-    Workspace AI settings exist, ``document_ai`` defaults to ``NoDocumentAi``: documents
-    are searched with full-text only and never sent to a model."""
+    """The document search service, as the API and the worker build it. ``document_ai``
+    defaults to ``WorkspaceDocumentAi``: a Workspace's documents reach a model only when
+    its AI privacy settings share them (tests pass a fake policy)."""
     options = {"adapters": llm_adapters} if llm_adapters is not None else {}
     providers = ProviderService(
         engine,
@@ -107,7 +107,7 @@ def build_document_search(
     return DocumentSearchService(
         engine,
         workspaces=WorkspaceService(engine, clock=clock),
-        ai=document_ai or NoDocumentAi(),
+        ai=document_ai or WorkspaceDocumentAi(engine),
         embeddings=RegisteredEmbeddingModels(providers, roles, engine),
         vision=RegisteredVisionModels(providers, roles, engine),
         light=RegisteredLightModels(providers, roles, engine),

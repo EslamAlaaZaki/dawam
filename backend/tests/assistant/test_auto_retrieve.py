@@ -20,7 +20,7 @@ settings = test_chat.settings
 def auto_retrieve(roles: RoleClients, on: bool):
     return roles.client("owner").put(
         f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
-        json={"internal_only": False, "data_sharing_level": "documents", "auto_retrieve": on},
+        json={"internal_only": False, "share_documents": True, "auto_retrieve": on},
     )
 
 
@@ -34,9 +34,7 @@ def test_the_setting_is_off_by_default_and_owners_switch_it(roles, model):
 
     assert auto_retrieve(roles, True).json()["auto_retrieve"] is True
     assert roles.client("viewer").get(path).json()["auto_retrieve"] is True
-    plain = roles.client("owner").put(
-        path, json={"internal_only": False, "data_sharing_level": "documents"}
-    )
+    plain = roles.client("owner").put(path, json={"internal_only": False, "share_documents": True})
     assert plain.json()["auto_retrieve"] is True  # left out: kept
 
 

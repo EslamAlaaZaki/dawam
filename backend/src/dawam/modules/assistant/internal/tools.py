@@ -1403,8 +1403,8 @@ def _get_relationships(ctx: ToolContext, args: _GetRelationships) -> Any:
             }
             for r in found
         ],
-        "note": "Confirm or refute a suggested relationship with what the data-sharing level "
-        "allows (names, profiles, documents, or COUNT queries with run_source_query), then "
+        "note": "Confirm or refute a suggested relationship with what the Workspace shares "
+        "with the AI (names, profiles, documents, or COUNT queries with run_source_query), then "
         "accept or reject it in propose_changes `relationships`.",
     }
 
@@ -1545,8 +1545,8 @@ def _mentions(ctx: ToolContext, start: Any) -> dict[str, Any]:
     if not ctx.policy.allows(DataSharingLevel.DOCUMENTS):
         return {
             "documents": [],
-            "documents_note": "Withheld: the Workspace's data-sharing level does not share "
-            "documents.",
+            "documents_note": "Withheld: the Workspace does not share documents with the AI (AI "
+            "privacy: Documents is off).",
         }
     name = start.label.rsplit(".", 1)[-1] if start.type.endswith("column") else start.label
     passages = ctx.services.documents.search(
@@ -1794,7 +1794,8 @@ def _search_workspace(ctx: ToolContext, args: _SearchWorkspace) -> Any:
         else:
             found["document"] = []
             found["document_note"] = (
-                "Withheld: the Workspace's data-sharing level does not share documents."
+                "Withheld: the Workspace does not share documents with the AI (AI privacy: "
+                "Documents is off)."
             )
     return found
 
@@ -3171,6 +3172,14 @@ FOLDER_TOOLS: dict[str, frozenset[str]] = {
 ``systems/<id>/source-schema``, ...); any other folder gets only the base."""
 
 
+_SHARED_KIND = {
+    DataSharingLevel.METADATA: "metadata",
+    DataSharingLevel.PROFILES: "profile statistics",
+    DataSharingLevel.DOCUMENTS: "documents",
+    DataSharingLevel.SAMPLES: "sample rows",
+}
+
+
 class ToolRegistry:
     """The tools of one installation, ready to be bound to a user in a Workspace."""
 
@@ -3217,8 +3226,8 @@ class ToolRegistry:
             return ApiError(
                 403,
                 "data_sharing_level",
-                f"The Workspace's data-sharing level does not allow `{tool.name}`: an owner "
-                f"must raise it to `{tool.level.value}`.",
+                f"The Workspace does not share {_SHARED_KIND[tool.level]} with the AI, so "
+                f"`{tool.name}` is off: an owner must turn it on under AI privacy.",
             )
         try:
             self._workspaces.authorize(ctx.user, tool.action, ctx.workspace_id)

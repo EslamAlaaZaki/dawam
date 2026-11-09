@@ -57,7 +57,9 @@ def body(agent=None, light=None, embedding=None, **fields) -> dict:
     agents, lights = ids(agent), ids(light)
     return {
         "internal_only": False,
-        "data_sharing_level": "metadata",
+        "share_profiles": False,
+        "share_documents": False,
+        "share_samples": False,
         "agent_model_ids": agents,
         "default_agent_model_id": agents[0] if agents else None,
         "light_model_ids": lights,
@@ -138,7 +140,11 @@ def test_a_new_workspace_is_internal_only_when_the_installation_has_an_internal_
     settings = read(signed_in_client, create_workspace(signed_in_client, agent=local))
 
     assert settings["internal_only"] is True and settings["banner"] is False
-    assert settings["data_sharing_level"] == "metadata"
+    assert (settings["share_profiles"], settings["share_documents"], settings["share_samples"]) == (
+        False,
+        False,
+        False,
+    )
 
 
 @pytest.mark.parametrize("registered", ["external", "nothing"])
@@ -369,7 +375,7 @@ def test_the_embedding_model_changes_after_indexing_and_the_documents_are_embedd
     one = register(admin, "bge-small", internal=False, roles=("embedding",))
     two = register(admin, "bge-large", internal=False, roles=("embedding",))
     owner = roles.client("owner")
-    sharing = {"data_sharing_level": "documents"}
+    sharing = {"share_documents": True}
 
     set_one = owner.put(settings_path(roles), json=body(agent, embedding=one, **sharing))
     assert upload(roles, system(roles), "sad.md", b"Postings are booked daily.").is_success
@@ -394,7 +400,13 @@ def test_model_fields_left_out_keep_their_value(roles: RoleClients, fake_llm):
     owner.put(settings_path(roles), json=body(agent, light, embedding=bge))
 
     changed = owner.put(
-        settings_path(roles), json={"internal_only": False, "data_sharing_level": "samples"}
+        settings_path(roles),
+        json={
+            "internal_only": False,
+            "share_profiles": True,
+            "share_documents": True,
+            "share_samples": True,
+        },
     )
 
     assert changed.status_code == 200, changed.text
@@ -411,9 +423,7 @@ def test_only_owners_change_the_settings_and_every_member_reads_them(roles: Role
         assert roles.client(role).put(path, json=body()).status_code == 403
     assert roles.client("non_member").get(path).status_code == 404
     assert roles.client("non_member").put(path, json=body()).status_code == 404
-    assert (
-        roles.client("owner").put(path, json=body(data_sharing_level="samples")).status_code == 200
-    )
+    assert roles.client("owner").put(path, json=body(share_samples=True)).status_code == 200
 
 
 def test_an_archived_workspaces_settings_are_read_only(roles: RoleClients, fake_llm):
@@ -428,8 +438,8 @@ def test_an_archived_workspaces_settings_are_read_only(roles: RoleClients, fake_
 def test_changes_are_audited(roles: RoleClients, app: FastAPI, fake_llm):
     agent = register(roles.client("admin"), "agent-a", internal=False)
     owner = roles.client("owner")
-    owner.put(settings_path(roles), json=body(agent, data_sharing_level="documents"))
-    owner.put(settings_path(roles), json=body(agent, data_sharing_level="documents"))  # same
+    owner.put(settings_path(roles), json=body(agent, share_documents=True))
+    owner.put(settings_path(roles), json=body(agent, share_documents=True))  # same
 
     (entry,) = AuditService(app.state.engine).list(
         roles.workspace_id, entity_type="workspace_ai_settings", entity_id=str(roles.workspace_id)
@@ -438,12 +448,12 @@ def test_changes_are_audited(roles: RoleClients, app: FastAPI, fake_llm):
 
     assert entry.old == {
         "agent_model_ids": [],
-        "data_sharing_level": "metadata",
+        "share_documents": False,
         "default_agent_model_id": None,
     }
     assert entry.new == {
         "agent_model_ids": [agent["id"]],
-        "data_sharing_level": "documents",
+        "share_documents": True,
         "default_agent_model_id": agent["id"],
     }
     assert entry.actor_id == roles.user("owner").id
@@ -468,19 +478,25 @@ def test_switching_internal_only_is_audited(roles: RoleClients, app: FastAPI, fa
 # -- the data-sharing policy -----------------------------------------------------------
 
 
-def test_data_sharing_levels_are_cumulative(roles: RoleClients, gateways, fake_llm):
+def test_metadata_is_always_shared_and_the_other_kinds_are_independent(
+    roles: RoleClients, gateways, fake_llm
+):
     _, ai = gateways
-    expected = {
-        "metadata": {"metadata"},
-        "profiles": {"metadata", "profiles"},
-        "documents": {"metadata", "profiles", "documents"},
-        "samples": {"metadata", "profiles", "documents", "samples"},
+    owner = roles.client("owner")
+    kinds = {
+        "profiles": "share_profiles",
+        "documents": "share_documents",
+        "samples": "share_samples",
     }
 
-    for level, allowed in expected.items():
-        roles.client("owner").put(settings_path(roles), json=body(data_sharing_level=level))
+    assert {lv.value for lv in DataSharingLevel if ai.policy(roles.workspace_id).allows(lv)} == {
+        "metadata"
+    }
+    for kind, field in kinds.items():
+        response = owner.put(settings_path(roles), json=body(**{field: True}))
+        assert response.status_code == 200, response.text
         policy = ai.policy(roles.workspace_id)
-        assert {lv.value for lv in DataSharingLevel if policy.allows(lv)} == allowed, level
+        assert {lv.value for lv in DataSharingLevel if policy.allows(lv)} == {"metadata", kind}
 
 
 # -- the gateway resolves each call's model from the Workspace ----------------------------

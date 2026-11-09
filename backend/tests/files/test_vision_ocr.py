@@ -47,12 +47,11 @@ def use_vision(roles: RoleClients, *, internal: bool) -> dict:
     model = register(roles.client("admin"), "qwen-vl", internal=internal, roles=("vision",))
     owner = roles.client("owner")
     path = f"/api/v1/workspaces/{roles.workspace_id}/ai-settings"
-    current = owner.get(path).json()
+    owner.get(path).json()
     chosen = owner.put(
         path,
         json={
             "internal_only": False,
-            "data_sharing_level": current["data_sharing_level"],
             "vision_model_id": model["id"],
         },
     )
@@ -64,9 +63,10 @@ def vision_calls(fake_llm) -> list:
     return [c for c in fake_llm.calls if c.messages and c.messages[0].images]
 
 
-def test_a_self_hosted_vision_model_reads_the_scan_whatever_the_data_sharing_level(
-    roles: RoleClients, ocr, fake_llm, worker
+def test_an_internal_vision_model_reads_the_scan_when_documents_may_be_shared(
+    roles: RoleClients, ocr, fake_llm, policy, worker
 ):
+    policy.includes_documents = True
     use_vision(roles, internal=True)
     before = len(vision_calls(fake_llm))
     fake_llm.script(Reply(text=f"```markdown\n{SCANNED}\n```", usage=Usage(1200, 40)))
@@ -149,8 +149,9 @@ def test_a_pdf_with_enough_text_needs_no_ocr_and_gets_no_note(
 
 
 def test_only_the_pages_short_of_text_go_to_the_vision_model(
-    roles: RoleClients, ocr, fake_llm, worker
+    roles: RoleClients, ocr, fake_llm, policy, worker
 ):
+    policy.includes_documents = True
     use_vision(roles, internal=True)
     before = len(vision_calls(fake_llm))
     fake_llm.script(Reply(text="Page two, read by the model."))
@@ -164,8 +165,9 @@ def test_only_the_pages_short_of_text_go_to_the_vision_model(
 
 
 def test_a_failing_vision_model_falls_back_to_the_self_hosted_engine(
-    roles: RoleClients, ocr, fake_llm, worker
+    roles: RoleClients, ocr, fake_llm, policy, worker
 ):
+    policy.includes_documents = True
     use_vision(roles, internal=True)
     fake_llm.script(LlmError("bad_request", "The model refused the image."))
     system_id = system(roles)
@@ -180,8 +182,9 @@ def test_a_failing_vision_model_falls_back_to_the_self_hosted_engine(
 
 
 def test_an_exhausted_budget_falls_back_to_the_self_hosted_engine(
-    roles: RoleClients, ocr, fake_llm, worker
+    roles: RoleClients, ocr, fake_llm, policy, worker
 ):
+    policy.includes_documents = True
     use_vision(roles, internal=True)
     admin = roles.client("admin")
     budget = admin.put(f"{ADMIN}/budgets/installation", json={"monthly_token_budget": 0})
@@ -242,8 +245,9 @@ def test_without_a_self_hosted_engine_a_refused_scan_is_unread_and_the_file_says
 
 
 def test_without_a_self_hosted_engine_a_failed_vision_call_says_the_scan_is_unread(
-    roles: RoleClients, no_self_hosted_ocr, fake_llm, worker
+    roles: RoleClients, no_self_hosted_ocr, fake_llm, policy, worker
 ):
+    policy.includes_documents = True
     use_vision(roles, internal=True)
     fake_llm.script(LlmError("bad_request", "The model refused the image."))
     system_id = system(roles)
@@ -255,7 +259,10 @@ def test_without_a_self_hosted_engine_a_failed_vision_call_says_the_scan_is_unre
     assert NO_FALLBACK in done["index_note"]
 
 
-def test_the_vision_model_reads_a_scan_at_low_effort(roles: RoleClients, ocr, fake_llm, worker):
+def test_the_vision_model_reads_a_scan_at_low_effort(
+    roles: RoleClients, ocr, fake_llm, policy, worker
+):
+    policy.includes_documents = True
     model = use_vision(roles, internal=True)
     reasoning = {"enabled": True, "effort": "high", "budget_tokens": 2048}
     response = roles.client("admin").put(

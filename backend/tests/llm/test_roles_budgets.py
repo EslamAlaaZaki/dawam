@@ -48,7 +48,9 @@ def use_models(client, workspace_id, agent, light=None, embedding=None, **fields
         f"/api/v1/workspaces/{workspace_id}/ai-settings",
         json={
             "internal_only": False,
-            "data_sharing_level": "metadata",
+            "share_profiles": False,
+            "share_documents": False,
+            "share_samples": False,
             "agent_model_ids": [agent["id"]],
             "light_model_ids": [light["id"]] if light else [],
             "embedding_model_id": embedding["id"] if embedding else None,
