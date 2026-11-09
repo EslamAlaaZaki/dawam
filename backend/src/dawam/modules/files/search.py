@@ -50,6 +50,7 @@ from dawam.modules.llm import (
     ProviderService,
     RoleService,
     document_ai_config,
+    workspace_document_sharing,
     workspace_embedding_model_id,
     workspace_model_id,
 )
@@ -140,13 +141,24 @@ class DocumentAiSettings:
     """What a Workspace's AI settings say about documents."""
 
     includes_documents: bool
-    """The data-sharing level is *documents* or above."""
+    """The Workspace shares documents with the AI (``share_documents``, AI privacy)."""
     internal_only: bool
     """The Workspace may use internal providers only."""
 
 
 class DocumentAiPolicy(Protocol):
     def document_settings(self, workspace_id: uuid.UUID) -> DocumentAiSettings: ...
+
+
+class WorkspaceDocumentAi:
+    """The production policy: a Workspace's AI privacy and internal-only settings."""
+
+    def __init__(self, engine: sa.Engine) -> None:
+        self._engine = engine
+
+    def document_settings(self, workspace_id: uuid.UUID) -> DocumentAiSettings:
+        shared, internal_only = workspace_document_sharing(self._engine, workspace_id)
+        return DocumentAiSettings(includes_documents=shared, internal_only=internal_only)
 
 
 class NoDocumentAi:
@@ -253,8 +265,8 @@ class RegisteredVisionModels:
 
 
 VISION_REFUSED = (
-    "The Workspace's data-sharing level does not let documents reach its vision model's "
-    "provider, so {fallback}."
+    "The Workspace does not share documents with its vision model's provider (AI privacy: "
+    "Documents is off), so {fallback}."
 )
 VISION_FAILED = "The vision model could not read the scanned pages ({reason}), so {fallback}."
 SELF_HOSTED = "the self-hosted OCR engine read the scanned pages"
@@ -293,8 +305,8 @@ class _VisionThenSelfHosted:
 
 
 IMAGE_NOT_DESCRIBED = (
-    "The image was not described: the Workspace has no vision model that its data-sharing "
-    "level lets the image reach."
+    "The image was not described: the Workspace has no vision model that AI privacy "
+    "lets the image reach."
 )
 
 

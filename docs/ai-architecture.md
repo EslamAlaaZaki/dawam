@@ -222,6 +222,8 @@ flowchart TD
 
 Tools declare the level they need; the tool registry hides and refuses tools whose kind the Workspace does not share (403 `data_sharing_level`).
 
+Documents reach a model only through `DocumentAiPolicy` (files module): in production `WorkspaceDocumentAi`, which answers `includes_documents = share_documents` and the Workspace's `internal_only` from the llm settings (`workspace_document_sharing`). It is the default of `build_document_search` for both the API and the worker, so with Documents off nothing is embedded, no page image goes to a vision model and the self-hosted OCR engine reads scans; tests pass their own policy through `Services.document_ai`. Turning `share_documents` on while the Workspace has documents with extracted text calls the same `EmbeddingModelChangedHook` as a changed embedding model (ADR 0006, `start_reembed`): a `reindex_documents` job indexes the earlier uploads again, embedding them and reading their scans; saves that leave it on do nothing.
+
 ---
 
 ## 4. The agent loop (`assistant/internal/agent.py`)
@@ -845,7 +847,7 @@ Retrieval is a **tool** (`search_documents`) the agent decides to call, so it ca
 - **Installation** (`GET|PUT /admin/llm/document-ai`, admins): the values, plus owner min/max bounds for each numeric knob owners may override. Table `llm_document_ai_settings`.
 - **Workspace overrides** (`GET|PUT /workspaces/{id}/document-ai`; the Workspace settings tab "RAG settings"; members read, owners write; table `llm_workspace_document_ai`). Owners may override the chunking and retrieval knobs and `rerank`; `embed_batch`, the extraction caps, `rrf_k` and `rerank_top_n` stay admin-only. An unknown key is 422 `unknown_setting`, a known knob owners cannot override 422 `not_overridable`, a value outside the bounds 422 `out_of_bounds`, and a write naming an older `version` 409 `settings_changed`.
 
-`document_ai_config(engine, workspace_id)` is the one effective-settings lookup that indexing (chunking, overlap, headers, embed batch, extraction caps) and search (candidates, weights, MMR, floors, rerank, top-k) read: code defaults, then the installation's values, then the Workspace's overrides clamped to the current bounds (an admin may tighten them after an owner chose). Changes are audited: installation changes as a `document_ai_settings_changed` security event, Workspace changes in the audit trail and activity feed. Migration `c8f2a4d6e913` created the tables and moved `chunking_strategy` out of the Workspace AI settings (`PUT /ai-settings` no longer accepts it). Still code constants: the OCR trigger threshold, parent-chunk sizes and the auto-retrieve passage count. UI: the admin page "Document AI" and a "Document AI" tab in Workspace settings.
+`document_ai_config(engine, workspace_id)` is the one effective-settings lookup that indexing (chunking, overlap, headers, embed batch, extraction caps) and search (candidates, weights, MMR, floors, rerank, top-k) read: code defaults, then the installation's values, then the Workspace's overrides clamped to the current bounds (an admin may tighten them after an owner chose). Changes are audited: installation changes as a `document_ai_settings_changed` security event, Workspace changes in the audit trail and activity feed. Migration `c8f2a4d6e913` created the tables and moved `chunking_strategy` out of the Workspace AI settings (`PUT /ai-settings` no longer accepts it). Still code constants: the OCR trigger threshold, parent-chunk sizes and the auto-retrieve passage count. UI: the admin page "Document AI" and a "RAG settings" tab in Workspace settings.
 
 **Re-index prompt** (#381). The chunking knobs (`chunking_strategy`, `chunk_size`, `chunk_overlap`, `contextual_headers`) apply only to documents indexed from then on. After a save that changed one of them, both settings pages ask whether to re-index. In Workspace settings "Re-index now" queues the existing `reindex_documents` job for that Workspace; on the admin page it calls `POST /admin/llm/document-ai/reindex` (admins only), which queues one job per Workspace with files, archived ones included. "Not now" leaves the index as is, and a save that changed no chunking knob shows no prompt. No embedding knob exists: an embedding-model change re-embeds on its own through `start_reembed` (above).
 
@@ -962,7 +964,7 @@ The frontend (`frontend/src/api/assistant.ts`, `frontend/src/workspaces/Assistan
 | `DAWAM_FAKE_LLM` | false | tests only: every provider becomes the rule-based fake |
 | encryption key | — | seals provider API keys |
 
-Model prices (cost per million tokens, per currency) are set by system admins in the AI settings page (`llm_model_prices`). Providers, models, roles, budgets, Workspace Models, internal-only, data-sharing levels and web access (§7.7) are all set in the app (admin and Workspace settings), not in environment variables. See also `docs/configuration.md`.
+Model prices (cost per million tokens, per currency) are set by system admins in the AI settings page (`llm_model_prices`). Providers, models, roles, budgets, Workspace Models, internal-only, AI privacy opt-ins and web access (§7.7) are all set in the app (admin and Workspace settings), not in environment variables. See also `docs/configuration.md`.
 
 ---
 

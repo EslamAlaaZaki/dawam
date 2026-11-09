@@ -41,7 +41,7 @@ const KINDS: { key: Kind; label: string; noun: string; text: string }[] = [
     key: "share_documents",
     label: "Documents",
     noun: "documents",
-    text: "The text of uploaded documents, for search and answers.",
+    text: "The text of uploaded documents, for search and answers. Documents already uploaded are indexed again in the background.",
   },
   {
     key: "share_samples",

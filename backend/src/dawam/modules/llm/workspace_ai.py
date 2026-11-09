@@ -242,6 +242,28 @@ def workspace_model_id(engine: sa.Engine, workspace_id: uuid.UUID, role: str) ->
         return default_model_id(db, workspace_id, role)
 
 
+def workspace_document_sharing(engine: sa.Engine, workspace_id: uuid.UUID) -> tuple[bool, bool]:
+    """``(share_documents, internal_only)``: whether the Workspace lets document text and
+    page images reach a model, and whether it may use internal providers only."""
+    with Session(engine) as db:
+        settings = load_settings(db, workspace_id)
+    return settings.policy.documents, settings.internal_only
+
+
+def has_uploaded_documents(db: Session, workspace_id: uuid.UUID) -> bool:
+    """Whether the Workspace has any document with extracted text (the files module owns
+    them; this only reads them, by SQL)."""
+    return bool(
+        db.scalar(
+            sa.text(
+                "SELECT EXISTS (SELECT 1 FROM workspace_files "
+                "WHERE workspace_id = :w AND extracted_text IS NOT NULL)"
+            ),
+            {"w": workspace_id},
+        )
+    )
+
+
 def model_is_internal(db: Session, model_id: uuid.UUID) -> bool:
     internal = db.scalar(
         sa.select(ProviderRecord.is_internal)
@@ -607,6 +629,7 @@ class WorkspaceAiService:
                 db, workspace_id
             )
             old = _audited(record, current)
+            was_sharing_documents = record.share_documents
             record.internal_only = internal_only
             if share_profiles is not None:
                 record.share_profiles = share_profiles
@@ -618,7 +641,14 @@ class WorkspaceAiService:
                 record.auto_retrieve = auto_retrieve
             record.updated_at = now
             _store_models(db, workspace_id, models)
-            if reembed and self._on_embedding_changed is not None:
+            # Documents uploaded while they were not shared are embedded (and their scans
+            # read) now, by the same reindex job as a changed embedding model.
+            newly_shared = (
+                share_documents is True
+                and not was_sharing_documents
+                and has_uploaded_documents(db, workspace_id)
+            )
+            if (reembed or newly_shared) and self._on_embedding_changed is not None:
                 self._on_embedding_changed(db, workspace_id, user.id)
             new = _audited(record, models)
             changed = sorted(k for k in new if new[k] != old[k])

@@ -86,6 +86,7 @@ from .search import (
     RegisteredVisionModels,
     VisionModel,
     VisionModels,
+    WorkspaceDocumentAi,
 )
 from .service import FileContent, FileService, TextFile, WorkspaceFile, WorkspaceFilePage
 
@@ -129,6 +130,7 @@ __all__ = [
     "TextFile",
     "VisionModel",
     "VisionModels",
+    "WorkspaceDocumentAi",
     "WorkspaceFile",
     "WorkspaceFilePage",
     "purge_system_files",
