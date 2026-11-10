@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Me } from "../api/queries";
@@ -141,5 +141,143 @@ describe("Schema Import downloads", () => {
 
     expect(await screen.findByText(/Only owners can see/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Download helper queries/ })).not.toBeInTheDocument();
+  });
+});
+
+const REPORT = {
+  errors: [],
+  warnings: [],
+  schema_count: 2,
+  table_count: 31,
+  column_count: 412,
+  routine_count: 6,
+};
+const WARNING = { sheet: "Columns", row: 14, message: "Data type 'money2' is not known." };
+const STATUS = { has_connection: false, latest_origin: null, imported: false, disabled_features: [] };
+
+function uploadBackend(
+  handle: (r: ApiRequest) => Response | undefined,
+  status: object = STATUS,
+) {
+  return (r: ApiRequest) =>
+    r.method === "GET" && r.path === IMPORT
+      ? json(status)
+      : (handle(r) ?? backend("editor")(r));
+}
+
+async function openUpload(api: ReturnType<typeof uploadBackend>) {
+  localStorage.setItem("dawam.connection-tab", "import");
+  const requests = renderApp(api, FOLDER);
+  const input = await screen.findByLabelText(/Drop the filled template/);
+  fireEvent.change(input, {
+    target: { files: [new File(["x"], "schema.xlsx")] },
+  });
+  return requests;
+}
+
+describe("Schema Import upload", () => {
+  afterEach(() => localStorage.clear());
+
+  it("checks the file and shows the report", async () => {
+    const requests = await openUpload(
+      uploadBackend((r) =>
+        r.method === "POST" && r.path === `${IMPORT}/validate` ? json(REPORT) : undefined,
+      ),
+    );
+
+    expect(await screen.findByText("schema.xlsx")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Check file" }));
+    expect(await screen.findByText("0 errors · 0 warnings")).toBeVisible();
+    expect(screen.getByText("412")).toBeVisible();
+    expect(requests.find((r) => r.path.endsWith("/validate"))?.body).toMatch(/name="files"/);
+  });
+
+  it("blocks the import while the report has errors", async () => {
+    await openUpload(
+      uploadBackend((r) =>
+        r.method === "POST" && r.path === `${IMPORT}/validate`
+          ? json({ ...REPORT, errors: [{ sheet: "Tables", row: 3, message: "Name is empty." }] })
+          : undefined,
+      ),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Check file" }));
+    expect(await screen.findByText("Tables · row 3")).toBeVisible();
+    expect(screen.getByText("Name is empty.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+  });
+
+  it("needs the warnings accepted, then imports and refreshes", async () => {
+    const requests = await openUpload(
+      uploadBackend((r) => {
+        if (r.method !== "POST") return undefined;
+        if (r.path === `${IMPORT}/validate`) return json({ ...REPORT, warnings: [WARNING] });
+        if (r.path === `${IMPORT}/upload`) {
+          return json({ report: { ...REPORT, warnings: [WARNING] }, imported: true, unchanged: false, snapshot: null });
+        }
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Check file" }));
+    expect(await screen.findByText("Columns · row 14")).toBeVisible();
+    const importButton = screen.getByRole("button", { name: "Import" });
+    expect(importButton).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Import anyway, keeping the warnings"));
+    expect(importButton).toBeEnabled();
+    fireEvent.click(importButton);
+
+    expect(await screen.findByText(/Imported\. A new Snapshot was saved: 31 tables/)).toBeVisible();
+    const upload = requests.find((r) => r.path.endsWith("/upload"))?.body as string;
+    expect(upload).toContain('name="accept_warnings"');
+    expect(upload).toContain("true");
+    expect(upload).toContain("postgresql");
+    await waitFor(() =>
+      expect(requests.filter((r) => r.method === "GET" && r.path === IMPORT).length).toBeGreaterThan(1),
+    );
+  });
+
+  it("says when there are no differences from the latest Snapshot", async () => {
+    await openUpload(
+      uploadBackend((r) =>
+        r.method === "POST" && r.path === `${IMPORT}/upload`
+          ? json({ report: REPORT, imported: true, unchanged: true, snapshot: null })
+          : undefined,
+      ),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Import" }));
+    expect(
+      await screen.findByText("No differences from the latest Snapshot; nothing new was saved."),
+    ).toBeVisible();
+  });
+
+  it("asks the owners for a live connection when there is none", async () => {
+    localStorage.setItem("dawam.connection-tab", "import");
+    renderApp(
+      uploadBackend((r) =>
+        r.method === "POST" && r.path === `${IMPORT}/connection-requests`
+          ? json({ owners_notified: 2 }, 202)
+          : undefined,
+      ),
+      FOLDER,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ask owners to add a live connection" }));
+    expect(await screen.findByText("2 owners notified.")).toBeVisible();
+  });
+
+  it("shows the message when a connection already exists", async () => {
+    localStorage.setItem("dawam.connection-tab", "import");
+    renderApp(
+      uploadBackend((r) =>
+        r.method === "POST" && r.path === `${IMPORT}/connection-requests`
+          ? apiError(409, "connection_exists", "This Source System already has a Connection.")
+          : undefined,
+      ),
+      FOLDER,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ask owners to add a live connection" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("already has a Connection");
   });
 });
