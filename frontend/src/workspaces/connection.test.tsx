@@ -155,9 +155,8 @@ describe("a Source System's Connection", () => {
       allowed_schemas: ["public"],
     });
     fireEvent.click(within(form).getByRole("button", { name: "Allow restricted" }));
-    expect(within(form).getByLabelText("Allowed Database Schemas")).toHaveValue(
-      "public, restricted",
-    );
+    expect(within(form).getByRole("button", { name: "Remove restricted" })).toBeVisible();
+    expect(within(form).queryByRole("button", { name: "Allow restricted" })).toBeNull();
   });
 
   it("connects a SQL Server database with its own default port and schema", async () => {
@@ -173,7 +172,7 @@ describe("a Source System's Connection", () => {
     const form = await screen.findByRole("form", { name: "Connection" });
     fireEvent.change(within(form).getByLabelText("Engine"), { target: { value: "sqlserver" } });
     expect(within(form).getByLabelText("Port")).toHaveValue(1433);
-    expect(within(form).getByLabelText("Allowed Database Schemas")).toHaveValue("dbo");
+    expect(within(form).getByRole("button", { name: "Remove dbo" })).toBeVisible();
     fireEvent.change(within(form).getByLabelText("Host"), { target: { value: "db.internal" } });
     fireEvent.change(within(form).getByLabelText("Database"), { target: { value: "core" } });
     fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "reader" } });
@@ -203,9 +202,11 @@ describe("a Source System's Connection", () => {
     fireEvent.change(within(form).getByLabelText("Host"), { target: { value: "db.internal" } });
     fireEvent.change(within(form).getByLabelText("Database"), { target: { value: "core" } });
     fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "reader" } });
-    fireEvent.change(within(form).getByLabelText("Allowed Database Schemas"), {
-      target: { value: "core, crm" },
-    });
+    const add = within(form).getByLabelText("Add a Database Schema");
+    fireEvent.change(add, { target: { value: "core" } });
+    fireEvent.keyDown(add, { key: "Enter" });
+    fireEvent.change(add, { target: { value: "crm" } });
+    fireEvent.keyDown(add, { key: "," });
     fireEvent.click(within(form).getByRole("button", { name: "Test connection" }));
 
     expect(await screen.findByText(/Connection works \(MySQL \/ MariaDB 8.4.0\)/)).toBeVisible();
@@ -266,10 +267,8 @@ describe("a Source System's Connection", () => {
       "placeholder",
       "Saved. Leave blank to keep it.",
     );
-    fireEvent.change(within(form).getByLabelText("Allowed Database Schemas"), {
-      target: { value: "core" },
-    });
-    fireEvent.click(within(form).getByRole("button", { name: "Save Connection" }));
+    fireEvent.click(within(form).getByRole("button", { name: "Remove crm" }));
+    fireEvent.click(within(form).getByRole("button", { name: "Save connection" }));
 
     await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
     const body = requests.find((r) => r.method === "PUT")?.body as Record<string, unknown>;
@@ -292,7 +291,7 @@ describe("a Source System's Connection", () => {
     expect(within(form).getByLabelText("Host")).toHaveValue("db.internal");
     expect(within(form).getByLabelText("Host")).toBeDisabled();
     expect(within(form).getByText(/archived: its Connection is read-only/)).toBeVisible();
-    expect(within(form).queryByRole("button", { name: "Save Connection" })).toBeNull();
+    expect(within(form).queryByRole("button", { name: "Save connection" })).toBeNull();
     expect(within(form).queryByRole("button", { name: "Test connection" })).toBeNull();
     expect(requests.some((r) => r.method !== "GET")).toBe(false);
   });

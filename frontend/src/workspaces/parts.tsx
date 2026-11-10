@@ -97,3 +97,37 @@ export const checkLabelClasses = "flex items-center gap-2 text-sm font-medium";
 
 /** The fieldset of a form: no border, controls stacked like the card around it. */
 export const fieldsetClasses = "m-0 flex min-w-0 flex-col gap-3.5 border-0 p-0";
+
+const calloutTones = {
+  neutral: "bg-muted text-muted-foreground",
+  success: "bg-success-subtle text-foreground [&>svg]:text-success-strong",
+  warning: "bg-warning-subtle text-foreground [&>svg]:text-warning-strong",
+  danger: "bg-danger-subtle text-foreground [&>svg]:text-danger-strong",
+} as const;
+
+/** A tinted box with an icon: a notice, or the outcome of a test or a check. */
+export function Callout({
+  tone = "neutral",
+  icon,
+  className,
+  children,
+  ...props
+}: Omit<ComponentProps<"div">, "children"> & {
+  tone?: keyof typeof calloutTones;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-3 rounded-lg px-3.5 py-3 text-sm [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0",
+        calloutTones[tone],
+        className,
+      )}
+      {...props}
+    >
+      {icon}
+      <div className="flex min-w-0 flex-1 flex-col gap-2">{children}</div>
+    </div>
+  );
+}

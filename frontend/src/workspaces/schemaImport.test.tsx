@@ -87,7 +87,7 @@ describe("Schema Import downloads", () => {
   it("offers an editor the template and the helper queries of each engine", async () => {
     renderApp(backend("editor"), FOLDER);
 
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Import from template" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Import from template/ }));
     const queries = await screen.findByRole("link", { name: /Download helper queries/ });
     expect(screen.getByText(/Use this when DAWAM cannot reach the database/)).toBeVisible();
     expect(queries).toHaveAttribute("href", `${IMPORT}/helper-queries?engine=postgresql`);
@@ -104,11 +104,11 @@ describe("Schema Import downloads", () => {
 
   it("remembers the tab used last", async () => {
     renderApp(backend("editor"), FOLDER);
-    expect(await screen.findByRole("tab", { name: "Live connection" })).toHaveAttribute(
-      "aria-selected",
+    expect(await screen.findByRole("button", { name: /^Live connection/ })).toHaveAttribute(
+      "aria-pressed",
       "true",
     );
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Import from template" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Import from template/ }));
     expect(localStorage.getItem("dawam.connection-tab")).toBe("import");
   });
 
@@ -116,8 +116,8 @@ describe("Schema Import downloads", () => {
     localStorage.setItem("dawam.connection-tab", "import");
     renderApp(backend("editor"), FOLDER);
 
-    expect(await screen.findByRole("tab", { name: "Import from template" })).toHaveAttribute(
-      "aria-selected",
+    expect(await screen.findByRole("button", { name: /^Import from template/ })).toHaveAttribute(
+      "aria-pressed",
       "true",
     );
     expect(screen.getByRole("link", { name: /Download template/ })).toBeVisible();
@@ -131,7 +131,7 @@ describe("Schema Import downloads", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(blocked);
     renderApp(backend("editor"), FOLDER);
 
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Import from template" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Import from template/ }));
     expect(await screen.findByRole("link", { name: /Download template/ })).toBeVisible();
     vi.restoreAllMocks();
   });
