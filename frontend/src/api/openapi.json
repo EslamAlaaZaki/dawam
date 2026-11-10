@@ -8649,15 +8649,50 @@
           "notifications"
         ],
         "summary": "List Notifications",
-        "description": "Your unread notifications, newest first.",
+        "description": "Your notifications, read and unread, newest first, a page at a time.",
         "operationId": "listNotifications",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "How many to return at most.",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "How many to return at most."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` of the previous page; omit for the first.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` of the previous page; omit for the first."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UnreadNotifications"
+                  "$ref": "#/components/schemas/NotificationPage"
                 }
               }
             }
@@ -26074,6 +26109,19 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At",
+            "description": "When you read it; null while it is unread."
           }
         },
         "type": "object",
@@ -26084,9 +26132,46 @@
           "workspace_id",
           "ref_type",
           "ref_id",
-          "created_at"
+          "created_at",
+          "read_at"
         ],
         "title": "Notification"
+      },
+      "NotificationPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "One page of yours, read or not, newest first."
+          },
+          "unread_count": {
+            "type": "integer",
+            "title": "Unread Count",
+            "description": "All your unread notifications, on every page."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "The `cursor` of the next page; null on the last."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "unread_count",
+          "next_cursor"
+        ],
+        "title": "NotificationPage"
       },
       "NumberBounds": {
         "properties": {
@@ -31587,29 +31672,6 @@
           "items"
         ],
         "title": "UndeliveredLinksOut"
-      },
-      "UnreadNotifications": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/Notification"
-            },
-            "type": "array",
-            "title": "Items",
-            "description": "The newest unread ones, newest first."
-          },
-          "unread_count": {
-            "type": "integer",
-            "title": "Unread Count",
-            "description": "All your unread notifications."
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "unread_count"
-        ],
-        "title": "UnreadNotifications"
       },
       "UpdateBranchRequest": {
         "properties": {

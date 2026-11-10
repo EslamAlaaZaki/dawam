@@ -33,7 +33,7 @@ function backend(me: Me) {
       case "GET /api/v1/workspaces":
         return json({ items: [], next_cursor: null });
       case "GET /api/v1/notifications":
-        return json({ items: [], unread_count: 0 });
+        return json({ items: [], unread_count: 0, next_cursor: null });
       case "GET /api/v1/admin/llm/setup":
         return json({ complete: true });
     }

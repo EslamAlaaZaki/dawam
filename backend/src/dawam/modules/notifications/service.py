@@ -1,4 +1,4 @@
-"""Notifications: one row per recipient, an unread list per user.
+"""Notifications: one row per recipient, a paged list per user.
 
 Any module raises one through ``NotificationService.notify``; the kinds are the spec's
 (§7 ``Notification``), so a later epic that adds its own (jobs, mentions, ...) uses its
@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
 from dawam.platform.clock import Clock
+from dawam.platform.errors import ApiError
+from dawam.platform.pagination import decode_cursor, encode_cursor
 
 from .tables import MESSAGE_MAX_LENGTH, NotificationRecord
 
@@ -47,6 +49,16 @@ class UnreadNotifications:
     """The newest unread ones, newest first."""
     unread_count: int
     """All the user's unread notifications, which may be more than ``items``."""
+
+
+@dataclass(frozen=True)
+class NotificationPage:
+    items: list[Notification]
+    """One page of the user's notifications, read and unread, newest first."""
+    unread_count: int
+    """All the user's unread notifications, on every page."""
+    next_cursor: str | None
+    """Where the next, older page starts; ``None`` on the last page."""
 
 
 def _notification(record: NotificationRecord) -> Notification:
@@ -139,6 +151,50 @@ class NotificationService:
             ).all()
             count = db.scalar(sa.select(sa.func.count()).where(*unread)) or 0
         return UnreadNotifications(items=[_notification(r) for r in records], unread_count=count)
+
+    def page(self, user: User, *, limit: int, cursor: str | None = None) -> NotificationPage:
+        """``user``'s notifications, read and unread, newest first, ``limit`` at a time
+        (keyset on ``(created_at desc, id)``). Raises ``ApiError`` 422 ``invalid_cursor``."""
+        statement = (
+            sa.select(NotificationRecord)
+            .where(NotificationRecord.user_id == user.id)
+            .order_by(NotificationRecord.created_at.desc(), NotificationRecord.id)
+            .limit(limit + 1)
+        )
+        if cursor is not None:
+            created_at, record_id = decode_cursor(cursor, 2)
+            try:
+                after = (datetime.fromisoformat(created_at), uuid.UUID(record_id))
+            except ValueError:
+                raise ApiError(
+                    422, "invalid_cursor", "The cursor is not valid; start from the first page."
+                ) from None
+            statement = statement.where(
+                sa.or_(
+                    NotificationRecord.created_at < after[0],
+                    sa.and_(
+                        NotificationRecord.created_at == after[0], NotificationRecord.id > after[1]
+                    ),
+                )
+            )
+        with Session(self._engine) as db:
+            records = db.scalars(statement).all()
+            count = db.scalar(
+                sa.select(sa.func.count()).where(
+                    NotificationRecord.user_id == user.id, NotificationRecord.read_at.is_(None)
+                )
+            )
+        shown = records[:limit]
+        next_cursor = (
+            encode_cursor(shown[-1].created_at.isoformat(), str(shown[-1].id))
+            if len(records) > limit
+            else None
+        )
+        return NotificationPage(
+            items=[_notification(r) for r in shown],
+            unread_count=count or 0,
+            next_cursor=next_cursor,
+        )
 
     def mark_read(self, user: User, notification_id: uuid.UUID) -> None:
         """Mark one of ``user``'s notifications read. Idempotent, and a no-op for an id
