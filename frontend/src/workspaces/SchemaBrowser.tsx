@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowRight,
   ChevronDown,
   Code,
   Eye,
@@ -103,6 +104,42 @@ const rowClasses = "flex min-w-0 items-center gap-1 px-3 py-1.5 hover:bg-muted";
 /** The small dot between the facts of a line. */
 export function Sep() {
   return <span aria-hidden className="size-1 rounded-full bg-border-strong" />;
+}
+
+/** A label/value pair in the table header; a key count wears its Badge variant. */
+function Stat({
+  label,
+  badge,
+  children,
+}: {
+  label: string;
+  badge?: "pk" | "fk";
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <dt className="text-xs font-medium text-subtle-foreground">
+        {badge ? <Badge variant={badge}>{label}</Badge> : label}
+      </dt>
+      <dd className="font-medium text-foreground">{children}</dd>
+    </div>
+  );
+}
+
+/** Column names as small muted chips. */
+function ColumnChips({ columns }: { columns: string[] }) {
+  return (
+    <span className={`${monoClasses} inline-flex flex-wrap gap-1`}>
+      {columns.map((c) => (
+        <span
+          key={c}
+          className="rounded-md bg-muted px-1.5 text-xs text-muted-foreground"
+        >
+          {c}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 /** A long name cut with an ellipsis; the full name shows in a tooltip. */
@@ -287,13 +324,7 @@ function TreeLeaf({
 }
 
 /** A table or view the latest Snapshot no longer has: listed and flagged, not opened. */
-function RemovedLeaf({
-  table,
-  level,
-}: {
-  table: RemovedTable;
-  level: number;
-}) {
+function RemovedLeaf({ table, level }: { table: RemovedTable; level: number }) {
   return (
     <li
       className={cn(
@@ -692,7 +723,8 @@ function ProfileControl({
     : table.profiled_at != null
       ? "profiled"
       : "none";
-  const action = table.profiled_at != null ? "Profile again" : "Profile this table";
+  const action =
+    table.profiled_at != null ? "Profile again" : "Profile this table";
 
   return (
     <div className="flex h-8 items-center overflow-hidden rounded-md border border-border-strong bg-surface-raised">
@@ -776,26 +808,24 @@ function TablePage({
         status={table.status}
         facts={
           <>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground tabular-nums">
-              <span>Row estimate {table.row_estimate ?? "unknown"}</span>
-              <Sep />
-              <span>
-                {table.columns.length}{" "}
-                {table.columns.length === 1 ? "column" : "columns"}
-              </span>
+            <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm tabular-nums">
+              <Stat label="Rows">
+                {table.row_estimate == null
+                  ? "unknown"
+                  : `~${table.row_estimate.toLocaleString("en-US")}`}
+              </Stat>
+              <Stat label="Columns">{table.columns.length}</Stat>
               {pks > 0 && (
-                <>
-                  <Sep />
-                  <span>{pks} PK</span>
-                </>
+                <Stat label="PK" badge="pk">
+                  {pks}
+                </Stat>
               )}
               {fks > 0 && (
-                <>
-                  <Sep />
-                  <span>{fks} FK</span>
-                </>
+                <Stat label="FK" badge="fk">
+                  {fks}
+                </Stat>
               )}
-            </div>
+            </dl>
             {table.comment && (
               <p className="text-sm text-muted-foreground">{table.comment}</p>
             )}
@@ -925,39 +955,108 @@ function TablePage({
           value="keys"
           className="flex min-w-0 flex-col gap-3 px-5 py-4"
         >
-          <h3 className={h5Classes}>Keys</h3>
+          <h3 className={h5Classes}>
+            Keys{" "}
+            <span className="font-normal text-subtle-foreground tabular-nums">
+              {table.constraints.length}
+            </span>
+          </h3>
           {table.constraints.length === 0 ? (
             <EmptyState>No keys.</EmptyState>
           ) : (
-            <ul aria-label="Keys" className={listCardClasses}>
-              {table.constraints.map((key) => (
-                <li
-                  key={key.name}
-                  className={`${rowClasses} ${monoClasses} flex-wrap`}
-                >
-                  {key.name}: {key.type.toUpperCase()} (
-                  {key.columns.join(", ")})
-                  {key.type === "fk" &&
-                    ` references ${key.ref_db_schema}.${key.ref_table} (${key.ref_columns.join(", ")})`}
-                </li>
-              ))}
-            </ul>
+            <TableCard>
+              <Table aria-label="Keys">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Columns</TableHead>
+                    <TableHead>References</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {table.constraints.map((key) => (
+                    <TableRow key={key.name}>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            key.type === "pk"
+                              ? "pk"
+                              : key.type === "fk"
+                                ? "fk"
+                                : "neutral"
+                          }
+                        >
+                          {key.type === "pk"
+                            ? "PK"
+                            : key.type === "fk"
+                              ? "FK"
+                              : key.type === "unique"
+                                ? "Unique"
+                                : "Constraint"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className={monoClasses}>{key.name}</TableCell>
+                      <TableCell>
+                        <ColumnChips columns={key.columns} />
+                      </TableCell>
+                      <TableCell className={monoClasses}>
+                        {key.type === "fk" && (
+                          <span className="inline-flex flex-wrap items-center gap-1.5">
+                            <ArrowRight
+                              aria-hidden
+                              className="size-3.5 text-subtle-foreground"
+                            />
+                            <span>
+                              {key.ref_db_schema}.{key.ref_table}
+                            </span>
+                            <span className="text-muted-foreground">
+                              ({key.ref_columns.join(", ")})
+                            </span>
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableCard>
           )}
-          <h3 className={h5Classes}>Indexes</h3>
+          <h3 className={h5Classes}>
+            Indexes{" "}
+            <span className="font-normal text-subtle-foreground tabular-nums">
+              {table.indexes.length}
+            </span>
+          </h3>
           {table.indexes.length === 0 ? (
             <EmptyState>No indexes.</EmptyState>
           ) : (
-            <ul aria-label="Indexes" className={listCardClasses}>
-              {table.indexes.map((index) => (
-                <li
-                  key={index.name}
-                  className={`${rowClasses} ${monoClasses}`}
-                >
-                  {index.name} ({index.columns.join(", ")})
-                  {index.is_unique && " unique"}
-                </li>
-              ))}
-            </ul>
+            <TableCard>
+              <Table aria-label="Indexes">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Columns</TableHead>
+                    <TableHead>Unique</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {table.indexes.map((index) => (
+                    <TableRow key={index.name}>
+                      <TableCell className={monoClasses}>
+                        {index.name}
+                      </TableCell>
+                      <TableCell>
+                        <ColumnChips columns={index.columns} />
+                      </TableCell>
+                      <TableCell>
+                        {index.is_unique && <Badge>Unique</Badge>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableCard>
           )}
         </TabsContent>
       </Tabs>

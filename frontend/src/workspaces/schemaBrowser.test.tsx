@@ -2,10 +2,19 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Me } from "../api/queries";
-import type { SchemaSearchHit, SnapshotSummary, SourceSchema } from "../api/snapshots";
+import type {
+  SchemaSearchHit,
+  SnapshotSummary,
+  SourceSchema,
+} from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
-import { json, renderApp, setCsrfCookie, type ApiRequest } from "../test/renderApp";
+import {
+  json,
+  renderApp,
+  setCsrfCookie,
+  type ApiRequest,
+} from "../test/renderApp";
 
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 const API = `/api/v1/workspaces/${WORKSPACE_ID}`;
@@ -132,7 +141,13 @@ const SCHEMA: SourceSchema = {
     },
   ],
   removed_columns: [
-    { id: "c2", table_id: "t1", name: "legacy_code", status: "source_removed", data_type: "text" },
+    {
+      id: "c2",
+      table_id: "t1",
+      name: "legacy_code",
+      status: "source_removed",
+      data_type: "text",
+    },
   ],
   removed_tables: [
     {
@@ -197,14 +212,16 @@ describe("the Source Schema browser", () => {
 
     const tables = await screen.findByRole("list", { name: "Tables of core" });
     expect(within(tables).getByText("customers")).toBeInTheDocument();
-    expect(within(tables).getByText("old_ledger").closest("li")).toHaveTextContent(
-      "removed from the source",
-    );
+    expect(
+      within(tables).getByText("old_ledger").closest("li"),
+    ).toHaveTextContent("removed from the source");
     const views = screen.getByRole("list", { name: "Views of core" });
     expect(within(views).getByText("customer_balances")).toBeInTheDocument();
     const functions = screen.getByRole("list", { name: "Functions of core" });
     expect(functions).toHaveTextContent("account_turnover(p_acct integer)");
-    expect(screen.getByRole("list", { name: "Procedures of core" })).toHaveTextContent("None");
+    expect(
+      screen.getByRole("list", { name: "Procedures of core" }),
+    ).toHaveTextContent("None");
   });
 
   it("folds a group of the tree", async () => {
@@ -215,7 +232,9 @@ describe("the Source Schema browser", () => {
     fireEvent.click(group);
 
     expect(group).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("list", { name: "Views of core" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("list", { name: "Views of core" }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens a table with its columns, keys, indexes, row estimate and comment", async () => {
@@ -226,25 +245,34 @@ describe("the Source Schema browser", () => {
     const page = await screen.findByRole("region", {
       name: "Table core.customers",
     });
-    expect(page).toHaveTextContent("1200");
+    expect(page).toHaveTextContent("Rows~1,200");
     expect(page).toHaveTextContent("One row per bank customer");
     const row = within(page).getByText("legacy_code").closest("tr");
     expect(row).toHaveTextContent("removed from the source");
-    expect(within(page).getByText("cust_no").closest("tr")).toHaveTextContent("PK");
-    fireEvent.mouseDown(within(page).getByRole("tab", { name: /Keys and indexes/ }));
-    expect(await within(page).findByRole("list", { name: "Keys" })).toHaveTextContent(
-      "customers_pkey: PK (cust_no)",
+    expect(within(page).getByText("cust_no").closest("tr")).toHaveTextContent(
+      "PK",
     );
-    expect(within(page).getByRole("list", { name: "Indexes" })).toHaveTextContent(
-      "customers_lower_idx (lower(email))",
+    fireEvent.mouseDown(
+      within(page).getByRole("tab", { name: /Keys and indexes/ }),
     );
+    const keys = await within(page).findByRole("table", { name: "Keys" });
+    expect(keys).toHaveTextContent("PK");
+    expect(keys).toHaveTextContent("customers_pkey");
+    expect(keys).toHaveTextContent("cust_no");
+    expect(
+      within(page).getByRole("table", { name: "Indexes" }),
+    ).toHaveTextContent("customers_lower_idx");
   });
 
   it("shows a view's definition and a routine's code", async () => {
     renderApp(backend([]), FOLDER);
 
-    fireEvent.click(await screen.findByRole("button", { name: "customer_balances" }));
-    expect(await screen.findByText("SELECT cust_no FROM core.customers")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "customer_balances" }),
+    );
+    expect(
+      await screen.findByText("SELECT cust_no FROM core.customers"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /account_turnover/ }));
     expect(
@@ -265,7 +293,9 @@ describe("the Source Schema browser", () => {
     expect(results).toHaveTextContent("core.customers.cust_no (column)");
     fireEvent.click(within(results).getByRole("button"));
     await waitFor(() =>
-      expect(screen.getByRole("region", { name: "Table core.customers" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("region", { name: "Table core.customers" }),
+      ).toBeInTheDocument(),
     );
   });
 });
