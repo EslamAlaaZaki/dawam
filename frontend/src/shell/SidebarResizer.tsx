@@ -52,9 +52,12 @@ let session: number | null = null;
 /** The sidebar's width (240 by default, 200 to 400), remembered per browser. */
 export function useSidebarWidth() {
   const width = useSyncExternalStore(subscribe, () => session ?? readStored(), () => SIDEBAR_DEFAULT);
-  const setWidth = useCallback((next: number) => {
+  // `persist` is false while dragging: the width is stored once, on release.
+  const setWidth = useCallback((next: number, persist = true) => {
     session = clamp(next);
-    store(session);
+    if (persist) {
+      store(session);
+    }
     listeners.forEach((listener) => listener());
   }, []);
   return [width, setWidth] as const;
@@ -69,7 +72,7 @@ export function SidebarResizer({
   onResize,
 }: {
   width: number;
-  onResize: (width: number) => void;
+  onResize: (width: number, persist?: boolean) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const start = useRef({ x: 0, width: 0, sign: 1 });
@@ -96,7 +99,14 @@ export function SidebarResizer({
 
   function onPointerMove(event: PointerEvent<HTMLDivElement>) {
     if (dragging) {
-      onResize(start.current.width + (event.clientX - start.current.x) * start.current.sign);
+      onResize(start.current.width + (event.clientX - start.current.x) * start.current.sign, false);
+    }
+  }
+
+  function endDrag() {
+    if (dragging) {
+      setDragging(false);
+      onResize(width);
     }
   }
 
@@ -123,8 +133,8 @@ export function SidebarResizer({
       tabIndex={0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={() => setDragging(false)}
-      onPointerCancel={() => setDragging(false)}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
       onKeyDown={onKeyDown}
       onDoubleClick={() => onResize(SIDEBAR_DEFAULT)}
       data-dragging={dragging || undefined}

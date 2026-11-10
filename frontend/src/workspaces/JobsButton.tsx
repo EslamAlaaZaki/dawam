@@ -188,6 +188,26 @@ function JobRow({
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const live = isActive(job);
+  if (!live) {
+    return (
+      <li
+        aria-label={job.title}
+        className="flex flex-col gap-1.5 border-b border-border px-3 py-1.5 last:border-b-0"
+      >
+        <div className="flex items-center gap-3">
+          <p className="min-w-0 flex-1 truncate text-sm font-medium" title={job.title}>
+            {job.title}
+          </p>
+          <span className="shrink-0 text-xs text-subtle-foreground">
+            {relativeTime(job.created_at)}
+          </span>
+          <StatusBadge status={job.status} />
+        </div>
+        {job.error && <JobError error={job.error} />}
+        {job.log && <JobLog log={job.log} />}
+      </li>
+    );
+  }
   return (
     <li
       aria-label={job.title}
@@ -272,5 +292,39 @@ function JobRow({
         </pre>
       )}
     </li>
+  );
+}
+
+function JobError({ error }: { error: string }) {
+  return (
+    <div className="flex items-start gap-1.5 rounded-md bg-danger-subtle px-2 py-1.5 text-sm text-danger-strong">
+      <XCircle aria-hidden className="mt-0.5 size-4 shrink-0" />
+      <span>{error}</span>
+    </div>
+  );
+}
+
+/** A Recent job's log: a disclosure toggle with the mono log below it. */
+function JobLog({ log }: { log: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ChevronRight aria-hidden className={`transition-transform ${open ? "rotate-90" : ""}`} />
+        Log
+      </Button>
+      <pre
+        hidden={!open}
+        className="max-h-48 overflow-auto rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap"
+      >
+        {log}
+      </pre>
+    </>
   );
 }
