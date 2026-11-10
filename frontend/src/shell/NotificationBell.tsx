@@ -154,7 +154,7 @@ export function NotificationBell() {
                 {isFetchingNextPage && (
                   <>
                     <Loader2 aria-hidden className="size-3.5 animate-spin" />
-                    Loading�
+                    Loading…
                   </>
                 )}
               </div>
