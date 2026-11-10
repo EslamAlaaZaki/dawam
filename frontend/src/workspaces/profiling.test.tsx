@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import type { Job } from "../api/jobs";
 import type { Me } from "../api/queries";
 import type { ImportStatus, TableProfile } from "../api/profiling";
 import type { SnapshotSummary, SourceSchema } from "../api/snapshots";
@@ -232,6 +233,12 @@ afterEach(() => clearCookie());
 
 async function openTable() {
   fireEvent.click(await screen.findByRole("button", { name: "customers" }));
+  return screen.findByRole("region", { name: "Table core.customers" });
+}
+
+async function openProfile() {
+  await openTable();
+  fireEvent.mouseDown(await screen.findByRole("tab", { name: "Profile" }));
   return screen.findByRole("region", { name: "Profile" });
 }
 
@@ -239,7 +246,7 @@ describe("table profiles", () => {
   it("shows the statistics, and no min/max for a protected column", async () => {
     renderApp(backend(VIEWER, { profiling: [], topN: [] }), FOLDER);
 
-    const panel = await openTable();
+    const panel = await openProfile();
 
     const city = (await within(panel).findByText("city")).closest("tr")!;
     expect(city).toHaveTextContent("12.5");
@@ -249,7 +256,7 @@ describe("table profiles", () => {
     expect(protectedRow).toHaveTextContent("(protected)");
     expect(protectedRow).not.toHaveTextContent("Alexandria");
     expect(
-      within(panel).queryByRole("button", { name: "Profile this table" }),
+      screen.queryByRole("button", { name: "Profile this table" }),
     ).toBeNull();
     expect(within(panel).queryByRole("checkbox")).toBeNull();
   });
@@ -258,9 +265,9 @@ describe("table profiles", () => {
     const requests = { profiling: [], topN: [] };
     renderApp(backend(EDITOR, requests), FOLDER);
 
-    const panel = await openTable();
+    const page = await openTable();
     fireEvent.click(
-      await within(panel).findByRole("button", { name: "Profile this table" }),
+      await within(page).findByRole("button", { name: "Profile this table" }),
     );
 
     await waitFor(() =>
@@ -268,6 +275,7 @@ describe("table profiles", () => {
         { table_ids: ["t1"], row_cap: 100000, timeout_seconds: 30 },
       ]),
     );
+    const panel = await openProfile();
     expect(within(panel).queryByRole("checkbox")).toBeNull();
   });
 
@@ -275,7 +283,7 @@ describe("table profiles", () => {
     const requests = { profiling: [], topN: [] };
     renderApp(backend(OWNER, requests), FOLDER);
 
-    const panel = await openTable();
+    const panel = await openProfile();
     fireEvent.click(await within(panel).findByRole("checkbox"));
 
     await waitFor(() => expect(requests.topN).toEqual([{ enabled: true }]));
@@ -290,13 +298,124 @@ describe("table profiles", () => {
     };
     renderApp(backend(EDITOR, { profiling: [], topN: [] }, imported), FOLDER);
 
-    const panel = await openTable();
+    const panel = await openProfile();
 
     expect(await within(panel).findByRole("note")).toHaveTextContent(
       "Schema Import",
     );
     expect(
-      within(panel).queryByRole("button", { name: "Profile this table" }),
+      screen.queryByRole("button", { name: "Profile this table" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Profile all tables" }),
     ).toBeNull();
   });
+
+  it("shows when the table was profiled, and profiles it again from its header", async () => {
+    const requests = { profiling: [] as unknown[], topN: [] };
+    const state = { schema: SCHEMA, jobs: [] as Job[] };
+    renderApp(
+      withState(state, backend(EDITOR, requests), () => {
+        // The job finishes at once and leaves the table profiled.
+        state.jobs = [profileJob("succeeded")];
+        state.schema = {
+          ...SCHEMA,
+          tables: SCHEMA.tables.map((t) => ({
+            ...t,
+            profiled_at: PROFILE.profiled_at,
+          })),
+        };
+      }),
+      FOLDER,
+    );
+
+    const page = await openTable();
+    expect(within(page).getByRole("status")).toHaveTextContent(
+      "Not profiled yet",
+    );
+    const tables = screen.getByRole("list", { name: "Tables of core" });
+    expect(within(tables).getByRole("img", { name: "Not profiled" })).toBeVisible();
+
+    fireEvent.click(
+      within(page).getByRole("button", { name: "Profile this table" }),
+    );
+
+    expect(await screen.findByText(/Profiling started/)).toBeVisible();
+    await waitFor(() =>
+      expect(within(page).getByRole("status")).toHaveTextContent(
+        `Profiled ${new Date(PROFILE.profiled_at!).toLocaleString()}`,
+      ),
+    );
+    expect(within(page).getByRole("button", { name: "Profile again" })).toBeEnabled();
+    expect(within(tables).getByRole("img", { name: "Profiled" })).toBeVisible();
+    expect(requests.profiling).toEqual([
+      { table_ids: ["t1"], row_cap: 100000, timeout_seconds: 30 },
+    ]);
+  });
+
+  it("shows the table as being profiled while its job runs", async () => {
+    const state = { schema: SCHEMA, jobs: [] as Job[] };
+    renderApp(
+      withState(state, backend(EDITOR, { profiling: [], topN: [] }), () => {
+        state.jobs = [profileJob("running")];
+      }),
+      FOLDER,
+    );
+
+    const page = await openTable();
+    fireEvent.click(
+      within(page).getByRole("button", { name: "Profile this table" }),
+    );
+
+    await waitFor(() =>
+      expect(within(page).getByRole("status")).toHaveTextContent("Profiling…"),
+    );
+    expect(
+      within(page).getByRole("button", { name: "Profile this table" }),
+    ).toBeDisabled();
+    const tables = screen.getByRole("list", { name: "Tables of core" });
+    expect(within(tables).getByRole("img", { name: "Profiling" })).toBeVisible();
+  });
 });
+
+function profileJob(status: Job["status"]): Job {
+  return {
+    id: "j1",
+    workspace_id: WORKSPACE_ID,
+    type: "profile",
+    title: "Profile 1 table(s): Core Banking",
+    status,
+    progress: status === "succeeded" ? 100 : 0,
+    log: "",
+    error: null,
+    question: null,
+    plan: null,
+    created_by: ADA.id,
+    created_at: "2026-01-06T10:00:00Z",
+    started_at: null,
+    finished_at: null,
+  };
+}
+
+/** The backend, with the Source Schema and jobs read from `state`; `onProfile` runs when a
+ * profiling job is started. */
+function withState(
+  state: { schema: SourceSchema; jobs: Job[] },
+  base: (r: ApiRequest) => Response | undefined,
+  onProfile: () => void,
+) {
+  return (r: ApiRequest) => {
+    switch (`${r.method} ${r.path}`) {
+      case `GET ${SYSTEM}/schema`:
+        return json(state.schema);
+      case `GET ${API}/jobs`:
+        return json({ items: state.jobs, next_cursor: null });
+      case `POST ${SYSTEM}/profiling`: {
+        const response = base(r);
+        onProfile();
+        return response;
+      }
+    }
+    return base(r);
+  };
+}

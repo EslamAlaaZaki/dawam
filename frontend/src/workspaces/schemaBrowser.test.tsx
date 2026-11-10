@@ -195,16 +195,27 @@ describe("the Source Schema browser", () => {
   it("shows Database Schemas with their tables, views and routines, and flags removed objects", async () => {
     renderApp(backend([]), FOLDER);
 
-    const tables = await screen.findByRole("list", {
-      name: "Tables and views of core",
-    });
+    const tables = await screen.findByRole("list", { name: "Tables of core" });
     expect(within(tables).getByText("customers")).toBeInTheDocument();
-    expect(within(tables).getByText("customer_balances").closest("li")).toHaveTextContent("(view)");
     expect(within(tables).getByText("old_ledger").closest("li")).toHaveTextContent(
       "removed from the source",
     );
-    const routines = screen.getByRole("list", { name: "Routines of core" });
-    expect(routines).toHaveTextContent("account_turnover(p_acct integer) (function)");
+    const views = screen.getByRole("list", { name: "Views of core" });
+    expect(within(views).getByText("customer_balances")).toBeInTheDocument();
+    const functions = screen.getByRole("list", { name: "Functions of core" });
+    expect(functions).toHaveTextContent("account_turnover(p_acct integer)");
+    expect(screen.getByRole("list", { name: "Procedures of core" })).toHaveTextContent("None");
+  });
+
+  it("folds a group of the tree", async () => {
+    renderApp(backend([]), FOLDER);
+
+    const group = await screen.findByRole("button", { name: /^Views/ });
+    expect(group).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(group);
+
+    expect(group).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("list", { name: "Views of core" })).not.toBeInTheDocument();
   });
 
   it("opens a table with its columns, keys, indexes, row estimate and comment", async () => {
@@ -220,7 +231,8 @@ describe("the Source Schema browser", () => {
     const row = within(page).getByText("legacy_code").closest("tr");
     expect(row).toHaveTextContent("removed from the source");
     expect(within(page).getByText("cust_no").closest("tr")).toHaveTextContent("PK");
-    expect(within(page).getByRole("list", { name: "Keys" })).toHaveTextContent(
+    fireEvent.mouseDown(within(page).getByRole("tab", { name: /Keys and indexes/ }));
+    expect(await within(page).findByRole("list", { name: "Keys" })).toHaveTextContent(
       "customers_pkey: PK (cust_no)",
     );
     expect(within(page).getByRole("list", { name: "Indexes" })).toHaveTextContent(

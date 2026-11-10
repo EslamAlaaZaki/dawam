@@ -1,19 +1,11 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
-
-import { isActive, useJobs } from "../api/jobs";
 import {
-  tableProfileKey,
   useImportStatus,
   useSetTopN,
-  useStartProfiling,
   useTableProfile,
 } from "../api/profiling";
 import { allows, type Workspace } from "../api/workspaces";
-import { Button } from "../components/ui/button";
-import { toast } from "../components/ui/sonner";
 import {
   Table,
   TableBody,
@@ -22,22 +14,15 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import {
-  Actions,
-  EmptyState,
-  ErrorText,
-  TableCard,
-  h5Classes,
-  monoClasses,
-} from "./parts";
+import { EmptyState, ErrorText, TableCard, monoClasses } from "./parts";
 import { Loading } from "../shell/Loading";
 
 /**
  * A table's profile (spec stories 55-57): per column the sampled row count, null %,
  * distinct count, min and max, length and detected patterns, and top values when an owner
- * switched them on for the table. Protected Columns show no min/max or top values. Owners
- * and editors start profiling; only owners switch top-N. A system built from a Schema
- * Import cannot be profiled, and says why.
+ * switched them on for the table. Protected Columns show no min/max or top values. Only
+ * owners switch top-N; profiling starts from the table page's header. A system built from
+ * a Schema Import cannot be profiled, and says why.
  */
 export function ProfilePanel({
   workspace,
@@ -50,30 +35,14 @@ export function ProfilePanel({
 }) {
   const profile = useTableProfile(workspace.id, systemId, tableId);
   const importStatus = useImportStatus(workspace.id, systemId);
-  const start = useStartProfiling(workspace.id, systemId);
   const topN = useSetTopN(workspace.id, systemId, tableId);
-  const jobs = useJobs(workspace.id);
-  const queryClient = useQueryClient();
-
-  const startedId = start.data?.job_id;
-  const started = jobs.data?.items.find((job) => job.id === startedId);
-  const finished = started != null && !isActive(started);
-  useEffect(() => {
-    if (finished) {
-      void queryClient.invalidateQueries({
-        queryKey: tableProfileKey(workspace.id, systemId, tableId),
-      });
-    }
-  }, [finished, queryClient, workspace.id, systemId, tableId]);
 
   const unavailable =
     importStatus.data?.imported === true && !importStatus.data.has_connection;
-  const canProfile = allows(workspace, "source_system.profile") && !unavailable;
   const canSwitch = allows(workspace, "source_table.top_n");
 
   return (
     <section aria-label="Profile" className="flex flex-col gap-3">
-      <h5 className={h5Classes}>Profile</h5>
       {unavailable && (
         <p role="note" className="text-muted-foreground">
           Profiling is unavailable: this Source System was built from a Schema
@@ -81,25 +50,6 @@ export function ProfilePanel({
           Connection to enable it.
         </p>
       )}
-      {canProfile && (
-        <Actions>
-          <Button
-            type="button"
-            disabled={start.isPending}
-            onClick={() =>
-              start.mutate(tableId, {
-                onSuccess: () =>
-                  toast.success(
-                    "Profiling started. Follow it under Background jobs.",
-                  ),
-              })
-            }
-          >
-            Profile this table
-          </Button>
-        </Actions>
-      )}
-      {start.isError && <ErrorText>{start.error.message}</ErrorText>}
       {canSwitch && profile.isSuccess && (
         <label className="flex items-center gap-2">
           <input
@@ -127,7 +77,7 @@ export function ProfilePanel({
       )}
       {profile.isSuccess && profile.data.profiled_at != null && (
         <>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground tabular-nums">
             Sampled rows: {profile.data.row_count}. Profiled{" "}
             {new Date(profile.data.profiled_at).toLocaleString()}.
           </p>

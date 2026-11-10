@@ -1,10 +1,12 @@
 // Profiling of Source Tables (spec stories 55-57).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 
 import { ApiError } from "./client";
 import { useApiClient } from "./context";
-import { jobsKey } from "./jobs";
+import { isActive, jobsKey, useJobs } from "./jobs";
 import type { components } from "./schema";
+import { sourceSchemaKey } from "./snapshots";
 
 export type TableProfile = components["schemas"]["TableProfile"];
 export type ColumnProfileView = components["schemas"]["ColumnProfileView"];
@@ -13,20 +15,15 @@ export type ImportStatus = components["schemas"]["ImportStatus"];
 const DEFAULT_ROW_CAP = 100_000;
 const DEFAULT_TIMEOUT_SECONDS = 30;
 
+/** The prefix of every table profile of a Source System. */
+export const tableProfilesKey = (workspaceId: string, systemId: string) =>
+  ["workspace", workspaceId, "systems", systemId, "tables"] as const;
+
 export const tableProfileKey = (
   workspaceId: string,
   systemId: string,
   tableId: string,
-) =>
-  [
-    "workspace",
-    workspaceId,
-    "systems",
-    systemId,
-    "tables",
-    tableId,
-    "profile",
-  ] as const;
+) => [...tableProfilesKey(workspaceId, systemId), tableId, "profile"] as const;
 
 /** A table's profile with its columns'. */
 export function useTableProfile(
@@ -86,18 +83,19 @@ export function useImportStatus(workspaceId: string, systemId: string) {
   });
 }
 
-/** Start a profiling job for a table; 409 `profiling_unavailable` without a Connection. */
+/** Start one profiling job for tables and views; 409 `profiling_unavailable` without a
+ * Connection. */
 export function useStartProfiling(workspaceId: string, systemId: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (tableId: string) => {
+    mutationFn: async (tableIds: string[]) => {
       const { data, error, response } = await client.POST(
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling",
         {
           params: { path: { workspace_id: workspaceId, system_id: systemId } },
           body: {
-            table_ids: [tableId],
+            table_ids: tableIds,
             row_cap: DEFAULT_ROW_CAP,
             timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
           },
@@ -111,6 +109,57 @@ export function useStartProfiling(workspaceId: string, systemId: string) {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: jobsKey(workspaceId) }),
   });
+}
+
+/** A profiling job started from the page, with the tables it profiles. */
+export type ProfilingRun = { jobId: string; tableIds: string[] };
+
+/**
+ * The profiling jobs started from the page: which tables are being profiled now (a job
+ * counts until the Workspace's jobs show it finished), and, as each job finishes, the
+ * refreshed profiles of its tables and the Source Schema's profile dates.
+ */
+export function useProfilingRuns(workspaceId: string, systemId: string) {
+  const [runs, setRuns] = useState<ProfilingRun[]>([]);
+  const jobs = useJobs(workspaceId);
+  const queryClient = useQueryClient();
+
+  const byId = new Map(jobs.data?.items.map((job) => [job.id, job]));
+  const done = runs.filter((run) => {
+    const job = byId.get(run.jobId);
+    return job != null && !isActive(job);
+  });
+  const doneKey = done.map((run) => run.jobId).join();
+  useEffect(() => {
+    if (doneKey === "") {
+      return;
+    }
+    const finished = new Set(doneKey.split(","));
+    for (const run of runs) {
+      if (finished.has(run.jobId)) {
+        for (const tableId of run.tableIds) {
+          void queryClient.invalidateQueries({
+            queryKey: tableProfileKey(workspaceId, systemId, tableId),
+          });
+        }
+      }
+    }
+    void queryClient.invalidateQueries({
+      queryKey: sourceSchemaKey(workspaceId, systemId),
+    });
+    // Only a newly finished job refreshes; `runs` changes with every start.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doneKey, queryClient, workspaceId, systemId]);
+
+  const profiling = new Set(
+    runs.filter((run) => !done.includes(run)).flatMap((run) => run.tableIds),
+  );
+  return {
+    /** The tables a job started from the page is profiling now. */
+    profiling,
+    /** Follow a job that was just started. */
+    follow: (run: ProfilingRun) => setRuns((current) => [...current, run]),
+  };
 }
 
 /** An owner's per-table top-N switch. */
