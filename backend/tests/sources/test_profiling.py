@@ -102,6 +102,48 @@ def test_an_editor_profiles_a_table_and_any_member_reads_it(roles: RoleClients, 
     assert columns["notes"]["profile"]["patterns"] == []
 
 
+def test_one_job_profiles_several_tables_and_views(roles: RoleClients, scratch_source):
+    scratch_source["run"](
+        SOURCE
+        + "CREATE TABLE towns (id integer PRIMARY KEY, name text);"
+        + "INSERT INTO towns VALUES (1, 'Cairo'), (2, 'Giza');"
+        + "CREATE VIEW cairenes AS SELECT id, city FROM people WHERE city = 'Cairo';"
+    )
+    system = add_system(roles)
+    connect(roles, system, scratch_source["body"]())
+    extract(roles, system)
+    ids = {name: table_of(roles, system, name)["id"] for name in ("people", "towns", "cairenes")}
+
+    started = profile_tables(roles, system, list(ids.values()))
+
+    assert started.status_code == 202, started.text
+    job = roles.client("editor").get(f"/api/v1/jobs/{started.json()['job_id']}").json()
+    assert job["status"] == "succeeded" and job["progress"] == 100
+    assert "3 table(s)" in job["title"]
+    assert profile_of(roles, system, ids["people"])["row_count"] == 20
+    assert profile_of(roles, system, ids["towns"])["row_count"] == 2
+    cairenes = columns_of(profile_of(roles, system, ids["cairenes"]))
+    assert cairenes["city"]["profile"]["distinct_count"] == 1
+
+
+def test_the_source_schema_carries_each_tables_latest_profile_time(
+    roles: RoleClients, scratch_source
+):
+    scratch_source["run"](SOURCE + "CREATE TABLE towns (id integer PRIMARY KEY, name text);")
+    system = add_system(roles)
+    connect(roles, system, scratch_source["body"]())
+    extract(roles, system)
+    assert [t["profiled_at"] for t in schema(roles, system)["tables"]] == [None, None]
+    people = table_of(roles, system)["id"]
+
+    run(roles, system, people)
+
+    profiled_at = profile_of(roles, system, people)["profiled_at"]
+    assert profiled_at is not None
+    assert table_of(roles, system)["profiled_at"] == profiled_at
+    assert table_of(roles, system, "towns")["profiled_at"] is None
+
+
 def test_top_values_are_off_until_an_owner_switches_them_on_for_the_table(
     roles: RoleClients, profiled
 ):

@@ -29903,6 +29903,19 @@
             ],
             "title": "Version",
             "description": "Send it back when editing the enhancements; set only in the Source Schema."
+          },
+          "profiled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profiled At",
+            "description": "When the table was last profiled, null if never; set only in the Source Schema."
           }
         },
         "type": "object",
