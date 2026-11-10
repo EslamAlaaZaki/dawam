@@ -963,6 +963,7 @@ function TablePage({
             workspace={workspace}
             systemId={systemId}
             tableId={table.id}
+            onProfilingStarted={onProfilingStarted}
             rowEstimate={table.row_estimate}
             keys={Object.fromEntries(
               table.columns.map((c) => [

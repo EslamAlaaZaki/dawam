@@ -369,6 +369,77 @@ describe("table profiles", () => {
     await waitFor(() => expect(requests.topN).toEqual([{ enabled: true }]));
   });
 
+  it("starts profiling the table when top values are switched on, not off", async () => {
+    const requests = { profiling: [] as unknown[], topN: [] as unknown[] };
+    renderApp(backend(OWNER, requests), FOLDER);
+
+    const panel = await openProfile();
+    fireEvent.click(
+      await within(panel).findByRole("switch", { name: "Keep top values" }),
+    );
+
+    await waitFor(() =>
+      expect(requests.profiling).toEqual([
+        { table_ids: ["t1"], row_cap: 100000, timeout_seconds: 30 },
+      ]),
+    );
+    expect(requests.topN).toEqual([{ enabled: true }]);
+    expect(await screen.findByText(/Top values switched on/)).toBeVisible();
+  });
+
+  it("does not start profiling when top values are switched off", async () => {
+    const requests = { profiling: [] as unknown[], topN: [] as unknown[] };
+    const on = { ...PROFILE, top_n_enabled: true };
+    renderApp(
+      (r) =>
+        r.method === "GET" && r.path === `${SYSTEM}/tables/t1/profile`
+          ? json(on)
+          : backend(OWNER, requests)(r),
+      FOLDER,
+    );
+
+    const panel = await openProfile();
+    fireEvent.click(
+      await within(panel).findByRole("switch", { name: "Keep top values" }),
+    );
+
+    await waitFor(() => expect(requests.topN).toEqual([{ enabled: false }]));
+    expect(requests.profiling).toEqual([]);
+  });
+
+  it("only saves the switch for a user who may not profile", async () => {
+    const requests = { profiling: [] as unknown[], topN: [] as unknown[] };
+    const noProfile = workspace("owner", ["workspace.view", "source_table.top_n"]);
+    renderApp(backend(noProfile, requests), FOLDER);
+
+    const panel = await openProfile();
+    fireEvent.click(
+      await within(panel).findByRole("switch", { name: "Keep top values" }),
+    );
+
+    await waitFor(() => expect(requests.topN).toEqual([{ enabled: true }]));
+    expect(requests.profiling).toEqual([]);
+  });
+
+  it("only saves the switch when the system was built from a Schema Import", async () => {
+    const requests = { profiling: [] as unknown[], topN: [] as unknown[] };
+    const imported: ImportStatus = {
+      has_connection: false,
+      latest_origin: "import",
+      imported: true,
+      disabled_features: ["Profiling"],
+    };
+    renderApp(backend(OWNER, requests, imported), FOLDER);
+
+    const panel = await openProfile();
+    fireEvent.click(
+      await within(panel).findByRole("switch", { name: "Keep top values" }),
+    );
+
+    await waitFor(() => expect(requests.topN).toEqual([{ enabled: true }]));
+    expect(requests.profiling).toEqual([]);
+  });
+
   it("explains why a Schema-Imported system cannot be profiled", async () => {
     const imported: ImportStatus = {
       has_connection: false,

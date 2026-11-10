@@ -6,12 +6,15 @@ import { Fragment, useState } from "react";
 import {
   useImportStatus,
   useSetTopN,
+  useStartProfiling,
   useTableProfile,
   type ColumnProfileView,
+  type ProfilingRun,
 } from "../api/profiling";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
+import { toast } from "../components/ui/sonner";
 import { Switch } from "../components/ui/switch";
 import {
   Table,
@@ -115,8 +118,8 @@ function TopValues({
   if (!topN) {
     return (
       <p className="text-xs text-subtle-foreground">
-        Top values are off for this table. Turn on Keep top values; they are
-        stored at the next profile.
+        Top values are off for this table. Turn on Keep top values to collect
+        them when the table is profiled.
       </p>
     );
   }
@@ -172,19 +175,14 @@ function TopNSwitch({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <label className="flex items-center gap-2 text-sm font-medium">
-        <Switch
-          checked={checked}
-          disabled={pending}
-          onCheckedChange={onChange}
-        />
-        Keep top values
-      </label>
-      <span className="text-xs text-subtle-foreground">
-        Never kept for protected columns
-      </span>
-    </div>
+    <label className="flex items-center gap-2 text-sm font-medium">
+      <Switch
+        checked={checked}
+        disabled={pending}
+        onCheckedChange={onChange}
+      />
+      Keep top values
+    </label>
   );
 }
 
@@ -192,7 +190,8 @@ function TopNSwitch({
  * A table's profile (spec stories 55-57): per column the sampled row count, null %,
  * distinct count, min and max, length and detected patterns, and top values when an owner
  * switched them on for the table. Protected Columns show no min/max or top values. Only
- * owners switch top-N; profiling starts from the table page's header. A system built from
+ * owners switch top-N, and switching it on starts profiling to collect the values (for
+ * a user who may profile); otherwise profiling starts from the table page's header. A system built from
  * a Schema Import cannot be profiled, and says why. `keys` flags the table's PK and FK
  * columns (from the Source Schema already on the page); `rowEstimate` is its row estimate.
  */
@@ -202,16 +201,19 @@ export function ProfilePanel({
   tableId,
   keys = {},
   rowEstimate = null,
+  onProfilingStarted,
 }: {
   workspace: Workspace;
   systemId: string;
   tableId: string;
   keys?: Record<string, { pk: boolean; fk: boolean }>;
   rowEstimate?: number | null;
+  onProfilingStarted?: (run: ProfilingRun) => void;
 }) {
   const profile = useTableProfile(workspace.id, systemId, tableId);
   const importStatus = useImportStatus(workspace.id, systemId);
   const topN = useSetTopN(workspace.id, systemId, tableId);
+  const start = useStartProfiling(workspace.id, systemId);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -219,6 +221,28 @@ export function ProfilePanel({
   const unavailable =
     importStatus.data?.imported === true && !importStatus.data.has_connection;
   const canSwitch = allows(workspace, "source_table.top_n");
+  const canProfile =
+    allows(workspace, "source_system.profile") &&
+    importStatus.isSuccess &&
+    !unavailable;
+
+  // Turning top values on saves the switch, then profiles the table to collect them.
+  const setTopN = (enabled: boolean) => {
+    start.reset();
+    topN.mutate(enabled, {
+      onSuccess: () => {
+        if (!enabled || !canProfile) return;
+        start.mutate([tableId], {
+          onSuccess: (job) => {
+            onProfilingStarted?.({ jobId: job.job_id, tableIds: [tableId] });
+            toast.success(
+              "Top values switched on. Profiling started to collect them; follow it under Background jobs.",
+            );
+          },
+        });
+      },
+    });
+  };
 
   const toggle = (id: string) =>
     setOpen((prev) => {
@@ -249,6 +273,7 @@ export function ProfilePanel({
         </p>
       )}
       {topN.isError && <ErrorText>{topN.error.message}</ErrorText>}
+      {start.isError && <ErrorText>{start.error.message}</ErrorText>}
       {profile.isPending && (
         <Loading label="Loading the profile…" className="p-0" />
       )}
@@ -263,7 +288,7 @@ export function ProfilePanel({
             <TopNSwitch
               checked={data.top_n_enabled}
               pending={topN.isPending}
-              onChange={(v) => topN.mutate(v)}
+              onChange={setTopN}
             />
           )}
           <EmptyState>This table has not been profiled yet.</EmptyState>
@@ -313,7 +338,7 @@ export function ProfilePanel({
               <TopNSwitch
                 checked={data.top_n_enabled}
                 pending={topN.isPending}
-                onChange={(v) => topN.mutate(v)}
+                onChange={setTopN}
               />
             )}
           </div>
