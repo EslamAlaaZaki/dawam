@@ -46,9 +46,7 @@ Tickets run as an implement → review → PR → CI → merge pipeline, one at 
 - If a design idea would need a new feature or data, skip it and mention it in one line.
 - When done, give a short list of changed files. No long explanations.
 
-## Git rules for the UI redesign
-- All UI work is committed on the branch feature/ui-redesign. Check you're on it before editing.
-- Never commit to, push to, merge into or open a PR against main.
-- Don't create other branches unless I ask.
+## Git rules for UI work
+- Each UI ticket gets its own branch from `main` and a PR into `main`, like any other ticket (see `docs/agents/workflow.md`). Never commit or push to `main` directly.
 - Commit message format: "ui: <short description> (#<issue number>)".
 

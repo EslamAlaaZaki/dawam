@@ -39,7 +39,9 @@ from tests.roles import RoleClients
 def offers(roles: RoleClients, role: str = "editor") -> list[dict[str, Any]]:
     response = roles.client(role).get("/api/v1/notifications")
     assert response.status_code == 200, response.text
-    return [n for n in response.json()["items"] if n["kind"] == "regeneration"]
+    return [
+        n for n in response.json()["items"] if n["kind"] == "regeneration" and n["read_at"] is None
+    ]
 
 
 def read_all(roles: RoleClients) -> None:

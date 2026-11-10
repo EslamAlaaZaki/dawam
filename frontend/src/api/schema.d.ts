@@ -2420,7 +2420,7 @@ export interface paths {
         };
         /**
          * List Notifications
-         * @description Your unread notifications, newest first.
+         * @description Your notifications, read and unread, newest first, a page at a time.
          */
         get: operations["listNotifications"];
         put?: never;
@@ -8700,6 +8700,29 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Read At
+             * @description When you read it; null while it is unread.
+             */
+            read_at: string | null;
+        };
+        /** NotificationPage */
+        NotificationPage: {
+            /**
+             * Items
+             * @description One page of yours, read or not, newest first.
+             */
+            items: components["schemas"]["Notification"][];
+            /**
+             * Unread Count
+             * @description All your unread notifications, on every page.
+             */
+            unread_count: number;
+            /**
+             * Next Cursor
+             * @description The `cursor` of the next page; null on the last.
+             */
+            next_cursor: string | null;
         };
         /** NumberBounds */
         NumberBounds: {
@@ -11169,19 +11192,6 @@ export interface components {
         UndeliveredLinksOut: {
             /** Items */
             items: components["schemas"]["UndeliveredLinkOut"][];
-        };
-        /** UnreadNotifications */
-        UnreadNotifications: {
-            /**
-             * Items
-             * @description The newest unread ones, newest first.
-             */
-            items: components["schemas"]["Notification"][];
-            /**
-             * Unread Count
-             * @description All your unread notifications.
-             */
-            unread_count: number;
         };
         /** UpdateBranchRequest */
         UpdateBranchRequest: {
@@ -17409,7 +17419,12 @@ export interface operations {
     };
     listNotifications: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description How many to return at most. */
+                limit?: number;
+                /** @description `next_cursor` of the previous page; omit for the first. */
+                cursor?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17422,7 +17437,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UnreadNotifications"];
+                    "application/json": components["schemas"]["NotificationPage"];
                 };
             };
             /** @description Validation error */

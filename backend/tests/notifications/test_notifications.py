@@ -43,7 +43,7 @@ def test_an_unknown_kind_is_refused(roles: RoleClients, notifications: Notificat
         )
 
 
-def test_the_list_is_newest_first_and_marking_read_removes_one(
+def test_the_list_is_newest_first_and_marking_read_keeps_it_with_read_at(
     roles: RoleClients, notifications: NotificationService, clock
 ):
     owner = roles.user("owner")
@@ -57,11 +57,16 @@ def test_the_list_is_newest_first_and_marking_read_removes_one(
     assert client.post(f"/api/v1/notifications/{items[0]['id']}/read").status_code == 204
 
     after = client.get("/api/v1/notifications").json()
-    assert [n["message"] for n in after["items"]] == ["first"]
+    assert [(n["message"], n["read_at"] is not None) for n in after["items"]] == [
+        ("second", True),
+        ("first", False),
+    ]
     assert after["unread_count"] == 1
 
 
-def test_read_all_clears_the_list(roles: RoleClients, notifications: NotificationService):
+def test_read_all_marks_everything_read_but_keeps_it_listed(
+    roles: RoleClients, notifications: NotificationService
+):
     owner = roles.user("owner")
     notifications.notify([owner.id], kind="job", message="a")
     notifications.notify([owner.id], kind="job", message="b")
@@ -69,7 +74,11 @@ def test_read_all_clears_the_list(roles: RoleClients, notifications: Notificatio
 
     assert client.post("/api/v1/notifications/read-all").status_code == 204
 
-    assert client.get("/api/v1/notifications").json() == {"items": [], "unread_count": 0}
+    listed = client.get("/api/v1/notifications").json()
+    assert listed["unread_count"] == 0
+    assert len(listed["items"]) == 2
+    assert all(n["read_at"] is not None for n in listed["items"])
+    assert listed["next_cursor"] is None
 
 
 def test_nobody_reads_or_clears_someone_elses_notifications(
@@ -92,3 +101,84 @@ def test_nobody_reads_or_clears_someone_elses_notifications(
 
 def test_anonymous_users_have_no_notifications(anonymous_client):
     assert anonymous_client.get("/api/v1/notifications").status_code == 401
+
+
+def _page(client, **params) -> dict:
+    response = client.get("/api/v1/notifications", params=params)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_pages_follow_the_cursor_newest_first_and_the_last_has_none(
+    roles: RoleClients, notifications: NotificationService, clock
+):
+    owner = roles.user("owner")
+    for n in range(5):
+        notifications.notify([owner.id], kind="job", message=f"n{n}")
+        clock.advance(timedelta(seconds=1))
+    client = roles.client("owner")
+
+    first = _page(client, limit=2)
+    second = _page(client, limit=2, cursor=first["next_cursor"])
+    third = _page(client, limit=2, cursor=second["next_cursor"])
+
+    assert [n["message"] for n in first["items"]] == ["n4", "n3"]
+    assert [n["message"] for n in second["items"]] == ["n2", "n1"]
+    assert [n["message"] for n in third["items"]] == ["n0"]
+    assert third["next_cursor"] is None
+    assert first["unread_count"] == second["unread_count"] == 5
+
+
+def test_a_cursor_never_skips_or_repeats_rows_sharing_a_created_at(
+    roles: RoleClients, notifications: NotificationService
+):
+    owner = roles.user("owner")
+    for n in range(5):  # the clock does not move: one created_at for all
+        notifications.notify([owner.id], kind="job", message=f"n{n}")
+    client = roles.client("owner")
+
+    seen: list[str] = []
+    cursor = None
+    while True:
+        page = _page(client, limit=2, **({"cursor": cursor} if cursor else {}))
+        seen += [n["id"] for n in page["items"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+
+    assert len(seen) == 5 and len(set(seen)) == 5
+
+
+def test_the_default_page_is_twenty_and_the_limit_is_capped_at_fifty(
+    roles: RoleClients, notifications: NotificationService
+):
+    owner = roles.user("owner")
+    for n in range(25):
+        notifications.notify([owner.id], kind="job", message=f"n{n}")
+    client = roles.client("owner")
+
+    assert len(_page(client)["items"]) == 20
+    assert client.get("/api/v1/notifications", params={"limit": 51}).status_code == 422
+    assert client.get("/api/v1/notifications", params={"limit": 0}).status_code == 422
+
+
+def test_paging_never_shows_another_users_notifications(
+    roles: RoleClients, notifications: NotificationService
+):
+    owner, viewer = roles.user("owner"), roles.user("viewer")
+    notifications.notify([owner.id], kind="job", message="mine")
+    notifications.notify([viewer.id], kind="job", message="theirs")
+
+    page = _page(roles.client("owner"), limit=1)
+
+    assert [n["message"] for n in page["items"]] == ["mine"]
+    assert page["next_cursor"] is None
+    assert page["unread_count"] == 1
+
+
+def test_an_invalid_cursor_is_refused(roles: RoleClients):
+    client = roles.client("owner")
+
+    response = client.get("/api/v1/notifications", params={"cursor": "not-a-cursor"})
+
+    assert response.status_code == 422

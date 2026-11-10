@@ -28,11 +28,11 @@ When the main session's context gets long (about every 3–4 tickets), or the ne
 
 ## UI redesign exception
 
-Tickets for the UI redesign (`DESIGN.md`) change steps 2 and 5 above:
+Tickets for the UI redesign (`DESIGN.md`) run through the pipeline above, with a ticket branch from `main` and a PR into `main`, but change step 2:
 
-- The implementer commits straight to `feature/ui-redesign`, with commit messages like `ui: <short description> (#N)`. No ticket branches and no PRs. Nothing is ever pushed to, merged into or opened as a PR against `main`.
+- Commit messages look like `ui: <short description> (#N)`.
 - The ticket is visual-only, so no new tests. It's done when `npm run lint`, `npm test` and `npm run build` pass in `frontend/` without changing any test. The exceptions are `contrast.test.ts` and `tokens.test.ts` (palette ticket only) and tests that only assert class names or colors. If a role or text test fails, fix the UI, not the test.
-- The review subagent still runs. CI runs on push. The maintainer closes the issue by hand.
+- The review subagent still runs.
 
 ## AI enhancements exception
 
