@@ -66,7 +66,7 @@ test("the main path: sign in to lineage", async ({ page }) => {
     await page.waitForURL(/\/workspaces\/[0-9a-f-]{36}$/);
     workspaceId = page.url().split("/").pop() ?? "";
     await expect(page.getByRole("heading", { name: "Smoke Shop" })).toBeVisible();
-    await expect(page.getByText("Your role: Owner")).toBeVisible();
+    await expect(page.getByLabel("Your role: Owner")).toBeVisible();
   });
 
   await test.step("add a member", async () => {
@@ -101,20 +101,22 @@ test("the main path: sign in to lineage", async ({ page }) => {
     await connection.getByLabel("Database", { exact: true }).fill("shop");
     await connection.getByLabel("Username").fill("reader");
     await connection.getByLabel("Password").fill("reader");
-    await connection.getByLabel("Allowed Database Schemas").fill("sales");
+    // Allowed Database Schemas are chips: type a name, press Enter.
+    await connection.getByLabel("Add a Database Schema").fill("sales");
+    await connection.getByLabel("Add a Database Schema").press("Enter");
     await connection.getByRole("button", { name: "Test connection" }).click();
     await expect(page.getByText(/Connection works/)).toBeVisible();
-    await connection.getByRole("button", { name: "Save Connection" }).click();
+    await connection.getByRole("button", { name: "Save connection" }).click();
     await expect(page.getByText("Connection saved.")).toBeVisible();
 
     await test.step("extract its metadata", async () => {
       await page.goto(`/workspaces/${workspaceId}?folder=${systemFolder}/source-schema`);
       await page.getByRole("button", { name: "Extract metadata" }).click();
-      // A background job on the worker; the Snapshots list refreshes when it finishes.
-      await expect(page.getByRole("list", { name: "Snapshots" })).toContainText(
-        "2 tables and views",
-        { timeout: 90_000 },
-      );
+      // A background job on the worker; the latest-Snapshot line under the heading
+      // refreshes with its counts when it finishes.
+      await expect(page.getByText("2 tables and views").first()).toBeVisible({
+        timeout: 90_000,
+      });
     });
   });
 

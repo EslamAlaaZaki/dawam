@@ -148,7 +148,7 @@ Only weights 400, 500, 600. Sentence case everywhere ("Add source", not "Add Sou
 ## 6. Layout
 
 ### App shell (restyle the existing one)
-- **Left sidebar (240px; below 1024px it is the existing drawer, unchanged):** DAWAM logo on top, then the Workspace switcher, then the Workspace's **folder tree** (`src/workspaces/folders.ts`): Systems → one folder per Source System (Connection | Schema Import, Source Schema, ER diagram, Profiling, PII, Documents, KPIs, Outputs) and Data Warehouse → KPIs, Staging / Core / Mart (Model, Mappings, Evaluation), Lineage, Score, Files.
+- **Left sidebar (240px; below 1024px it is the existing drawer, unchanged):** DAWAM logo on top, then the Workspace switcher, then the Workspace's **folder tree** (`src/workspaces/folders.ts`): Systems → one folder per Source System (Connection, Source schema, ER diagram, Profiling, PII, Documents, KPIs, Outputs) and Data Warehouse → KPIs, Staging / Core / Mart (Model, Mappings, Evaluation), Lineage, Score, Files.
   - The tree is the navigation. Its nodes, their order, which nodes appear when, and the `?folder=` URLs stay exactly as they are. **Don't regroup it** into fixed sections or replace it with links: only restyle it (lucide icons, indentation, active node with `--primary-subtle`).
   - The assistant's entry point gets the ✦ mark.
 - **Top bar (48px):** a plain-text location trail on the left, built only from labels that already exist (e.g. Workspace › Data Warehouse › Core › Model, or Admin › Users). It isn't clickable and doesn't look clickable: no underline, no hover state, no pointer. Parent levels in `--subtle-foreground`, the current level in `--foreground`. The existing controls (Jobs, notifications, user menu) sit on the right.
