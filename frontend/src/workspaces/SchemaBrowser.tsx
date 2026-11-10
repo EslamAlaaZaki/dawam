@@ -18,6 +18,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   useImportStatus,
   useStartProfiling,
+  useTableProfile,
   type ProfilingRun,
 } from "../api/profiling";
 import {
@@ -51,7 +52,7 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { cn } from "../lib/utils";
-import { ProfilePanel } from "./ProfilePanel";
+import { ProfilePanel, ProtectedIcon } from "./ProfilePanel";
 import {
   EmptyState,
   ErrorText,
@@ -795,6 +796,14 @@ function TablePage({
 }) {
   const [tab, setTab] = useState("columns");
   const [error, setError] = useState<string | null>(null);
+  // The Source Schema carries no protection flag; the table's profile (shared with the
+  // Profile tab) does.
+  const columnProfiles = useTableProfile(workspace.id, systemId, table.id);
+  const protectedNames = new Set(
+    columnProfiles.data?.columns
+      .filter((c) => c.is_protected)
+      .map((c) => c.name),
+  );
   const title = `${table.db_schema}.${table.name}`;
   const pks = table.constraints.filter((k) => k.type === "pk").length;
   const fks = table.constraints.filter((k) => k.type === "fk").length;
@@ -896,6 +905,11 @@ function TablePage({
                     </TableCell>
                     <TableCell className={`${monoClasses} max-w-64`}>
                       <Truncated text={column.name} />
+                      {protectedNames.has(column.name) && (
+                        <span className="ml-1.5 inline-flex align-middle">
+                          <ProtectedIcon />
+                        </span>
+                      )}
                       <StatusBadge status={column.status} />
                     </TableCell>
                     <TableCell
@@ -949,6 +963,13 @@ function TablePage({
             workspace={workspace}
             systemId={systemId}
             tableId={table.id}
+            rowEstimate={table.row_estimate}
+            keys={Object.fromEntries(
+              table.columns.map((c) => [
+                c.name,
+                { pk: c.is_pk, fk: isFkColumn(table, c.name) },
+              ]),
+            )}
           />
         </TabsContent>
         <TabsContent

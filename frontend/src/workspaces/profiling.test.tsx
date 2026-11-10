@@ -253,12 +253,69 @@ describe("table profiles", () => {
     expect(city).toHaveTextContent("Alexandria");
     expect(city).toHaveTextContent("Giza");
     const protectedRow = within(panel).getByText("national_id").closest("tr")!;
-    expect(protectedRow).toHaveTextContent("(protected)");
+    expect(within(protectedRow).getByText("Protected")).toBeInTheDocument();
+    expect(protectedRow).toHaveTextContent("Hidden");
     expect(protectedRow).not.toHaveTextContent("Alexandria");
+    expect(panel).toHaveTextContent("20 of ~1,200 rows");
+    expect(panel).toHaveTextContent("1 protected");
+    expect(city).toHaveTextContent("avg 5.5 · max 10");
     expect(
       screen.queryByRole("button", { name: "Profile this table" }),
     ).toBeNull();
-    expect(within(panel).queryByRole("checkbox")).toBeNull();
+    expect(within(panel).queryByRole("switch")).toBeNull();
+  });
+
+  it("filters the columns by kind and by name", async () => {
+    renderApp(backend(VIEWER, { profiling: [], topN: [] }), FOLDER);
+
+    const panel = await openProfile();
+    await within(panel).findByText("city");
+    const filters = within(panel).getByRole("group", { name: "Filter columns" });
+    expect(filters).toHaveTextContent("All 2");
+    expect(filters).toHaveTextContent("Has nulls 1");
+    expect(filters).toHaveTextContent("Unique 1");
+    expect(filters).toHaveTextContent("Protected 1");
+
+    fireEvent.click(within(filters).getByRole("button", { name: /Has nulls/ }));
+    expect(within(panel).getByText("city")).toBeInTheDocument();
+    expect(within(panel).queryByText("national_id")).toBeNull();
+
+    fireEvent.click(within(filters).getByRole("button", { name: /Protected/ }));
+    expect(within(panel).getByText("national_id")).toBeInTheDocument();
+    expect(within(panel).queryByText("city")).toBeNull();
+
+    fireEvent.click(within(filters).getByRole("button", { name: /^All/ }));
+    fireEvent.change(within(panel).getByLabelText("Filter columns by name"), {
+      target: { value: "zzz" },
+    });
+    expect(within(panel).getByText("No columns match.")).toBeInTheDocument();
+  });
+
+  it("explains a protected column's missing top values when expanded", async () => {
+    renderApp(backend(VIEWER, { profiling: [], topN: [] }), FOLDER);
+
+    const panel = await openProfile();
+    fireEvent.click(
+      await within(panel).findByRole("button", {
+        name: "Top values of national_id",
+      }),
+    );
+
+    expect(
+      within(panel).getByText(/never kept for protected columns \(PII\)/),
+    ).toBeInTheDocument();
+  });
+
+  it("marks the protected column with the shield in the Columns tab", async () => {
+    renderApp(backend(VIEWER, { profiling: [], topN: [] }), FOLDER);
+
+    const page = await openTable();
+    const row = (await within(page).findByText("national_id")).closest("tr")!;
+    await waitFor(() =>
+      expect(within(row).getByText("Protected")).toBeInTheDocument(),
+    );
+    const city = within(page).getByText("city").closest("tr")!;
+    expect(within(city).queryByText("Protected")).toBeNull();
   });
 
   it("lets an editor start profiling, but not switch top-N", async () => {
@@ -276,7 +333,7 @@ describe("table profiles", () => {
       ]),
     );
     const panel = await openProfile();
-    expect(within(panel).queryByRole("checkbox")).toBeNull();
+    expect(within(panel).queryByRole("switch")).toBeNull();
   });
 
   it("lets an owner switch top-N on for the table", async () => {
@@ -284,7 +341,9 @@ describe("table profiles", () => {
     renderApp(backend(OWNER, requests), FOLDER);
 
     const panel = await openProfile();
-    fireEvent.click(await within(panel).findByRole("checkbox"));
+    fireEvent.click(
+      await within(panel).findByRole("switch", { name: "Keep top values" }),
+    );
 
     await waitFor(() => expect(requests.topN).toEqual([{ enabled: true }]));
   });
