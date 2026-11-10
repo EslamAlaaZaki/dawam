@@ -1,6 +1,13 @@
 "use client";
 
-import { FolderOpen, TriangleAlert } from "lucide-react";
+import {
+  Crown,
+  Eye,
+  FolderOpen,
+  Pencil,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -11,9 +18,15 @@ import {
 } from "react";
 
 import { ApiError } from "../api/client";
-import { ROLE_LABELS, useWorkspace } from "../api/workspaces";
+import { ROLE_LABELS, useWorkspace, type WorkspaceRole } from "../api/workspaces";
 import { PageHeader } from "../components/PageHeader";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { EmptyState, ErrorText, Hint, Panel, h3Classes } from "./parts";
 import {
   Dialog,
@@ -232,7 +245,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       >
         <PageHeader
           title={workspace.data.name}
-          description={`Your role: ${ROLE_LABELS[workspace.data.role]}`}
+          description={<RoleBadge role={workspace.data.role} />}
           actions={
             <>
               <Button
@@ -442,5 +455,38 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
         )}
       </aside>
     </>
+  );
+}
+
+const ROLE_BADGES: Record<WorkspaceRole, { icon: LucideIcon; can: string }> = {
+  owner: {
+    icon: Crown,
+    can: "Can do everything here, including members and settings.",
+  },
+  editor: {
+    icon: Pencil,
+    can: "Can change the analysis and models, but not members or settings.",
+  },
+  viewer: { icon: Eye, can: "Can read everything here but not change it." },
+};
+
+/** The user's role in the Workspace, with what it allows as a tooltip. */
+function RoleBadge({ role }: { role: WorkspaceRole }) {
+  const { icon: Icon, can } = ROLE_BADGES[role];
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          role="note"
+          tabIndex={0}
+          aria-label={`Your role: ${ROLE_LABELS[role]}`}
+          className="cursor-default"
+        >
+          <Icon aria-hidden />
+          {ROLE_LABELS[role]}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>{can}</TooltipContent>
+    </Tooltip>
   );
 }

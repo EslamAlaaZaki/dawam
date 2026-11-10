@@ -19,7 +19,7 @@ export interface SystemFolderInfo {
 const SYSTEM_FOLDERS = [
   [
     "connection",
-    "Connection | Schema Import",
+    "Connection",
     "How this system's metadata gets in will appear here.",
   ],
   [
