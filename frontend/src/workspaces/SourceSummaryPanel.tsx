@@ -64,9 +64,7 @@ export function SourceSummaryPanel({
           id="folder-title"
           className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xl font-semibold tracking-tight text-balance text-foreground"
         >
-          <span className="min-w-0 break-words">{system.name}</span>{" "}
-          <span className="font-normal text-subtle-foreground">/</span>{" "}
-          <span className="font-medium text-muted-foreground">Summary</span>
+          <span className="min-w-0 break-words">{system.name}</span>
           {summary.isSuccess && (
             <Badge variant={STATUS_VARIANTS[summary.data.status]} dot>
               {STATUS_LABELS[summary.data.status]}

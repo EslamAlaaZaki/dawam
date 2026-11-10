@@ -122,11 +122,9 @@ export function ConnectionPanel({
       <header className="flex flex-col gap-2 border-b border-border pb-5">
         <h1
           id="folder-title"
-          className="flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold tracking-tight text-balance text-foreground"
+          className="text-2xl font-semibold tracking-tight text-balance text-foreground"
         >
-          <span className="min-w-0 break-words">{system.name}</span>{" "}
-          <span className="font-normal text-subtle-foreground">/</span>{" "}
-          <span className="font-medium text-muted-foreground">Connection</span>
+          Connection
         </h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           {inUse === "connection" ? (

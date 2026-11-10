@@ -169,13 +169,9 @@ export function SourceSchemaPanel({
         <div className="flex min-w-0 flex-1 basis-80 flex-col gap-2">
           <h1
             id="folder-title"
-            className="flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold tracking-tight text-balance text-foreground"
+            className="text-2xl font-semibold tracking-tight text-balance text-foreground"
           >
-            <span className="min-w-0 break-words">{system.name}</span>{" "}
-            <span className="font-normal text-subtle-foreground">/</span>{" "}
-            <span className="font-medium text-muted-foreground">
-              Source schema
-            </span>
+            Source schema
           </h1>
           {hasSnapshot && (
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground tabular-nums">

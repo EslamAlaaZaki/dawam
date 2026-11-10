@@ -116,7 +116,7 @@ describe("Source Systems in the folder tree", () => {
     expect(all.slice(start, start + 9)).toEqual([
       "Core Banking",
       "Connection",
-      "Source Schema",
+      "Source schema",
       "ER diagram",
       "Profiling",
       "PII",

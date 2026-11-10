@@ -170,7 +170,7 @@ describe("a Source System's Source Schema", () => {
     expect(
       await screen.findByRole("heading", {
         level: 1,
-        name: "Core Banking / Source schema",
+        name: "Source schema",
       }),
     ).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: /2 snapshots/ }));
