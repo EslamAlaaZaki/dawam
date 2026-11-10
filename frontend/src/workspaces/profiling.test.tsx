@@ -265,6 +265,27 @@ describe("table profiles", () => {
     expect(within(panel).queryByRole("switch")).toBeNull();
   });
 
+  it("shows unknown counts as a dash, not zero", async () => {
+    const unknown = {
+      ...PROFILE,
+      row_count: null,
+      columns: PROFILE.columns.map((c) => ({
+        ...c,
+        profile: { ...c.profile!, distinct_count: null },
+      })),
+    } as unknown as TableProfile;
+    renderApp((r) => {
+      if (r.path === `${SYSTEM}/tables/t1/profile`) return json(unknown);
+      return backend(VIEWER, { profiling: [], topN: [] })(r);
+    }, FOLDER);
+
+    const panel = await openProfile();
+    const city = (await within(panel).findByText("city")).closest("tr")!;
+    expect(panel).toHaveTextContent("rows unknown");
+    expect(city).toHaveTextContent("—");
+    expect(city).not.toHaveTextContent("Unique");
+  });
+
   it("filters the columns by kind and by name", async () => {
     renderApp(backend(VIEWER, { profiling: [], topN: [] }), FOLDER);
 

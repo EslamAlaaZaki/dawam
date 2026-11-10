@@ -277,10 +277,16 @@ export function ProfilePanel({
                 <span className="mr-1 text-xs font-medium text-subtle-foreground">
                   Sampled
                 </span>
-                <b className="font-medium text-foreground">
-                  {fmt(data.row_count ?? 0)}
-                </b>
-                {rowEstimate != null && <> of ~{fmt(rowEstimate)}</>} rows
+                {data.row_count == null ? (
+                  "rows unknown"
+                ) : (
+                  <>
+                    <b className="font-medium text-foreground">
+                      {fmt(data.row_count)}
+                    </b>
+                    {rowEstimate != null && <> of ~{fmt(rowEstimate)}</>} rows
+                  </>
+                )}
               </span>
               <span>
                 <span className="mr-1 text-xs font-medium text-subtle-foreground">
@@ -436,7 +442,13 @@ export function ProfilePanel({
                             <span className="inline-flex items-center justify-end gap-2">
                               {tag && <Badge>{tag}</Badge>}
                               <span className="tabular-nums">
-                                {fmt(p.distinct_count ?? 0)}
+                                {p.distinct_count == null ? (
+                                  <span className="text-subtle-foreground">
+                                    —
+                                  </span>
+                                ) : (
+                                  fmt(p.distinct_count)
+                                )}
                               </span>
                             </span>
                           )}
