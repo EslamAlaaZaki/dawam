@@ -399,7 +399,7 @@ export function SystemDetails({
   return (
     <section
       aria-labelledby="system-details-title"
-      className="flex flex-col gap-4 rounded-pill border border-border bg-surface p-4"
+      className="flex flex-col gap-4 rounded-pill border border-border bg-surface-raised p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2

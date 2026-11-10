@@ -61,7 +61,7 @@ import {
   linkButtonClasses,
   listCardClasses,
   monoClasses,
-  preClasses,
+  CodePreview,
 } from "./parts";
 import { Loading } from "../shell/Loading";
 
@@ -881,7 +881,7 @@ function TablePage({
           {table.view_definition && (
             <>
               <h3 className={h5Classes}>View definition</h3>
-              <pre className={preClasses}>{table.view_definition}</pre>
+              <CodePreview code={table.view_definition} />
             </>
           )}
           <TableCard>
@@ -1098,7 +1098,7 @@ function RoutinePage({ routine }: { routine: Routine }) {
       />
       <div className="px-5 py-4">
         {routine.definition ? (
-          <pre className={preClasses}>{routine.definition}</pre>
+          <CodePreview code={routine.definition} />
         ) : (
           <p>No code was captured.</p>
         )}

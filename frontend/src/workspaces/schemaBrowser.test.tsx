@@ -1,5 +1,5 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Me } from "../api/queries";
 import type {
@@ -15,6 +15,7 @@ import {
   setCsrfCookie,
   type ApiRequest,
 } from "../test/renderApp";
+import { CodePreview } from "./parts";
 
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 const API = `/api/v1/workspaces/${WORKSPACE_ID}`;
@@ -277,6 +278,37 @@ describe("the Source Schema browser", () => {
     fireEvent.click(screen.getByRole("button", { name: /account_turnover/ }));
     expect(
       await screen.findByText("SELECT sum(amount) FROM core.transactions"),
+    ).toBeInTheDocument();
+  });
+
+  it("cuts a long definition to 12 lines and copies the whole of it", async () => {
+    const full = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(<CodePreview code={full} />);
+    expect(screen.getByText("line 12")).toBeInTheDocument();
+    expect(screen.queryByText("line 13")).not.toBeInTheDocument();
+    expect(screen.getByText("…")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy definition" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(full));
+  });
+
+  it("tells the member when the definition could not be copied", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+      configurable: true,
+    });
+    renderApp(backend([]), FOLDER);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "customer_balances" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Copy definition" }));
+    expect(
+      await screen.findByText("Could not copy the definition."),
     ).toBeInTheDocument();
   });
 
