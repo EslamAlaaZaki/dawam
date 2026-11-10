@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Me } from "../api/queries";
@@ -101,18 +101,40 @@ describe("the Source System dashboard", () => {
     renderApp(backend(() => json(SUMMARY)), FOLDER);
 
     const dashboard = await screen.findByRole("region", { name: "Source summary" });
-    await within(dashboard).findByText("Tables");
+    const tile = (name: RegExp) => within(dashboard).findByRole("link", { name });
 
-    const figure = (label: string) => {
-      const term = within(dashboard).getByText(label);
-      return term.nextElementSibling?.textContent;
-    };
-    expect(figure("Tables")).toBe("40");
-    expect(figure("Documented")).toBe("25% (10 of 40)");
-    expect(figure("Profiled")).toBe("75% (30 of 40)");
-    expect(figure("Relationships found")).toBe("12 (7 to review)");
-    expect(figure("PII found")).toBe("4 (3 to review)");
-    expect(within(dashboard).getByText("In progress")).toBeInTheDocument();
+    expect(await tile(/^Tables: 40/)).toHaveTextContent("40tables and views");
+    expect(await tile(/^Documented: 25%, 10 of 40 tables/)).toHaveTextContent("10 of 40 tables");
+    expect(await tile(/^Profiled: 75%, 30 of 40 tables/)).toHaveTextContent("75%");
+    expect(await tile(/^Relationships found: 12 found, 7 to review/)).toHaveTextContent(
+      "7 to review5 reviewed",
+    );
+    expect(await tile(/^PII found: 4 found, 3 to review/)).toHaveTextContent("3 to review1 reviewed");
+    expect(
+      within(await screen.findByRole("heading", { level: 1 })).getByText("In progress"),
+    ).toBeInTheDocument();
+  });
+
+  it("opens each tile's folder", async () => {
+    renderApp(backend(() => json(SUMMARY)), FOLDER);
+    const dashboard = await screen.findByRole("region", { name: "Source summary" });
+    const cases: [RegExp, string, string][] = [
+      [/^Tables:/, "systems/" + CBS.id + "/source-schema", "Source schema"],
+      [/^Documented:/, "systems/" + CBS.id + "/source-schema", "Source schema"],
+      [/^Profiled:/, "systems/" + CBS.id + "/profiling", "Profiling"],
+      [/^Relationships found:/, "systems/" + CBS.id + "/er-diagram", "ER diagram"],
+      [/^PII found:/, "systems/" + CBS.id + "/pii", "PII"],
+    ];
+    for (const [name, folder] of cases) {
+      expect(await within(dashboard).findByRole("link", { name })).toHaveAttribute(
+        "href",
+        "?" + new URLSearchParams({ folder }),
+      );
+    }
+
+    fireEvent.click(await within(dashboard).findByRole("link", { name: /^Profiled:/ }));
+
+    expect(await screen.findByRole("heading", { name: "Profiling" })).toBeInTheDocument();
   });
 
   it("says so before the first Snapshot", async () => {
@@ -126,6 +148,7 @@ describe("the Source System dashboard", () => {
     expect(
       await within(dashboard).findByText(/No Snapshot yet/),
     ).toBeInTheDocument();
+    expect(within(dashboard).getByRole("link", { name: "Go to Source Schema" })).toBeInTheDocument();
   });
 
   it("reports a failure to load", async () => {

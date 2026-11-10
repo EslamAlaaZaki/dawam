@@ -160,7 +160,9 @@ describe("deleting a Source System", () => {
   it("lets an owner soft-delete it", async () => {
     const requests = renderApp(backend("owner", [CRM]), FOLDER);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    fireEvent.keyDown(await screen.findByRole("button", { name: "More actions" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete source system" }));
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
     const dialog = await screen.findByRole("dialog", { name: /^Delete .*\?$/ });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete Source System" }));

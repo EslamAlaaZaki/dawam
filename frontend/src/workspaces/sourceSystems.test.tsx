@@ -221,9 +221,11 @@ describe("a Source System's details", () => {
   it("is read-only for a viewer", async () => {
     renderApp(backend("viewer", [CBS]), FOLDER);
 
-    expect(await screen.findByRole("heading", { name: "Core Banking" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Core Banking/ })).toBeInTheDocument();
     expect(screen.getByText("DBA team")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.getByText("Only owners and editors can edit a Source System.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "More actions" })).not.toBeInTheDocument();
   });
 
   it("lets an editor edit it but not the System Code", async () => {

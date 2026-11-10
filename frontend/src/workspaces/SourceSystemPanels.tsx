@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { MoreHorizontal, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
 
 import { ApiError } from "../api/client";
@@ -15,13 +15,17 @@ import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { EntityFormDialog } from "../components/entity/EntityFormDialog";
 import { EntityTable, type EntityColumn } from "../components/entity/EntityTable";
 import { Button } from "../components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { Textarea } from "../components/ui/textarea";
 import {
-  DetailList,
   Hint,
-  Panel,
   h3Classes,
   labelClasses,
   monoClasses,
@@ -240,10 +244,13 @@ function SystemActions({
   workspace,
   system,
   reload,
+  menu = false,
 }: {
   workspace: Workspace;
   system: SourceSystem;
   reload: () => void;
+  /** The details page's layout: Edit, then Delete in a "More actions" menu. */
+  menu?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -251,6 +258,33 @@ function SystemActions({
 
   return (
     <>
+      {menu ? (
+        <div className="flex items-center gap-2">
+          {allows(workspace, "source_system.edit") && (
+            <Button onClick={() => setEditing(true)}>
+              <Pencil aria-hidden />
+              Edit
+            </Button>
+          )}
+          {allows(workspace, "objects.delete") && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" aria-label="More actions">
+                  <MoreHorizontal aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  variant="danger"
+                  onSelect={() => setDeleting(true)}
+                >
+                  Delete source system
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      ) : (
       <div className="flex flex-wrap gap-2">
         {allows(workspace, "source_system.edit") && (
           <Button size="sm" onClick={() => setEditing(true)}>
@@ -267,6 +301,7 @@ function SystemActions({
           </Button>
         )}
       </div>
+      )}
       <EditSystemDialog
         workspace={workspace}
         system={system}
@@ -362,25 +397,49 @@ export function SystemDetails({
     allows(workspace, "source_system.edit") || allows(workspace, "objects.delete");
 
   return (
-    <Panel aria-labelledby="folder-title">
-      <h3 id="folder-title" className={h3Classes}>
-        {system.name}
-      </h3>
-      <DetailList>
-        <dt>System Code</dt>
-        <dd className={monoClasses}>{system.code}</dd>
-        <dt>Description</dt>
-        <dd>{system.description || "—"}</dd>
-        <dt>Business owner</dt>
-        <dd>{system.business_owner || "—"}</dd>
-        <dt>Technical owner</dt>
-        <dd>{system.technical_owner || "—"}</dd>
-      </DetailList>
-      {canAct ? (
-        <SystemActions workspace={workspace} system={system} reload={reload} />
-      ) : (
-        <Hint>Only owners and editors can edit a Source System.</Hint>
-      )}
-    </Panel>
+    <section
+      aria-labelledby="system-details-title"
+      className="flex flex-col gap-4 rounded-pill border border-border bg-surface p-4"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2
+          id="system-details-title"
+          className="text-xs font-medium tracking-wide text-subtle-foreground uppercase"
+        >
+          System details
+        </h2>
+        {canAct && (
+          <SystemActions
+            workspace={workspace}
+            system={system}
+            reload={reload}
+            menu
+          />
+        )}
+      </div>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3 [&_dd]:min-w-0 [&_dd]:text-sm [&_dd]:break-words [&_dt]:mb-1 [&_dt]:text-xs [&_dt]:font-medium [&_dt]:text-subtle-foreground">
+        <div>
+          <dt>System code</dt>
+          <dd>
+            <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-mono font-medium text-muted-foreground">
+              {system.code}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>Business owner</dt>
+          <dd>{system.business_owner || "—"}</dd>
+        </div>
+        <div>
+          <dt>Technical owner</dt>
+          <dd>{system.technical_owner || "—"}</dd>
+        </div>
+        <div className="sm:col-span-3">
+          <dt>Description</dt>
+          <dd className="text-muted-foreground">{system.description || "—"}</dd>
+        </div>
+      </dl>
+      {!canAct && <Hint>Only owners and editors can edit a Source System.</Hint>}
+    </section>
   );
 }

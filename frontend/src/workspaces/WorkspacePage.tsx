@@ -39,7 +39,7 @@ import { MembersPanel } from "./MembersPanel";
 import { ModelPanel } from "./ModelPanel";
 import { DocumentsPanel } from "./DocumentsPanel";
 import { IndexStatusPanel } from "./IndexStatusPanel";
-import { SystemDetails, SystemsPanel } from "./SourceSystemPanels";
+import { SystemsPanel } from "./SourceSystemPanels";
 import { StageProgressPanel } from "./StageProgressPanel";
 import { WorkspaceSettingsDialog } from "./WorkspaceSettingsDialog";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
@@ -359,17 +359,12 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               ownerName="the Data Warehouse"
             />
           ) : openSystem ? (
-            <>
-              <SourceSummaryPanel
-                workspaceId={workspaceId}
-                system={openSystem}
-              />
-              <SystemDetails
-                workspace={workspace.data}
-                system={openSystem}
-                reload={() => systems.refetch()}
-              />
-            </>
+            <SourceSummaryPanel
+              workspace={workspace.data}
+              system={openSystem}
+              reload={() => systems.refetch()}
+              onOpen={(child) => select(`systems/${openSystem.id}/${child}`)}
+            />
           ) : connectionSystem ? (
             <ConnectionPanel
               workspace={workspace.data}
