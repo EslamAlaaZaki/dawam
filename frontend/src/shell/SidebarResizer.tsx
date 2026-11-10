@@ -138,7 +138,7 @@ export function SidebarResizer({
       onKeyDown={onKeyDown}
       onDoubleClick={() => onResize(SIDEBAR_DEFAULT)}
       data-dragging={dragging || undefined}
-      className="group dawam-ui absolute inset-y-0 -end-1.5 z-20 hidden w-3 cursor-col-resize touch-none outline-none lg:block"
+      className="group dawam-ui absolute inset-y-0 -end-1.5 z-20 hidden w-3 cursor-col-resize touch-none rounded-sm outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2 lg:block"
     >
       <span
         aria-hidden
