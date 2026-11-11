@@ -590,10 +590,6 @@ export function ProfilingPanel({
               </Table>
             </TableCard>
           )}
-          <p className={footnoteClasses}>
-            Open profile goes to the table&apos;s Profile tab in Source schema.
-            {canProfile && " Selected tables can be profiled together."}
-          </p>
         </TabsContent>
 
         <TabsContent value="findings" className="flex flex-col gap-3">
