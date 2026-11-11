@@ -336,17 +336,7 @@ export function SourceSchemaPanel({
       {hasSnapshot ? (
         <Tabs value={tab} onValueChange={setTab} className="gap-5">
           <TabsList className="px-0" aria-label="Source schema">
-            <TabsTrigger value="browse">
-              Tables and routines
-              {schema.data && (
-                <span
-                  className="ms-1 font-normal text-subtle-foreground tabular-nums"
-                  title={`${present.length} tables and views, ${schema.data.routines.length} routines`}
-                >
-                  {present.length + schema.data.routines.length}
-                </span>
-              )}
-            </TabsTrigger>
+            <TabsTrigger value="browse">Tables and routines</TabsTrigger>
             <TabsTrigger value="relationships">
               Relationships
               {suggested.data && suggested.data.length > 0 && (
