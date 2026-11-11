@@ -32,6 +32,7 @@ from tests.authz.matrix import (
     pii_staging_column_id,
     public,
     registered_routes,
+    relationship_id,
     rename_pair,
     send,
     signed_in,
@@ -259,6 +260,15 @@ def _deleted_dw_table_id(roles: RoleClients) -> str:
     table = response.json()["id"]
     assert owner.delete(f"{path}/{table}").status_code == 204
     return table
+
+
+def _stand_in_pair(roles: RoleClients) -> dict[str, str]:
+    """The body adding the stand-in table's ``national_id`` → ``id`` pair by hand (the pair
+    ``relationship_id`` keeps as suggested, so adding it succeeds for every allowed role)."""
+    system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
+    columns = roles.client("owner").get(f"{system}/schema").json()["tables"][0]["columns"]
+    ids = {c["name"]: c["id"] for c in columns}
+    return {"from_column_id": ids["national_id"], "to_column_id": ids["id"]}
 
 
 ROWS: list[Row] = [
@@ -1890,6 +1900,22 @@ ROWS: list[Row] = [
         "POST",
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/reject",
         "Edit Source Schema enhancements & documents (reject a relationship)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    # Manually added relationships and delete (story 59a): owners and editors. The setup
+    # resets the stand-in pair to suggested, so every allowed role can add it again.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships",
+        "Edit Source Schema enhancements & documents (add a relationship by hand)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=relationship_id,
+        json=lambda roles: _stand_in_pair(roles),
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}",
+        "Edit Source Schema enhancements & documents (delete a relationship)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
     ),
     # Workspace PII rules (story 136; §6.12): owners only.
