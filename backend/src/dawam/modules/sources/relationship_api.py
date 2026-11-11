@@ -1,4 +1,5 @@
-"""``.../systems/{system_id}/relationships``: inferred relationships (spec stories 58, 59).
+"""``.../systems/{system_id}/relationships``: inferred and manual relationships (spec stories
+58 to 60).
 
 Handlers only translate HTTP to ``RelationshipService`` calls; the service authorizes
 every call through the workspaces module's policy.
@@ -10,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from dawam.modules.auth import CurrentUser
@@ -55,10 +56,13 @@ class Relationship(BaseModel):
     id: uuid.UUID
     from_column: ColumnRef = Field(description="The referencing column.")
     to_column: ColumnRef = Field(description="The referenced (unique) column.")
-    origin: Literal["inferred", "routine"] = Field(
-        description="`routine` when a view or routine joins the two columns, else `inferred`."
+    origin: Literal["inferred", "routine", "manual"] = Field(
+        description="`routine` when a view or routine joins the two columns, `manual` when an "
+        "editor added it, else `inferred`."
     )
-    confidence: float = Field(description="0 to 1, from the signals in `evidence`.")
+    confidence: float | None = Field(
+        description="0 to 1, from the signals in `evidence`; `null` for a `manual` relationship."
+    )
     evidence: dict[str, Any] = Field(
         description="Each signal that fired with its score and detail: `name`, `type`, "
         "`unique`, `join` (the views and routines) and `overlap` (a ratio, with a live "
@@ -73,6 +77,11 @@ class Relationship(BaseModel):
 
 class RelationshipPage(BaseModel):
     items: list[Relationship] = Field(description="Most confident first.")
+
+
+class ManualRelationshipRequest(BaseModel):
+    from_column_id: uuid.UUID = Field(description="The referencing column.")
+    to_column_id: uuid.UUID = Field(description="The referenced column.")
 
 
 class InferenceRequest(BaseModel):
@@ -166,3 +175,39 @@ def reject_relationship(
     return Relationship.model_validate(
         relationships.reject(user, workspace_id, system_id, relationship_id)
     )
+
+
+@router.post("/relationships", operation_id="createRelationship", status_code=201)
+def create_relationship(
+    workspace_id: uuid.UUID,
+    system_id: uuid.UUID,
+    body: ManualRelationshipRequest,
+    user: CurrentUser,
+    relationships: RelationshipServiceDep,
+) -> Relationship:
+    """Add a relationship by hand (owners and editors): origin `manual`, `accepted`, no
+    confidence. A pair already suggested or rejected becomes this manual row. 422
+    `same_column`; 409 `declared_foreign_key` (the source declares it) or `already_accepted`.
+    Audited."""
+    return Relationship.model_validate(
+        relationships.create_manual(
+            user, workspace_id, system_id, body.from_column_id, body.to_column_id
+        )
+    )
+
+
+@router.delete(
+    "/relationships/{relationship_id}", operation_id="deleteRelationship", status_code=204
+)
+def delete_relationship(
+    workspace_id: uuid.UUID,
+    system_id: uuid.UUID,
+    relationship_id: uuid.UUID,
+    user: CurrentUser,
+    relationships: RelationshipServiceDep,
+) -> Response:
+    """Delete a relationship (owners and editors). A manual one is removed; an inferred one
+    is rejected and never suggested again. 409 `declared_relationship` for a declared one.
+    Audited."""
+    relationships.delete(user, workspace_id, system_id, relationship_id)
+    return Response(status_code=204)

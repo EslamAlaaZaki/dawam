@@ -323,8 +323,8 @@ export function SourceErDiagram({
             <Badge className="tabular-nums">{edges.length}</Badge>
           </h4>
           <Hint>
-            Declared foreign keys from the Snapshot, plus inferred relationships accepted in
-            the Source schema.
+            Declared foreign keys from the Snapshot, plus inferred or manually added
+            relationships accepted in the Source schema.
           </Hint>
         </div>
         <RelationshipsTable

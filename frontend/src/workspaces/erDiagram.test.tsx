@@ -523,4 +523,61 @@ describe("Relationship review", () => {
     expect(screen.queryByRole("button", { name: "Find relationships" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
   });
+  const MANUAL: Relationship = {
+    ...INFERRED,
+    id: "88888888-8888-4888-8888-888888888888",
+    origin: "manual",
+    confidence: null,
+    evidence: {},
+  };
+
+  it("lists a manually added relationship with its badge, no confidence, and who added it", async () => {
+    const { handler, state } = review(EDITOR);
+    state.rows = [MANUAL];
+    renderApp(handler, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    const current = within(await screen.findByRole("table", { name: "Relationships" }));
+    const row = within(current.getByText("acct_no → acct_no").closest("tr")!);
+    expect(row.getByText("Manually added")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add relationship" })).toBeInTheDocument();
+    openTab(/^Accepted/);
+    const accepted = within((await screen.findAllByRole("row"))[1]!);
+    expect(await accepted.findByText(/^Added by/)).toBeInTheDocument();
+    expect(accepted.getByText("—")).toBeInTheDocument();
+  });
+
+  it("deletes a relationship after a confirmation, and locks the declared ones", async () => {
+    const { handler, state } = review(EDITOR);
+    state.rows = [MANUAL];
+    let deleted = "";
+    const requests = renderApp((r) => {
+      if (r.method === "DELETE" && r.path.startsWith(`${SYSTEM}/relationships/`)) {
+        deleted = r.path.split("/").pop()!;
+        state.rows = [];
+        return new Response(null, { status: 204 });
+      }
+      return handler(r);
+    }, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    const current = within(await screen.findByRole("table", { name: "Relationships" }));
+    expect(current.getByRole("img", { name: /can't be deleted/ })).toBeInTheDocument();
+    fireEvent.click(current.getByRole("button", { name: "Delete relationship" }));
+    expect(deleted).toBe("");
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(deleted).toBe(MANUAL.id));
+    expect(requests.find((r) => r.method === "DELETE")?.csrf).toBe(CSRF_TOKEN);
+  });
+
+  it("hides add and delete from a member without the right", async () => {
+    const { handler, state } = review(WORKSPACE);
+    state.rows = [MANUAL];
+    renderApp(handler, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    await screen.findByRole("table", { name: "Relationships" });
+    expect(screen.queryByRole("button", { name: "Add relationship" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete relationship" })).not.toBeInTheDocument();
+  });
 });

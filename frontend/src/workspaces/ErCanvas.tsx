@@ -278,7 +278,7 @@ export function ErCanvas({
                 <g
                   key={edge.id}
                   className={cn(
-                    edge.kind === "inferred" && "er-inferred",
+                    edge.kind !== "declared" && "er-inferred",
                     hi && "er-hi",
                     hidden && "hidden",
                     low && "opacity-25",
@@ -411,7 +411,7 @@ function ErCard({
   const outgoing = allEdges.filter((e) => e.from === table.id);
   const marker = (column: string) => {
     const kinds = outgoing.filter((e) => e.fromCols.includes(column)).map((e) => e.kind);
-    return kinds.includes("declared") ? "declared" : kinds.includes("inferred") ? "inferred" : null;
+    return kinds.includes("declared") ? "declared" : kinds.length > 0 ? "inferred" : null;
   };
   return (
     <div
@@ -503,7 +503,7 @@ function Legend() {
           <path className="er-line" d="M2 6H44" />
         </g>
       ),
-      text: "Accepted inferred relationship",
+      text: "Accepted inferred or manually added relationship",
     },
     {
       glyph: <path className="er-glyph" d="M2 6H44M32 6L44 1M32 6L44 11M28 1V11" />,

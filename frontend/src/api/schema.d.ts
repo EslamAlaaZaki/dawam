@@ -1974,7 +1974,14 @@ export interface paths {
          */
         get: operations["listRelationships"];
         put?: never;
-        post?: never;
+        /**
+         * Create Relationship
+         * @description Add a relationship by hand (owners and editors): origin `manual`, `accepted`, no
+         *     confidence. A pair already suggested or rejected becomes this manual row. 422
+         *     `same_column`; 409 `declared_foreign_key` (the source declares it) or `already_accepted`.
+         *     Audited.
+         */
+        post: operations["createRelationship"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2018,6 +2025,28 @@ export interface paths {
          */
         post: operations["rejectRelationship"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Relationship
+         * @description Delete a relationship (owners and editors). A manual one is removed; an inferred one
+         *     is rejected and never suggested again. 409 `declared_relationship` for a declared one.
+         *     Audited.
+         */
+        delete: operations["deleteRelationship"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8282,6 +8311,21 @@ export interface components {
             /** Dimension Name */
             dimension_name: string;
         };
+        /** ManualRelationshipRequest */
+        ManualRelationshipRequest: {
+            /**
+             * From Column Id
+             * Format: uuid
+             * @description The referencing column.
+             */
+            from_column_id: string;
+            /**
+             * To Column Id
+             * Format: uuid
+             * @description The referenced column.
+             */
+            to_column_id: string;
+        };
         /** MappingBranch */
         MappingBranch: {
             /**
@@ -9190,15 +9234,15 @@ export interface components {
             to_column: components["schemas"]["ColumnRef"];
             /**
              * Origin
-             * @description `routine` when a view or routine joins the two columns, else `inferred`.
+             * @description `routine` when a view or routine joins the two columns, `manual` when an editor added it, else `inferred`.
              * @enum {string}
              */
-            origin: "inferred" | "routine";
+            origin: "inferred" | "routine" | "manual";
             /**
              * Confidence
-             * @description 0 to 1, from the signals in `evidence`.
+             * @description 0 to 1, from the signals in `evidence`; `null` for a `manual` relationship.
              */
-            confidence: number;
+            confidence: number | null;
             /**
              * Evidence
              * @description Each signal that fired with its score and detail: `name`, `type`, `unique`, `join` (the views and routines) and `overlap` (a ratio, with a live Connection and profiling). Names and ratios only, never a data value.
@@ -16481,6 +16525,51 @@ export interface operations {
             };
         };
     };
+    createRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualRelationshipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relationship"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     acceptRelationship: {
         parameters: {
             query?: never;
@@ -16544,6 +16633,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Relationship"];
                 };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation error */
             422: {

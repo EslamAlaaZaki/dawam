@@ -250,9 +250,10 @@ class RelationshipRecord(Base):
         sa.ForeignKey("src_columns.id", ondelete="CASCADE"), index=True
     )
     origin: Mapped[str] = mapped_column(sa.String(16))
-    """``inferred`` (rules) or ``routine`` (a JOIN in a view or routine); later ``declared``,
-    ``ai`` and ``manual``."""
-    confidence: Mapped[float] = mapped_column()
+    """``inferred`` (rules), ``routine`` (a JOIN in a view or routine) or ``manual`` (an
+    editor added it); later ``declared`` and ``ai``."""
+    confidence: Mapped[float | None] = mapped_column()
+    """0 to 1; ``NULL`` for a ``manual`` relationship, which has no score."""
     evidence: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
     status: Mapped[str] = mapped_column(sa.String(16))
     version: Mapped[int] = mapped_column()

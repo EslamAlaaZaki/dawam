@@ -1,10 +1,11 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Network } from "lucide-react";
+import { Network, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { isActive, useJobs } from "../api/jobs";
+import { useMembers } from "../api/members";
 import {
   relationshipsKey,
   useDecideRelationship,
@@ -28,6 +29,7 @@ import {
 } from "../components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Loading } from "../shell/Loading";
+import { AddRelationshipDialog, DeleteRelationshipDialog } from "./RelationshipDialogs";
 import { RelationshipsTable } from "./RelationshipsTable";
 import { relationshipEdges } from "./erGraph";
 import {
@@ -141,7 +143,10 @@ function ColumnRef({ column }: { column: Relationship["from_column"] }) {
 }
 
 /** Confidence as a short bar and its percentage. */
-function Confidence({ ratio }: { ratio: number }) {
+function Confidence({ ratio }: { ratio: number | null }) {
+  if (ratio == null) {
+    return <span className="text-subtle-foreground">—</span>;
+  }
   return (
     <span className="inline-flex items-center gap-1.5 tabular-nums">
       <span aria-hidden className="h-1 w-16 overflow-hidden rounded-full bg-muted">
@@ -152,19 +157,37 @@ function Confidence({ ratio }: { ratio: number }) {
   );
 }
 
-/** Accept and Reject for a suggested relationship; the decision's badge otherwise. */
+/**
+ * Accept and Reject for a suggested relationship; the decision's badge otherwise, with a
+ * delete button on an accepted one when `onDelete` is given.
+ */
 function Decision({
   relationship,
   canDecide,
   decide,
+  onDelete,
 }: {
   relationship: Relationship;
   canDecide: boolean;
   decide: ReturnType<typeof useDecideRelationship>;
+  onDelete?: (relationship: Relationship) => void;
 }) {
   if (relationship.status !== "suggested") {
     return relationship.status === "accepted" ? (
-      <Badge variant="mapped">Accepted</Badge>
+      <div className="flex items-center gap-2">
+        <Badge variant="mapped">Accepted</Badge>
+        {onDelete && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Delete relationship"
+            onClick={() => onDelete(relationship)}
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        )}
+      </div>
     ) : (
       <Badge>Rejected</Badge>
     );
@@ -235,6 +258,20 @@ export function RelationshipReview({
   const decide = useDecideRelationship(workspace.id, systemId);
   const canDecide =
     workspace.status !== "archived" && allows(workspace, "source_schema.enhance");
+  const members = useMembers(workspace.id);
+  const names = new Map((members.data ?? []).map((m) => [m.user_id, m.display_name]));
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<{
+    id: string;
+    label: string;
+    manual: boolean;
+  } | null>(null);
+  const askDelete = (relationship: Relationship) =>
+    setDeleting({
+      id: relationship.id,
+      label: `${columnName(relationship.from_column)} → ${columnName(relationship.to_column)}`,
+      manual: relationship.origin === "manual",
+    });
 
   return (
     <section aria-label="Relationships" className="flex flex-col gap-3">
@@ -256,7 +293,34 @@ export function RelationshipReview({
             ))}
           </TabsList>
         </Tabs>
+        {canDecide && status === "current" && current && (
+          <Button
+            type="button"
+            variant="primary"
+            className="ms-auto"
+            onClick={() => setAdding(true)}
+          >
+            <Plus aria-hidden />
+            Add relationship
+          </Button>
+        )}
       </div>
+      {canDecide && current && (
+        <AddRelationshipDialog
+          open={adding}
+          onOpenChange={setAdding}
+          workspaceId={workspace.id}
+          systemId={systemId}
+          tables={schema.data?.tables ?? []}
+          edges={current.edges}
+        />
+      )}
+      <DeleteRelationshipDialog
+        target={deleting}
+        onClose={() => setDeleting(null)}
+        workspaceId={workspace.id}
+        systemId={systemId}
+      />
       {status === "current" &&
         (schema.isError || byStatus.accepted.isError ? (
           <ErrorText>
@@ -264,7 +328,20 @@ export function RelationshipReview({
             {(schema.error ?? byStatus.accepted.error)?.message}
           </ErrorText>
         ) : current ? (
-          <RelationshipsTable edges={current.edges} tables={current.tables} />
+          <RelationshipsTable
+            edges={current.edges}
+            tables={current.tables}
+            onDelete={
+              canDecide
+                ? (edge) => {
+                    const relationship = byStatus.accepted.data?.find(
+                      (r) => r.id === edge.relationshipId,
+                    );
+                    if (relationship) askDelete(relationship);
+                  }
+                : undefined
+            }
+          />
         ) : (
           <Loading label="Loading relationships…" className="p-0" />
         ))}
@@ -312,22 +389,38 @@ export function RelationshipReview({
                     <Confidence ratio={relationship.confidence} />
                   </TableCell>
                   <TableCell className="whitespace-normal">
-                    <div className="flex flex-wrap gap-1">
-                      {signalChips(relationship).map((chip) => (
-                        <Badge key={chip} variant="info">
-                          {chip}
-                        </Badge>
-                      ))}
-                    </div>
+                    {relationship.origin === "manual" ? (
+                      <span className="text-muted-foreground">
+                        Added by{" "}
+                        {(relationship.decided_by &&
+                          names.get(relationship.decided_by)) ||
+                          "a member"}
+                        {relationship.decided_at &&
+                          ` · ${new Date(relationship.decided_at).toLocaleDateString()}`}
+                      </span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {signalChips(relationship).map((chip) => (
+                          <Badge key={chip} variant="info">
+                            {chip}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <Badge>{relationship.origin}</Badge>
+                    <Badge>
+                      {relationship.origin === "manual"
+                        ? "Manually added"
+                        : relationship.origin}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <Decision
                       relationship={relationship}
                       canDecide={canDecide}
                       decide={decide}
+                      onDelete={canDecide ? askDelete : undefined}
                     />
                   </TableCell>
                 </TableRow>

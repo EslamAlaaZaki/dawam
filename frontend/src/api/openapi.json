@@ -7074,6 +7074,79 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Create Relationship",
+        "description": "Add a relationship by hand (owners and editors): origin `manual`, `accepted`, no\nconfidence. A pair already suggested or rejected becomes this manual row. 422\n`same_column`; 409 `declared_foreign_key` (the source declares it) or `already_accepted`.\nAudited.",
+        "operationId": "createRelationship",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualRelationshipRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Relationship"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}/accept": {
@@ -7202,6 +7275,74 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}": {
+      "delete": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Delete Relationship",
+        "description": "Delete a relationship (owners and editors). A manual one is removed; an inferred one\nis rejected and never suggested again. 409 `declared_relationship` for a declared one.\nAudited.",
+        "operationId": "deleteRelationship",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "relationship_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Relationship Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation error",
@@ -25279,6 +25420,28 @@
         ],
         "title": "LookupSpec"
       },
+      "ManualRelationshipRequest": {
+        "properties": {
+          "from_column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Column Id",
+            "description": "The referencing column."
+          },
+          "to_column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Column Id",
+            "description": "The referenced column."
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_column_id",
+          "to_column_id"
+        ],
+        "title": "ManualRelationshipRequest"
+      },
       "MappingBranch": {
         "properties": {
           "id": {
@@ -27226,15 +27389,23 @@
             "type": "string",
             "enum": [
               "inferred",
-              "routine"
+              "routine",
+              "manual"
             ],
             "title": "Origin",
-            "description": "`routine` when a view or routine joins the two columns, else `inferred`."
+            "description": "`routine` when a view or routine joins the two columns, `manual` when an editor added it, else `inferred`."
           },
           "confidence": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Confidence",
-            "description": "0 to 1, from the signals in `evidence`."
+            "description": "0 to 1, from the signals in `evidence`; `null` for a `manual` relationship."
           },
           "evidence": {
             "additionalProperties": true,
