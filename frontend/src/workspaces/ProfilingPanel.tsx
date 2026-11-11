@@ -235,12 +235,20 @@ export function ProfilingPanel({
     importStatus.isSuccess &&
     !unavailable;
 
-  if (overview.isPending) {
-    return <Loading label="Loading the profiles…" />;
-  }
-  if (overview.isError) {
+  const description = `Sampled profiles of every table and view in ${system.name}, what they found, and how the data grows between Snapshots.`;
+
+  if (overview.isPending || overview.isError) {
     return (
-      <ErrorText>Could not load the profiles: {overview.error.message}</ErrorText>
+      <section aria-label="Profiling" className="flex flex-col gap-5">
+        <PageHeader title="Profiling" description={description} />
+        {overview.isPending ? (
+          <Loading label="Loading the profiles…" />
+        ) : (
+          <ErrorText>
+            Could not load the profiles: {overview.error.message}
+          </ErrorText>
+        )}
+      </section>
     );
   }
   const latestAt = overview.data.latest_snapshot_at;
@@ -290,7 +298,7 @@ export function ProfilingPanel({
   const header = (
     <PageHeader
       title="Profiling"
-      description={`Sampled profiles of every table and view in ${system.name}, what they found, and how the data grows between Snapshots.`}
+      description={description}
       actions={
         canProfile &&
         tables.length > 0 && (
