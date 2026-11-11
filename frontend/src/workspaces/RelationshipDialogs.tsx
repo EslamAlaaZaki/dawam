@@ -1,10 +1,15 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
+import { Check, Trash2, TriangleAlert, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import {
+  useAddRelationship,
+  useDecideRelationship,
+  useDeleteRelationship,
+} from "../api/relationships";
 import type { SourceSchema } from "../api/snapshots";
-import { useAddRelationship, useDeleteRelationship } from "../api/relationships";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
   Dialog,
@@ -17,7 +22,8 @@ import {
 } from "../components/ui/dialog";
 import { toast } from "../components/ui/sonner";
 import { isUnique, presentColumns, qualified, type ErEdge } from "./erGraph";
-import { Callout, ErrorText, NativeSelect, labelClasses, monoClasses } from "./parts";
+import { ErrorText, NativeSelect, labelClasses, monoClasses } from "./parts";
+import { RelationshipVisual, targetTag, type Endpoint } from "./RelationshipVisual";
 
 type SchemaTable = SourceSchema["tables"][number];
 
@@ -42,7 +48,7 @@ function ColumnPicker({
 }) {
   const table = tables.find((t) => t.id === value.tableId);
   return (
-    <fieldset className="m-0 grid min-w-0 grid-cols-2 gap-3 border-0 p-0">
+    <fieldset className="m-0 grid min-w-0 grid-cols-2 gap-3 rounded-lg border border-border bg-surface p-3">
       <legend className="sr-only">{legend}</legend>
       <label className={labelClasses}>
         {legend} table
@@ -71,7 +77,8 @@ function ColumnPicker({
           {table &&
             presentColumns(table).map((c) => (
               <option key={c.id} value={c.name}>
-                {c.name}
+                {c.name} · {c.data_type}
+                {c.is_pk ? " · PK" : isUnique(table, [c.name]) ? " · unique" : ""}
               </option>
             ))}
         </NativeSelect>
@@ -82,10 +89,11 @@ function ColumnPicker({
 
 /**
  * Add a relationship by hand (spec §6.6): from table and column to table and column, one
- * column to one column. Both column types and the cardinality show once both are chosen.
- * Saving needs no confirmation: the relationship is accepted at once. A self reference, a
- * declared foreign key and an already accepted pair are blocked; differing types or a
- * target that is not unique only warn.
+ * column to one column. A live preview draws the relationship and a checklist says whether
+ * the pair is new, the types match and the target is unique. Saving needs no confirmation:
+ * the relationship is accepted at once. A self reference, a declared foreign key and an
+ * already accepted pair are blocked; differing types or a target that is not unique only
+ * warn.
  */
 export function AddRelationshipDialog({
   open,
@@ -116,8 +124,8 @@ export function AddRelationshipDialog({
   const toColumn = toTable?.columns.find((c) => c.name === to.column);
 
   let blocked: string | null = null;
-  const warnings: string[] = [];
-  let cardinality = "";
+  let preview: { from: Endpoint; to: Endpoint; cardinality: string } | null = null;
+  const checks: { state: "ok" | "warn" | "blocked"; text: string }[] = [];
   if (fromTable && toTable && fromColumn && toColumn) {
     const samePair = (e: ErEdge) =>
       e.fromCols.length === 1 &&
@@ -135,15 +143,37 @@ export function AddRelationshipDialog({
       blocked = "The source database already declares this foreign key.";
     } else if (edges.some((e) => e.kind !== "declared" && samePair(e))) {
       blocked = "This pair is already an accepted relationship.";
-    } else {
-      if (fromColumn.data_type !== toColumn.data_type) {
-        warnings.push("The two columns have different types.");
-      }
-      if (!isUnique(toTable, [toColumn.name])) {
-        warnings.push("The target column is not a primary key or unique.");
-      }
     }
-    cardinality = isUnique(fromTable, [fromColumn.name]) ? "1:1" : "N:1";
+    const typesMatch = fromColumn.data_type === toColumn.data_type;
+    const targetUnique = isUnique(toTable, [toColumn.name]);
+    checks.push(
+      blocked
+        ? { state: "blocked", text: blocked }
+        : { state: "ok", text: "This pair is not a relationship yet." },
+      typesMatch
+        ? { state: "ok", text: "The column types match." }
+        : { state: "warn", text: "The two columns have different types." },
+      targetUnique
+        ? { state: "ok", text: "The target column is a primary key or unique." }
+        : { state: "warn", text: "The target column is not a primary key or unique." },
+    );
+    preview = {
+      from: {
+        tableId: fromTable.id,
+        schema: fromTable.db_schema,
+        table: fromTable.name,
+        columns: fromColumn.name,
+        tag: "FK",
+      },
+      to: {
+        tableId: toTable.id,
+        schema: toTable.db_schema,
+        table: toTable.name,
+        columns: toColumn.name,
+        tag: targetTag(toTable, [toColumn.name]),
+      },
+      cardinality: isUnique(fromTable, [fromColumn.name]) ? "1:1" : "N:1",
+    };
   }
 
   function onChange(next: boolean) {
@@ -161,28 +191,43 @@ export function AddRelationshipDialog({
         <DialogHeader>
           <DialogTitle>Add relationship</DialogTitle>
           <DialogDescription>
-            One column to one column; composite joins are not supported. It is accepted as
-            soon as you save.
+            Single column to single column only; composite joins are not supported.
           </DialogDescription>
         </DialogHeader>
         <ColumnPicker legend="From" tables={present} value={from} onChange={setFrom} />
         <ColumnPicker legend="To" tables={present} value={to} onChange={setTo} />
-        {fromColumn && toColumn && (
-          <p className="m-0 text-sm text-muted-foreground">
-            <span className={monoClasses}>{fromColumn.data_type}</span> →{" "}
-            <span className={monoClasses}>{toColumn.data_type}</span>
-            {" · "}
-            {cardinality}
-          </p>
+        {preview && (
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
+            <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              Preview <Badge>Manually added</Badge>
+            </span>
+            <RelationshipVisual
+              from={preview.from}
+              to={preview.to}
+              cardinality={preview.cardinality}
+              dashed
+            />
+            <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
+              {checks.map((c) => (
+                <li key={c.text} className="flex items-center gap-2">
+                  {c.state === "blocked" ? (
+                    <X aria-hidden className="size-4 text-danger-strong" />
+                  ) : c.state === "ok" ? (
+                    <Check aria-hidden className="size-4 text-success-strong" />
+                  ) : (
+                    <TriangleAlert aria-hidden className="size-4 text-warning-strong" />
+                  )}
+                  <span>{c.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
-        {blocked && <ErrorText>{blocked}</ErrorText>}
-        {warnings.map((w) => (
-          <Callout key={w} tone="warning" icon={<TriangleAlert aria-hidden />}>
-            {w} You can still save it.
-          </Callout>
-        ))}
         {add.isError && <ErrorText>{add.error.message}</ErrorText>}
-        <DialogFooter>
+        <DialogFooter className="items-center">
+          <span className="me-auto text-xs text-subtle-foreground">
+            Saved as accepted. The Data Warehouse changes only when you regenerate it.
+          </span>
           <DialogClose asChild>
             <Button type="button" variant="ghost">
               Cancel
@@ -214,6 +259,20 @@ export function AddRelationshipDialog({
   );
 }
 
+/** What the delete dialog shows of the relationship it is about. */
+export interface DeleteTarget {
+  id: string;
+  manual: boolean;
+  from: Endpoint;
+  to: Endpoint;
+  cardinality: string;
+  /** "Declared", "Inferred, accepted" or "Manually added". */
+  kind: string;
+  confidence: number | null;
+  /** "Added by Ada, 1/6/2026" or similar; empty when unknown. */
+  decidedBy: string;
+}
+
 /** Confirm deleting one relationship; a manual one is removed, an inferred one rejected. */
 export function DeleteRelationshipDialog({
   target,
@@ -221,7 +280,7 @@ export function DeleteRelationshipDialog({
   workspaceId,
   systemId,
 }: {
-  target: { id: string; label: string; manual: boolean } | null;
+  target: DeleteTarget | null;
   onClose: () => void;
   workspaceId: string;
   systemId: string;
@@ -239,16 +298,42 @@ export function DeleteRelationshipDialog({
     >
       <DialogContent>
         <DialogHeader>
+          <span className="grid size-9 place-items-center rounded-full bg-danger-subtle text-danger-strong">
+            <Trash2 aria-hidden className="size-4" />
+          </span>
           <DialogTitle>Delete relationship</DialogTitle>
           <DialogDescription>
-            <span className={monoClasses}>{target?.label}</span>
-            <br />
             {target?.manual
-              ? "This removes the relationship."
-              : "This moves it to Rejected, and it is not suggested again."}{" "}
-            Nothing in the Data Warehouse changes until you regenerate it.
+              ? "This relationship was added by hand."
+              : "This relationship was inferred."}
           </DialogDescription>
         </DialogHeader>
+        {target && (
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
+            <RelationshipVisual
+              from={target.from}
+              to={target.to}
+              cardinality={target.cardinality}
+              dashed
+            />
+            <p className="m-0 text-xs text-muted-foreground">
+              {target.kind}
+              {" · "}
+              {target.confidence == null
+                ? "no confidence"
+                : `${Math.round(target.confidence * 100)}% confidence`}
+              {target.decidedBy && ` · ${target.decidedBy}`}
+            </p>
+          </div>
+        )}
+        <ul className="m-0 flex list-disc flex-col gap-1 ps-5 text-sm text-muted-foreground">
+          <li>
+            {target?.manual
+              ? "Removed: it is gone from the Source schema and the ER diagram."
+              : "Moves to Rejected: it is not suggested again."}
+          </li>
+          <li>The Data Warehouse does not change until you regenerate it.</li>
+        </ul>
         {remove.isError && <ErrorText>{remove.error.message}</ErrorText>}
         <DialogFooter>
           <DialogClose asChild>
@@ -264,13 +349,86 @@ export function DeleteRelationshipDialog({
               target &&
               remove.mutate(target.id, {
                 onSuccess: () => {
-                  toast.success("Relationship deleted.");
+                  toast.success(target.manual ? "Relationship deleted." : "Moved to Rejected.");
                   onClose();
                 },
               })
             }
           >
-            Delete
+            {target?.manual ? "Delete" : "Move to Rejected"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Confirm accepting a rejected relationship (it keeps its origin). */
+export function AcceptRejectedDialog({
+  target,
+  onClose,
+  workspaceId,
+  systemId,
+}: {
+  target: { id: string; from: Endpoint; to: Endpoint; cardinality: string } | null;
+  onClose: () => void;
+  workspaceId: string;
+  systemId: string;
+}) {
+  const decide = useDecideRelationship(workspaceId, systemId);
+  return (
+    <Dialog
+      open={target !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          decide.reset();
+          onClose();
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Accept relationship</DialogTitle>
+          <DialogDescription>
+            It moves from Rejected to Accepted and counts in the Source schema again. The Data
+            Warehouse does not change until you regenerate it.
+          </DialogDescription>
+        </DialogHeader>
+        {target && (
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <RelationshipVisual
+              from={target.from}
+              to={target.to}
+              cardinality={target.cardinality}
+              dashed
+            />
+          </div>
+        )}
+        {decide.isError && <ErrorText>{decide.error.message}</ErrorText>}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="ghost">
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={decide.isPending}
+            onClick={() =>
+              target &&
+              decide.mutate(
+                { id: target.id, decision: "accept" },
+                {
+                  onSuccess: () => {
+                    toast.success("Relationship accepted.");
+                    onClose();
+                  },
+                },
+              )
+            }
+          >
+            Accept relationship
           </Button>
         </DialogFooter>
       </DialogContent>

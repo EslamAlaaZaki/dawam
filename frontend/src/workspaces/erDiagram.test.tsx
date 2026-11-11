@@ -221,10 +221,10 @@ describe("Source ER diagram", () => {
     const requests = renderApp(api, FOLDER);
     const list = await relationships();
     expect(
-      list.getByRole("row", { name: /core\.accounts core\.customers.* Declared/ }),
+      list.getByRole("row", { name: /core\.accounts.*core\.customers.* Declared/ }),
     ).toBeInTheDocument();
     expect(
-      list.getByRole("row", { name: /core\.transactions core\.accounts.* Inferred, accepted/ }),
+      list.getByRole("row", { name: /core\.transactions.*core\.accounts.* Inferred, accepted/ }),
     ).toBeInTheDocument();
     for (const name of ["customers", "accounts", "transactions", "events"]) {
       const canvas = screen.getByLabelText("ER diagram canvas");
@@ -264,10 +264,10 @@ describe("Source ER diagram", () => {
     );
     const list = await relationships();
     expect(
-      list.getByRole("row", { name: /core\.accounts core\.customers/ }),
+      list.getByRole("row", { name: /core\.accounts.*core\.customers/ }),
     ).toBeInTheDocument();
     expect(
-      list.queryByRole("row", { name: /core\.transactions core\.accounts/ }),
+      list.queryByRole("row", { name: /core\.transactions.*core\.accounts/ }),
     ).not.toBeInTheDocument();
   });
 
@@ -426,7 +426,7 @@ describe("Relationship review", () => {
     expect(row.getByText("core.transactions.customer_ref")).toBeInTheDocument();
     expect(row.getByText("core.customers.ref")).toBeInTheDocument();
     expect(row.getByText("82%")).toBeInTheDocument();
-    expect(row.getByText("routine")).toBeInTheDocument();
+    expect(row.getByText("Routine JOIN")).toBeInTheDocument();
     for (const chip of ["name", "type", "unique", "join: core.v_balances, core.sp_close", "overlap 97%"]) {
       expect(row.getByText(chip)).toBeInTheDocument();
     }
@@ -483,7 +483,7 @@ describe("Relationship review", () => {
     fireEvent.mouseDown(screen.getByRole("tab", { name: /^Current/ }), { button: 0 });
     fireEvent.click(screen.getByRole("tab", { name: /^Current/ }));
     const current = within(await screen.findByRole("table", { name: "Relationships" }));
-    const row = within(current.getByText("customer_ref → ref").closest("tr")!);
+    const row = within(current.getByText("core.transactions.customer_ref").closest("tr")!);
     expect(row.getByText("Inferred, accepted")).toBeInTheDocument();
   });
 
@@ -538,12 +538,12 @@ describe("Relationship review", () => {
     await screen.findByRole("tab", { name: /^Relationships/ });
     openTab(/^Relationships/);
     const current = within(await screen.findByRole("table", { name: "Relationships" }));
-    const row = within(current.getByText("acct_no → acct_no").closest("tr")!);
+    const row = within(current.getByText("core.transactions.acct_no").closest("tr")!);
     expect(row.getByText("Manually added")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add relationship" })).toBeInTheDocument();
     openTab(/^Accepted/);
     const accepted = within((await screen.findAllByRole("row"))[1]!);
-    expect(await accepted.findByText(/^Added by/)).toBeInTheDocument();
+    expect(await accepted.findByText("Added by hand")).toBeInTheDocument();
     expect(accepted.getByText("—")).toBeInTheDocument();
   });
 
@@ -579,5 +579,17 @@ describe("Relationship review", () => {
     await screen.findByRole("table", { name: "Relationships" });
     expect(screen.queryByRole("button", { name: "Add relationship" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete relationship" })).not.toBeInTheDocument();
+  });
+  it("Accept on the Rejected tab asks to confirm, then moves the row to Accepted", async () => {
+    const { handler, state } = review(EDITOR);
+    state.rows = [{ ...SUGGESTED, status: "rejected" }];
+    renderApp(handler, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    openTab(/^Rejected/);
+    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    expect(state.rows[0]!.status).toBe("rejected");
+    fireEvent.click(await screen.findByRole("button", { name: "Accept relationship" }));
+    await waitFor(() => expect(state.rows[0]!.status).toBe("accepted"));
   });
 });
