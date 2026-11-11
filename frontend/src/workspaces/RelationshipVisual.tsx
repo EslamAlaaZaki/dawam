@@ -19,6 +19,10 @@ export interface Endpoint {
   table: string;
   columns: string;
   tag: EndTag;
+  /** The column's data type, when known. */
+  type?: string;
+  /** The column is unique (shown on the referenced side). */
+  unique?: boolean;
 }
 
 /** The tag of the referenced side: its primary key, a unique column, or a plain column. */
@@ -36,8 +40,17 @@ export function relationshipEnds(
   const { from_column: f, to_column: t } = relationship;
   const fromTable = tables.get(f.table_id);
   return {
-    from: { tableId: f.table_id, schema: f.db_schema, table: f.table, columns: f.column, tag: "FK" },
+    from: {
+      tableId: f.table_id,
+      schema: f.db_schema,
+      table: f.table,
+      columns: f.column,
+      tag: "FK",
+      type: tables.get(f.table_id)?.columns.find((c) => c.name === f.column)?.data_type,
+    },
     to: {
+      type: tables.get(t.table_id)?.columns.find((c) => c.name === t.column)?.data_type,
+      unique: tables.has(t.table_id) && isUnique(tables.get(t.table_id)!, [t.column]),
       tableId: t.table_id,
       schema: t.db_schema,
       table: t.table,
@@ -124,5 +137,53 @@ export function RelationshipVisual({
       <span className="sr-only">references ({cardinality})</span>
       <Chip end={to} struck={muted} onOpenTable={onOpenTable} />
     </span>
+  );
+}
+
+function EndpointCard({ role, end }: { role: string; end: Endpoint }) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border border-border bg-surface-raised p-3">
+      <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        {role}
+        <Badge variant={tagVariant[end.tag]}>{end.tag}</Badge>
+      </span>
+      <span className={cn(monoClasses, "break-all text-muted-foreground")}>
+        {end.schema}.{end.table}
+      </span>
+      <span className={cn(monoClasses, "break-all font-semibold")}>{end.columns}</span>
+      <span className={cn(monoClasses, "text-xs text-subtle-foreground")}>
+        {end.type}
+        {end.unique && " · unique"}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The two endpoints as separate cards (From and To) with a bridge between them: the
+ * cardinality badge, an arrow and what it means. Stacked on narrow screens.
+ */
+export function RelationshipCards({
+  from,
+  to,
+  cardinality,
+}: {
+  from: Endpoint;
+  to: Endpoint;
+  cardinality: string;
+}) {
+  return (
+    <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+      <EndpointCard role="From" end={from} />
+      <div className="flex shrink-0 flex-col items-center gap-0.5 text-xs text-subtle-foreground">
+        <Badge>{cardinality}</Badge>
+        <span aria-hidden className="text-base">
+          <span className="sm:hidden">↓</span>
+          <span className="hidden sm:inline">→</span>
+        </span>
+        <span>{cardinality === "1:1" ? "one to one" : "many to one"}</span>
+      </div>
+      <EndpointCard role="To" end={to} />
+    </div>
   );
 }

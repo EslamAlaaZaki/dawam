@@ -404,11 +404,7 @@ export function RelationshipReview({
                   </span>
                 )}
                 {tab.status === "suggested" && (counts.suggested ?? 0) > 0 && (
-                  <span
-                    role="img"
-                    aria-label="Waiting for a decision"
-                    className="ms-1 size-1.5 rounded-full bg-warning"
-                  />
+                  <span aria-hidden className="ms-1 size-1.5 rounded-full bg-warning" />
                 )}
               </TabsTrigger>
             ))}
@@ -462,7 +458,12 @@ export function RelationshipReview({
                   key={f.kind}
                   type="button"
                   size="sm"
-                  variant={kind === f.kind ? "primary" : "secondary"}
+                  variant="secondary"
+                  className={
+                    kind === f.kind
+                      ? "border-primary bg-primary-subtle text-foreground"
+                      : undefined
+                  }
                   aria-pressed={kind === f.kind}
                   onClick={() => setKind(f.kind)}
                 >

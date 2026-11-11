@@ -23,7 +23,12 @@ import {
 import { toast } from "../components/ui/sonner";
 import { isUnique, presentColumns, qualified, type ErEdge } from "./erGraph";
 import { ErrorText, NativeSelect, labelClasses, monoClasses } from "./parts";
-import { RelationshipVisual, targetTag, type Endpoint } from "./RelationshipVisual";
+import {
+  RelationshipCards,
+  RelationshipVisual,
+  targetTag,
+  type Endpoint,
+} from "./RelationshipVisual";
 
 type SchemaTable = SourceSchema["tables"][number];
 
@@ -47,9 +52,20 @@ function ColumnPicker({
   onChange: (side: Side) => void;
 }) {
   const table = tables.find((t) => t.id === value.tableId);
+  const column = table?.columns.find((c) => c.name === value.column);
+  const tag = legend === "From" ? "FK" : column ? targetTag(table, [column.name]) : null;
   return (
     <fieldset className="m-0 grid min-w-0 grid-cols-2 gap-3 rounded-lg border border-border bg-surface p-3">
       <legend className="sr-only">{legend}</legend>
+      <span
+        aria-hidden
+        className="col-span-2 flex items-center gap-2 text-xs font-medium text-muted-foreground"
+      >
+        {legend}
+        {(legend === "From" || tag) && (
+          <Badge variant={tag === "PK" ? "pk" : tag === "FK" ? "fk" : "neutral"}>{tag}</Badge>
+        )}
+      </span>
       <label className={labelClasses}>
         {legend} table
         <NativeSelect
@@ -310,11 +326,10 @@ export function DeleteRelationshipDialog({
         </DialogHeader>
         {target && (
           <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
-            <RelationshipVisual
+            <RelationshipCards
               from={target.from}
               to={target.to}
               cardinality={target.cardinality}
-              dashed
             />
             <p className="m-0 text-xs text-muted-foreground">
               {target.kind}
@@ -395,14 +410,11 @@ export function AcceptRejectedDialog({
           </DialogDescription>
         </DialogHeader>
         {target && (
-          <div className="rounded-lg border border-border bg-surface p-3">
-            <RelationshipVisual
-              from={target.from}
-              to={target.to}
-              cardinality={target.cardinality}
-              dashed
-            />
-          </div>
+          <RelationshipCards
+            from={target.from}
+            to={target.to}
+            cardinality={target.cardinality}
+          />
         )}
         {decide.isError && <ErrorText>{decide.error.message}</ErrorText>}
         <DialogFooter>
