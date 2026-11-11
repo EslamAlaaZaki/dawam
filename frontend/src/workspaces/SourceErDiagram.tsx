@@ -321,14 +321,14 @@ export function SourceErDiagram({
                 <TableBody>
                   {edges.map((edge) => (
                     <TableRow key={edge.id}>
-                      {[edge.from, edge.to].map((id) => (
-                        <TableCell key={id}>
+                      {(["from", "to"] as const).map((end) => (
+                        <TableCell key={end}>
                           <button
                             type="button"
                             className={linkButtonClasses}
-                            onClick={() => openTable(id)}
+                            onClick={() => openTable(edge[end])}
                           >
-                            {qualified(graph.byId.get(id)!)}
+                            {qualified(graph.byId.get(edge[end])!)}
                           </button>
                         </TableCell>
                       ))}

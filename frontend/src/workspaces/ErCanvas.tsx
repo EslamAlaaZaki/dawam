@@ -115,6 +115,7 @@ export function ErCanvas({
   const canvasRef = useRef<HTMLDivElement>(null);
   const latest = useRef({ layout, pos, view, size });
   const suppressClick = useRef(false);
+  const stopDrag = useRef<(() => void) | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useLayoutEffect(() => {
     latest.current = { layout, pos, view, size };
@@ -152,6 +153,8 @@ export function ErCanvas({
   }, []);
 
   useEffect(() => () => clearTimeout(flashTimer.current), []);
+  // A drag in progress when the canvas goes away leaves no window listeners behind.
+  useEffect(() => () => stopDrag.current?.(), []);
 
   useImperativeHandle(ref, () => ({
     reveal(id) {
@@ -182,14 +185,16 @@ export function ErCanvas({
     const start = { x: event.clientX, y: event.clientY };
     const origin = id ? now.pos.get(id)! : { x: now.view.x, y: now.view.y };
     const k = now.view.k;
-    // Pin the view, so dragging a table does not refit around it.
-    setManual({ layout: now.layout, view: now.view });
     if (!id) setPanning(true);
     let moved = false;
     const move = (e: PointerEvent) => {
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
       if (!moved && Math.abs(dx) + Math.abs(dy) <= 3) return;
+      if (!moved) {
+        // Pin the view once something moves, so dragging a table does not refit around it.
+        setManual({ layout: now.layout, view: now.view });
+      }
       moved = true;
       if (id) {
         setDragged((current) => {
@@ -203,20 +208,31 @@ export function ErCanvas({
         setManual({ layout: now.layout, view: { k, x: origin.x + dx, y: origin.y + dy } });
       }
     };
-    const end = () => {
+    const detach = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
-      setPanning(false);
-      suppressClick.current = moved;
+      stopDrag.current = null;
     };
+    const end = () => {
+      detach();
+      setPanning(false);
+      // Swallow the click that ends a drag, but not a later one (the drag may end off the card).
+      suppressClick.current = moved;
+      setTimeout(() => {
+        suppressClick.current = false;
+      }, 0);
+    };
+    stopDrag.current?.();
+    stopDrag.current = detach;
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", end);
     window.addEventListener("pointercancel", end);
   }
 
   const q = query.trim().toLowerCase();
-  const active = hoverId ?? null;
+  // A hovered table a filter removed no longer highlights anything.
+  const active = hoverId !== null && layout.geom.has(hoverId) ? hoverId : null;
 
   return (
     <div className="er-diagram relative h-[clamp(440px,70vh,780px)] overflow-hidden">
