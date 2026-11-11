@@ -244,7 +244,8 @@ describe("Source ER diagram", () => {
     const canvas = screen.getByLabelText("ER diagram canvas");
     expect(within(canvas).getByText("audit.events")).toBeInTheDocument();
     expect(within(canvas).queryByText("core.accounts")).not.toBeInTheDocument();
-    expect(screen.getByText("No relationships between these tables.")).toBeInTheDocument();
+    // The relationships list is not narrowed by the canvas filters.
+    expect(screen.getByRole("table", { name: "Relationships" })).toBeInTheDocument();
   });
 
   it("focuses on a table and its neighbours", async () => {
@@ -428,9 +429,24 @@ describe("Relationship review", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument(),
     );
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Accepted" }), { button: 0 });
-    fireEvent.click(screen.getByRole("tab", { name: "Accepted" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Accepted/ }), { button: 0 });
+    fireEvent.click(screen.getByRole("tab", { name: /^Accepted/ }));
     expect(await screen.findByText("core.transactions.customer_ref")).toBeInTheDocument();
+  });
+
+  it("Current lists an accepted relationship next to the declared ones", async () => {
+    renderApp(review(EDITOR).handler, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument(),
+    );
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Current/ }), { button: 0 });
+    fireEvent.click(screen.getByRole("tab", { name: /^Current/ }));
+    const current = within(await screen.findByRole("table", { name: "Relationships" }));
+    const row = within(current.getByText("customer_ref → ref").closest("tr")!);
+    expect(row.getByText("Inferred, accepted")).toBeInTheDocument();
   });
 
   it("Reject moves a row to Rejected", async () => {
@@ -441,8 +457,8 @@ describe("Relationship review", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument(),
     );
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Rejected" }), { button: 0 });
-    fireEvent.click(screen.getByRole("tab", { name: "Rejected" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Rejected/ }), { button: 0 });
+    fireEvent.click(screen.getByRole("tab", { name: /^Rejected/ }));
     expect(await screen.findByText("core.transactions.customer_ref")).toBeInTheDocument();
   });
 

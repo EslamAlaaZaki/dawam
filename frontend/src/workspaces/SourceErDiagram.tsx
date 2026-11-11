@@ -13,28 +13,18 @@ import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
 import { ErCanvas, matchesSearch, type ErCanvasHandle } from "./ErCanvas";
 import { ErTableDetails } from "./ErTableDetails";
+import { RelationshipsTable } from "./RelationshipsTable";
 import { filterGraph, qualified, relationshipEdges } from "./erGraph";
-import { cardinality } from "./erLayout";
 import {
   EmptyState,
   ErrorText,
   Hint,
   NativeSelect,
   Panel,
-  TableCard,
-  linkButtonClasses,
 } from "./parts";
 
 const toolbarLabelClasses = "text-xs text-subtle-foreground";
@@ -328,65 +318,16 @@ export function SourceErDiagram({
 
       <section aria-labelledby="er-relationships" className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h4 id="er-relationships" className="flex items-center gap-2 text-base font-semibold">
+          <h4 id="er-relationships" className="flex items-center gap-2 text-lg font-semibold">
             Relationships
-            <Badge className="tabular-nums">{edges.length}</Badge>
+            <Badge className="tabular-nums">{graph.all.length}</Badge>
           </h4>
           <Hint>
             Declared foreign keys from the Snapshot, plus inferred relationships accepted in
             the Source schema.
           </Hint>
         </div>
-          {edges.length === 0 ? (
-            <EmptyState>No relationships between these tables.</EmptyState>
-          ) : (
-            <TableCard>
-              <Table aria-label="Relationships">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>From</TableHead>
-                    <TableHead>To</TableHead>
-                    <TableHead>Columns</TableHead>
-                    <TableHead>Cardinality</TableHead>
-                    <TableHead>Kind</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {edges.map((edge) => (
-                    <TableRow key={edge.id}>
-                      {(["from", "to"] as const).map((end) => (
-                        <TableCell key={end}>
-                          <button
-                            type="button"
-                            className={linkButtonClasses}
-                            onClick={() => openTable(edge[end])}
-                          >
-                            {qualified(graph.byId.get(edge[end])!)}
-                          </button>
-                        </TableCell>
-                      ))}
-                      <TableCell mono className="text-mono">
-                        {edge.label}
-                      </TableCell>
-                      <TableCell>
-                        {cardinality(edge)}
-                        {edge.optional && (
-                          <span className="text-subtle-foreground"> (optional)</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {edge.kind === "declared" ? (
-                          <Badge variant="fk">Declared</Badge>
-                        ) : (
-                          <Badge variant="mapped">Inferred, accepted</Badge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableCard>
-          )}
+        <RelationshipsTable edges={graph.all} tables={graph.byId} onOpenTable={openTable} />
       </section>
 
       <ErTableDetails

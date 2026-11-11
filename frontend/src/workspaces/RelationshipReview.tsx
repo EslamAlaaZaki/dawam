@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Network } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { isActive, useJobs } from "../api/jobs";
 import {
@@ -13,6 +13,7 @@ import {
   type Relationship,
   type RelationshipStatus,
 } from "../api/relationships";
+import { useSourceSchema } from "../api/snapshots";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -27,6 +28,8 @@ import {
 } from "../components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Loading } from "../shell/Loading";
+import { RelationshipsTable } from "./RelationshipsTable";
+import { relationshipEdges } from "./erGraph";
 import {
   EmptyState,
   ErrorText,
@@ -36,7 +39,11 @@ import {
   monoClasses,
 } from "./parts";
 
-const TABS: { status: RelationshipStatus; label: string }[] = [
+/** "current" lists the relationships in effect; the others the inferred ones by status. */
+type View = "current" | RelationshipStatus;
+
+const TABS: { status: View; label: string }[] = [
+  { status: "current", label: "Current" },
   { status: "suggested", label: "Suggested" },
   { status: "accepted", label: "Accepted" },
   { status: "rejected", label: "Rejected" },
@@ -202,8 +209,27 @@ export function RelationshipReview({
   workspace: Workspace;
   systemId: string;
 }) {
-  const [status, setStatus] = useState<RelationshipStatus>("suggested");
-  const list = useRelationshipsByStatus(workspace.id, systemId, status);
+  const [status, setStatus] = useState<View>("suggested");
+  const byStatus = {
+    suggested: useRelationshipsByStatus(workspace.id, systemId, "suggested"),
+    accepted: useRelationshipsByStatus(workspace.id, systemId, "accepted"),
+    rejected: useRelationshipsByStatus(workspace.id, systemId, "rejected"),
+  };
+  const schema = useSourceSchema(workspace.id, systemId, true);
+  const current = useMemo(() => {
+    if (!schema.data || !byStatus.accepted.data) return null;
+    return {
+      edges: relationshipEdges(schema.data.tables, byStatus.accepted.data),
+      tables: new Map(schema.data.tables.map((t) => [t.id, t])),
+    };
+  }, [schema.data, byStatus.accepted.data]);
+  const counts: Record<View, number | undefined> = {
+    current: current?.edges.length,
+    suggested: byStatus.suggested.data?.length,
+    accepted: byStatus.accepted.data?.length,
+    rejected: byStatus.rejected.data?.length,
+  };
+  const list = byStatus[status === "current" ? "accepted" : status];
   const decide = useDecideRelationship(workspace.id, systemId);
   const canDecide =
     workspace.status !== "archived" && allows(workspace, "source_schema.enhance");
@@ -213,34 +239,51 @@ export function RelationshipReview({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Tabs
           value={status}
-          onValueChange={(value) => setStatus(value as RelationshipStatus)}
+          onValueChange={(value) => setStatus(value as View)}
         >
           <TabsList className="px-0">
             {TABS.map((tab) => (
               <TabsTrigger key={tab.status} value={tab.status} className="text-sm">
                 {tab.label}
+                {counts[tab.status] !== undefined && (
+                  <span className="ms-1 font-normal text-subtle-foreground tabular-nums">
+                    {counts[tab.status]}
+                  </span>
+                )}
               </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
         <Hint>
-          Joins the database doesn&apos;t declare, most confident first. Accepted ones
-          show on the ER diagram as dashed lines.
+          {status === "current"
+            ? "Declared foreign keys from the Snapshot, plus inferred relationships accepted here."
+            : "Joins the database doesn't declare, most confident first. Accepted ones show on the ER diagram as dashed lines."}
         </Hint>
       </div>
+      {status === "current" &&
+        (schema.isError || byStatus.accepted.isError ? (
+          <ErrorText>
+            Could not load the relationships:{" "}
+            {(schema.error ?? byStatus.accepted.error)?.message}
+          </ErrorText>
+        ) : current ? (
+          <RelationshipsTable edges={current.edges} tables={current.tables} />
+        ) : (
+          <Loading label="Loading relationships…" className="p-0" />
+        ))}
       {decide.isError && <ErrorText>{decide.error.message}</ErrorText>}
-      {list.isPending && (
+      {status !== "current" && list.isPending && (
         <Loading label="Loading relationships…" className="p-0" />
       )}
-      {list.isError && (
+      {status !== "current" && list.isError && (
         <ErrorText>
           Could not load the relationships: {list.error.message}
         </ErrorText>
       )}
-      {list.isSuccess && list.data.length === 0 && (
+      {status !== "current" && list.isSuccess && list.data.length === 0 && (
         <EmptyState>No {status} relationships.</EmptyState>
       )}
-      {list.isSuccess && list.data.length > 0 && (
+      {status !== "current" && list.isSuccess && list.data.length > 0 && (
         <TableCard>
           <Table aria-label={`${status} relationships`}>
             <TableHeader>

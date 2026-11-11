@@ -27,6 +27,7 @@ import {
   type SchemaSearchHit,
   type SourceSchema,
 } from "../api/snapshots";
+import { useRelationshipsByStatus } from "../api/relationships";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -808,7 +809,11 @@ function TablePage({
   const title = `${table.db_schema}.${table.name}`;
   const pks = table.constraints.filter((k) => k.type === "pk").length;
   const fks = table.constraints.filter((k) => k.type === "fk").length;
-  const keyCount = table.constraints.length + table.indexes.length;
+  // Suggested inferred relationships from or to this table wait for a decision.
+  const suggested = useRelationshipsByStatus(workspace.id, systemId, "suggested");
+  const toReview = (suggested.data ?? []).filter(
+    (r) => r.from_column.table_id === table.id || r.to_column.table_id === table.id,
+  ).length;
   return (
     <section aria-label={`Table ${title}`} className="flex min-w-0 flex-col">
       <ObjectHeader
@@ -870,9 +875,11 @@ function TablePage({
           </TabsTrigger>
           <TabsTrigger value="keys" className="text-sm">
             Keys and relationships
-            <span className="ms-1 font-normal text-subtle-foreground tabular-nums">
-              {keyCount}
-            </span>
+            {toReview > 0 && (
+              <Badge variant="accent" className="ms-1.5 rounded-full tabular-nums">
+                {toReview} to review
+              </Badge>
+            )}
           </TabsTrigger>
         </TabsList>
         <TabsContent
