@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Trash2, TriangleAlert, X } from "lucide-react";
+import { Check, Table2, Trash2, TriangleAlert, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -21,13 +21,16 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { toast } from "../components/ui/sonner";
-import { isUnique, presentColumns, qualified, type ErEdge } from "./erGraph";
-import { ErrorText, NativeSelect, labelClasses, monoClasses } from "./parts";
+import { cn } from "../lib/utils";
+import { isUnique, presentColumns, type ErEdge } from "./erGraph";
+import { ErrorText, labelClasses, monoClasses } from "./parts";
+import { SearchPicker, tagVariant, type PickerGroup, type PickerItem } from "./SearchPicker";
 import {
   RelationshipCards,
   RelationshipVisual,
   targetTag,
   type Endpoint,
+  type EndTag,
 } from "./RelationshipVisual";
 
 type SchemaTable = SourceSchema["tables"][number];
@@ -46,14 +49,60 @@ function ColumnPicker({
   value,
   onChange,
 }: {
-  legend: string;
+  legend: "From" | "To";
   tables: readonly SchemaTable[];
   value: Side;
   onChange: (side: Side) => void;
 }) {
+  const [open, setOpen] = useState<"table" | "column" | null>(null);
   const table = tables.find((t) => t.id === value.tableId);
   const column = table?.columns.find((c) => c.name === value.column);
-  const tag = legend === "From" ? "FK" : column ? targetTag(table, [column.name]) : null;
+  const referencing = new Set(
+    (table?.constraints ?? []).filter((c) => c.type === "fk").flatMap((c) => c.columns),
+  );
+  const tag = (c: SchemaTable["columns"][number]): EndTag =>
+    legend === "To" ? targetTag(table, [c.name]) : referencing.has(c.name) ? "FK" : "COL";
+  const item = (c: SchemaTable["columns"][number]): PickerItem => ({
+    id: c.name,
+    tag: tag(c),
+    name: c.name,
+    detail: c.data_type,
+  });
+
+  const tableGroups: PickerGroup[] = [];
+  for (const t of tables) {
+    let group = tableGroups.find((g) => g.label === t.db_schema);
+    if (!group) {
+      group = { label: t.db_schema, items: [] };
+      tableGroups.push(group);
+    }
+    group.items.push({
+      id: t.id,
+      name: t.name,
+      right: `${presentColumns(t).length} columns`,
+    });
+  }
+  const columns = table ? presentColumns(table) : [];
+  const columnGroups: PickerGroup[] =
+    legend === "To"
+      ? [
+          {
+            label: "Keys and unique columns",
+            items: columns.filter((c) => isUnique(table!, [c.name])).map(item),
+          },
+          {
+            label: "Other columns",
+            items: columns.filter((c) => !isUnique(table!, [c.name])).map(item),
+          },
+        ]
+      : [
+          { label: "Columns", items: columns.filter((c) => !referencing.has(c.name)).map(item) },
+          {
+            label: "Already references a table",
+            items: columns.filter((c) => referencing.has(c.name)).map(item),
+          },
+        ];
+
   return (
     <fieldset className="m-0 grid min-w-0 grid-cols-2 gap-3 rounded-lg border border-border bg-surface p-3">
       <legend className="sr-only">{legend}</legend>
@@ -62,43 +111,63 @@ function ColumnPicker({
         className="col-span-2 flex items-center gap-2 text-xs font-medium text-muted-foreground"
       >
         {legend}
-        {(legend === "From" || tag) && (
-          <Badge variant={tag === "PK" ? "pk" : tag === "FK" ? "fk" : "neutral"}>{tag}</Badge>
+        {legend === "From" && <Badge variant="fk">FK</Badge>}
+        {legend === "To" && column && (
+          <Badge variant={tagVariant[tag(column)]}>{tag(column)}</Badge>
         )}
       </span>
-      <label className={labelClasses}>
+      <div className={labelClasses}>
         {legend} table
-        <NativeSelect
-          className={monoClasses}
-          value={value.tableId}
-          onChange={(event) => onChange({ tableId: event.target.value, column: "" })}
-        >
-          <option value="">Choose a table</option>
-          {tables.map((t) => (
-            <option key={t.id} value={t.id}>
-              {qualified(t)}
-            </option>
-          ))}
-        </NativeSelect>
-      </label>
-      <label className={labelClasses}>
+        <SearchPicker
+          label={`${legend} table`}
+          placeholder="Choose a table"
+          searchPlaceholder="Search tables"
+          trigger={
+            table && (
+              <>
+                <Table2 aria-hidden className="size-4 shrink-0 text-subtle-foreground" />
+                <span className={cn(monoClasses, "truncate")}>
+                  <span className="text-subtle-foreground">{table.db_schema}.</span>
+                  {table.name}
+                </span>
+              </>
+            )
+          }
+          groups={tableGroups}
+          selectedId={value.tableId}
+          open={open === "table"}
+          onOpenChange={(next) => setOpen(next ? "table" : null)}
+          onSelect={(id) => {
+            onChange({ tableId: id, column: "" });
+            setOpen("column");
+          }}
+        />
+      </div>
+      <div className={labelClasses}>
         {legend} column
-        <NativeSelect
-          className={monoClasses}
-          value={value.column}
+        <SearchPicker
+          label={`${legend} column`}
+          placeholder="Choose a column"
+          searchPlaceholder="Search columns or types"
           disabled={!table}
-          onChange={(event) => onChange({ ...value, column: event.target.value })}
-        >
-          <option value="">Choose a column</option>
-          {table &&
-            presentColumns(table).map((c) => (
-              <option key={c.id} value={c.name}>
-                {c.name} · {c.data_type}
-                {c.is_pk ? " · PK" : isUnique(table, [c.name]) ? " · unique" : ""}
-              </option>
-            ))}
-        </NativeSelect>
-      </label>
+          trigger={
+            column && (
+              <>
+                <Badge variant={tagVariant[tag(column)]}>{tag(column)}</Badge>
+                <span className={cn(monoClasses, "truncate")}>{column.name}</span>
+                <span className={cn(monoClasses, "text-xs text-subtle-foreground")}>
+                  {column.data_type}
+                </span>
+              </>
+            )
+          }
+          groups={columnGroups}
+          selectedId={value.column}
+          open={open === "column"}
+          onOpenChange={(next) => setOpen(next ? "column" : null)}
+          onSelect={(name) => onChange({ ...value, column: name })}
+        />
+      </div>
     </fieldset>
   );
 }
