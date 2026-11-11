@@ -33,7 +33,6 @@ import { relationshipEdges } from "./erGraph";
 import {
   EmptyState,
   ErrorText,
-  Hint,
   TableCard,
   h5Classes,
   monoClasses,
@@ -257,12 +256,6 @@ export function RelationshipReview({
             ))}
           </TabsList>
         </Tabs>
-        {status !== "current" && (
-          <Hint>
-            Joins the database doesn&apos;t declare, most confident first. Accepted ones
-            show on the ER diagram as dashed lines.
-          </Hint>
-        )}
       </div>
       {status === "current" &&
         (schema.isError || byStatus.accepted.isError ? (
