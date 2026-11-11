@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { Network } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { isActive, useJobs } from "../api/jobs";
@@ -18,7 +19,7 @@ import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Loading } from "../shell/Loading";
-import { EmptyState, ErrorText, Hint, h4Classes, monoClasses } from "./parts";
+import { EmptyState, ErrorText, h4Classes, monoClasses } from "./parts";
 
 const TABS: { status: RelationshipStatus; label: string }[] = [
   { status: "suggested", label: "Suggested" },
@@ -55,22 +56,20 @@ const columnName = (c: Relationship["from_column"]) =>
   `${c.db_schema}.${c.table}.${c.column}`;
 
 /**
- * A Source System's inferred relationships (spec story 60): Find relationships starts the
- * inference job, and the Suggested / Accepted / Rejected lists, most confident first, let an
- * owner or editor decide each one. Any member can read the lists; the buttons need the
- * profiling right (to start) or the enhancement right (to decide) and an active Workspace.
+ * Find relationships (spec story 60): starts the inference job and refreshes the lists when
+ * it finishes. Needs the profiling right and an active Workspace; otherwise renders nothing.
+ * The ER diagram shows it in its header, as the page's primary action.
  */
-export function RelationshipReview({
+export function FindRelationships({
   workspace,
   systemId,
+  onStarted,
 }: {
   workspace: Workspace;
   systemId: string;
+  onStarted?: () => void;
 }) {
-  const [status, setStatus] = useState<RelationshipStatus>("suggested");
-  const list = useRelationshipsByStatus(workspace.id, systemId, status);
   const start = useStartInference(workspace.id, systemId);
-  const decide = useDecideRelationship(workspace.id, systemId);
   const jobs = useJobs(workspace.id);
   const queryClient = useQueryClient();
 
@@ -85,34 +84,58 @@ export function RelationshipReview({
     }
   }, [finished, queryClient, workspace.id, systemId]);
 
-  const active = workspace.status !== "archived";
-  const canFind = active && allows(workspace, "source_system.profile");
-  const canDecide = active && allows(workspace, "source_schema.enhance");
+  const canFind =
+    workspace.status !== "archived" && allows(workspace, "source_system.profile");
   const running = start.isPending || (started != null && isActive(started));
+  if (!canFind) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        type="button"
+        variant="primary"
+        disabled={running}
+        onClick={() =>
+          start.mutate(undefined, {
+            onSuccess: () => {
+              toast.success(
+                "Looking for relationships. Follow it under Background jobs.",
+              );
+              onStarted?.();
+            },
+          })
+        }
+      >
+        <Network aria-hidden />
+        {running ? "Finding relationships…" : "Find relationships"}
+      </Button>
+      {start.isError && <ErrorText>{start.error.message}</ErrorText>}
+    </div>
+  );
+}
+
+/**
+ * A Source System's inferred relationships (spec story 60): the Suggested / Accepted /
+ * Rejected lists, most confident first, let an owner or editor decide each one. Any member
+ * can read the lists; deciding needs the enhancement right and an active Workspace.
+ */
+export function RelationshipReview({
+  workspace,
+  systemId,
+}: {
+  workspace: Workspace;
+  systemId: string;
+}) {
+  const [status, setStatus] = useState<RelationshipStatus>("suggested");
+  const list = useRelationshipsByStatus(workspace.id, systemId, status);
+  const decide = useDecideRelationship(workspace.id, systemId);
+  const canDecide =
+    workspace.status !== "archived" && allows(workspace, "source_schema.enhance");
 
   return (
     <section aria-label="Relationships" className="flex flex-col gap-3">
       <h4 className={h4Classes}>Relationships</h4>
-      {canFind && (
-        <div>
-          <Button
-            type="button"
-            disabled={running}
-            onClick={() =>
-              start.mutate(undefined, {
-                onSuccess: () =>
-                  toast.success(
-                    "Looking for relationships. Follow it under Background jobs.",
-                  ),
-              })
-            }
-          >
-            Find relationships
-          </Button>
-        </div>
-      )}
-      {start.isError && <ErrorText>{start.error.message}</ErrorText>}
-      {running && <Hint>Looking for relationships…</Hint>}
       <Tabs
         value={status}
         onValueChange={(value) => setStatus(value as RelationshipStatus)}

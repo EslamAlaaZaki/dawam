@@ -36,7 +36,7 @@ import {
   h3Classes,
   linkButtonClasses,
 } from "./parts";
-import { RelationshipReview } from "./RelationshipReview";
+import { FindRelationships, RelationshipReview } from "./RelationshipReview";
 
 const toolbarLabelClasses = "text-xs text-subtle-foreground";
 
@@ -176,9 +176,16 @@ export function SourceErDiagram({
 
   return (
     <Panel aria-labelledby="folder-title">
-      <h3 id="folder-title" className={h3Classes}>
-        ER diagram
-      </h3>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h3 id="folder-title" className={h3Classes}>
+          ER diagram
+        </h3>
+        <FindRelationships
+          workspace={workspace}
+          systemId={system.id}
+          onStarted={() => setTab("review")}
+        />
+      </div>
       <div className="overflow-hidden rounded-pill border border-border bg-surface">
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-raised px-2.5 py-2">
           <div className="relative min-w-0 flex-auto sm:max-w-xs">
