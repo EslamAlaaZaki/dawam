@@ -181,10 +181,13 @@ export function KpiCatalog({
   workspace,
   scope,
   title,
+  hideTitle = false,
 }: {
   workspace: Workspace;
   scope: KpiScope;
   title: string;
+  /** Keep the title for screen readers only: the breadcrumb already names the page. */
+  hideTitle?: boolean;
 }) {
   const kpis = useKpis(workspace.id, scope);
   const [adding, setAdding] = useState(false);
@@ -224,7 +227,7 @@ export function KpiCatalog({
   return (
     <section aria-labelledby="folder-title" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-3">
-        <h3 id="folder-title" className={h3Classes}>
+        <h3 id="folder-title" className={hideTitle ? "sr-only" : h3Classes}>
           {title}
         </h3>
         {addButton && <span className="ml-auto">{addButton}</span>}

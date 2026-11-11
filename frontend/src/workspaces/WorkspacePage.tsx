@@ -342,6 +342,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               title={
                 kpiSystem ? `KPIs of ${kpiSystem.name}` : "Data Warehouse KPIs"
               }
+              hideTitle={kpiSystem != null}
             />
           ) : folder.id === "document-index" ? (
             <IndexStatusPanel workspace={workspace.data} />
@@ -351,6 +352,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               workspace={workspace.data}
               area={{ systemId: documentsSystem.id }}
               title="Documents"
+              hideTitle
               ownerName={documentsSystem.name}
             />
           ) : modelLayer ? (

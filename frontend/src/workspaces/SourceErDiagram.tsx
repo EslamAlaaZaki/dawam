@@ -34,7 +34,6 @@ import {
   NativeSelect,
   Panel,
   TableCard,
-  h3Classes,
   linkButtonClasses,
 } from "./parts";
 
@@ -208,8 +207,8 @@ export function SourceErDiagram({
 
   return (
     <Panel aria-labelledby="folder-title">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h3 id="folder-title" className={h3Classes}>
+      <div className="flex flex-wrap items-start justify-end gap-3">
+        <h3 id="folder-title" className="sr-only">
           ER diagram
         </h3>
         <ReviewLink systemId={system.id} pending={suggested.data?.length} />

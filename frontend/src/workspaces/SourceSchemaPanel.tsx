@@ -179,7 +179,7 @@ export function SourceSchemaPanel({
         <div className="flex min-w-0 flex-1 basis-80 flex-col gap-2">
           <h1
             id="folder-title"
-            className="text-2xl font-semibold tracking-tight text-balance text-foreground"
+            className="sr-only"
           >
             Source schema
           </h1>

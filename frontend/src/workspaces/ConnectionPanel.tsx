@@ -122,7 +122,7 @@ export function ConnectionPanel({
       <header className="flex flex-col gap-2 border-b border-border pb-5">
         <h1
           id="folder-title"
-          className="text-2xl font-semibold tracking-tight text-balance text-foreground"
+          className="sr-only"
         >
           Connection
         </h1>
