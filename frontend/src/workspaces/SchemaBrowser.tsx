@@ -64,6 +64,7 @@ import {
   CodePreview,
 } from "./parts";
 import { Loading } from "../shell/Loading";
+import { TableRelationships } from "./RelationshipReview";
 
 type SchemaTable = SourceSchema["tables"][number];
 type RemovedTable = SourceSchema["removed_tables"][number];
@@ -868,7 +869,7 @@ function TablePage({
             Profile
           </TabsTrigger>
           <TabsTrigger value="keys" className="text-sm">
-            Keys and indexes
+            Keys and relationships
             <span className="ms-1 font-normal text-subtle-foreground tabular-nums">
               {keyCount}
             </span>
@@ -1044,6 +1045,11 @@ function TablePage({
               </Table>
             </TableCard>
           )}
+          <TableRelationships
+            workspace={workspace}
+            systemId={systemId}
+            tableId={table.id}
+          />
           <h3 className={h5Classes}>
             Indexes{" "}
             <span className="font-normal text-subtle-foreground tabular-nums">

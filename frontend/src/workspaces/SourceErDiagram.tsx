@@ -1,6 +1,7 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { ArrowRight, Search } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -20,7 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
 import { ErCanvas, matchesSearch, type ErCanvasHandle } from "./ErCanvas";
@@ -30,13 +30,13 @@ import { cardinality } from "./erLayout";
 import {
   EmptyState,
   ErrorText,
+  Hint,
   NativeSelect,
   Panel,
   TableCard,
   h3Classes,
   linkButtonClasses,
 } from "./parts";
-import { FindRelationships, RelationshipReview } from "./RelationshipReview";
 
 const toolbarLabelClasses = "text-xs text-subtle-foreground";
 
@@ -77,18 +77,51 @@ function Segmented<T extends string>({
   );
 }
 
-const Count = ({ n }: { n: number | undefined }) =>
-  n === undefined ? null : (
-    <span className="ms-1.5 rounded-full bg-muted px-1.5 text-xs font-medium text-subtle-foreground tabular-nums">
-      {n}
-    </span>
+/**
+ * The way to the review: how many inferred relationships wait for a decision, and a link to
+ * the Relationships tab of this system's Source schema (the ER diagram only reads).
+ */
+function ReviewLink({ systemId, pending }: { systemId: string; pending: number | undefined }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const href = `${pathname}?${new URLSearchParams({
+    folder: `systems/${systemId}/source-schema`,
+    tab: "relationships",
+  })}`;
+  return (
+    <a
+      href={href}
+      onClick={(event) => {
+        event.preventDefault();
+        router.push(href);
+      }}
+      className="group inline-flex flex-wrap items-center gap-x-2 rounded-md text-sm text-muted-foreground"
+    >
+      {pending ? (
+        <span>
+          <span className="font-medium text-foreground tabular-nums">{pending}</span>{" "}
+          suggested {pending === 1 ? "relationship" : "relationships"} to review
+        </span>
+      ) : (
+        <span>No relationships waiting for review</span>
+      )}
+      <span aria-hidden className="text-subtle-foreground">
+        ·
+      </span>
+      <span className="inline-flex items-center gap-1 font-medium text-primary group-hover:underline">
+        {pending ? "Review in Source schema" : "Source schema"}
+        <ArrowRight aria-hidden className="size-3.5" />
+      </span>
+    </a>
   );
+}
 
 /**
  * A Source System's ER diagram (spec story 60): its tables and views with the foreign keys
  * the latest Snapshot declares and the inferred relationships a member accepted. Narrow it
  * by Database Schema, or focus on one table and its neighbours; search dims the tables that
- * don't match. Any member can view it.
+ * don't match. Any member can view it; inferred relationships are found and reviewed in
+ * the Source schema, which the header links to.
  */
 export function SourceErDiagram({
   workspace,
@@ -105,7 +138,6 @@ export function SourceErDiagram({
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"keys" | "all">("keys");
   const [lines, setLines] = useState<"all" | "hover">("all");
-  const [tab, setTab] = useState("relationships");
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const canvas = useRef<ErCanvasHandle>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -180,11 +212,7 @@ export function SourceErDiagram({
         <h3 id="folder-title" className={h3Classes}>
           ER diagram
         </h3>
-        <FindRelationships
-          workspace={workspace}
-          systemId={system.id}
-          onStarted={() => setTab("review")}
-        />
+        <ReviewLink systemId={system.id} pending={suggested.data?.length} />
       </div>
       <div className="overflow-hidden rounded-pill border border-border bg-surface">
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-raised px-2.5 py-2">
@@ -299,18 +327,17 @@ export function SourceErDiagram({
         )}
       </div>
 
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="px-0">
-          <TabsTrigger value="relationships">
+      <section aria-labelledby="er-relationships" className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h4 id="er-relationships" className="flex items-center gap-2 text-base font-semibold">
             Relationships
-            <Count n={edges.length} />
-          </TabsTrigger>
-          <TabsTrigger value="review">
-            Review inferred
-            <Count n={suggested.data?.length} />
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="relationships" className="pt-3.5">
+            <Badge className="tabular-nums">{edges.length}</Badge>
+          </h4>
+          <Hint>
+            Declared foreign keys from the Snapshot, plus inferred relationships accepted in
+            the Source schema.
+          </Hint>
+        </div>
           {edges.length === 0 ? (
             <EmptyState>No relationships between these tables.</EmptyState>
           ) : (
@@ -361,11 +388,7 @@ export function SourceErDiagram({
               </Table>
             </TableCard>
           )}
-        </TabsContent>
-        <TabsContent value="review" className="pt-3.5">
-          <RelationshipReview workspace={workspace} systemId={system.id} />
-        </TabsContent>
-      </Tabs>
+      </section>
 
       <ErTableDetails
         table={detailsId ? (graph.byId.get(detailsId) ?? null) : null}
