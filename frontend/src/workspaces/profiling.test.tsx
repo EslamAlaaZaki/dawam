@@ -265,6 +265,21 @@ describe("table profiles", () => {
     expect(within(panel).queryByRole("switch")).toBeNull();
   });
 
+  it("opens a table's Profile tab from the URL, as the Profiling page links", async () => {
+    renderApp(
+      backend(VIEWER, { profiling: [], topN: [] }),
+      `${FOLDER}&table=t1&table_tab=profile`,
+    );
+
+    expect(
+      await screen.findByRole("region", { name: "Table core.customers" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Profile" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
   it("shows unknown counts as a dash, not zero", async () => {
     const unknown = {
       ...PROFILE,

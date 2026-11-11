@@ -1701,6 +1701,18 @@ ROWS: list[Row] = [
     ),
     Row(
         "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling/overview",
+        "Open Workspace content (the Profiling page)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling/growth",
+        "Open Workspace content (the Profiling page's data growth)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+    ),
+    Row(
+        "GET",
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/columns/{column_id}/profile",
         "Open Workspace content (a column's profile)",
         workspace(admin=False, owner=True, editor=True, viewer=True),

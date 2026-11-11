@@ -47,6 +47,7 @@ import { useWorkspaceFolders } from "./useWorkspaceFolders";
 import { SourceErDiagram } from "./SourceErDiagram";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
 import { PiiPanel } from "./PiiPanel";
+import { ProfilingPanel } from "./ProfilingPanel";
 import { SourceSummaryPanel } from "./SourceSummaryPanel";
 import { MembersPanel } from "./MembersPanel";
 import { ModelPanel } from "./ModelPanel";
@@ -214,6 +215,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   // `systems/<id>/er-diagram`: a Source System's tables and relationships.
   const erSystem = systemList.find(
     (system) => folder.id === `systems/${system.id}/er-diagram`,
+  );
+
+  // `systems/<id>/profiling`: a Source System's profiling overview.
+  const profilingSystem = systemList.find(
+    (system) => folder.id === `systems/${system.id}/profiling`,
   );
 
   // `systems/<id>/pii`: a Source System's PII findings and value scan.
@@ -396,6 +402,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               key={folder.id}
               workspace={workspace.data}
               system={erSystem}
+            />
+          ) : profilingSystem ? (
+            <ProfilingPanel
+              key={folder.id}
+              workspace={workspace.data}
+              system={profilingSystem}
+              empty={folder.empty}
             />
           ) : piiSystem ? (
             <PiiPanel

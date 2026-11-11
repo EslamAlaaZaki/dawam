@@ -241,6 +241,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 55. As an editor, I want to profile selected tables (row count, null %, distinct count, min/max, top-N value frequencies, length stats, detected patterns such as email or phone), so that I understand data quality.
 56. As an owner, I want to choose per table whether top-N values may be stored, and to have columns flagged as sensitive never sampled into storage, so that personal data is not copied into the tool.
 57. As an editor, I want profiling to respect a configurable row-sample limit and query timeout, so that production sources aren't overloaded.
+57a. As a member, I want a Profiling page per Source System that shows how much of the latest Snapshot is profiled and out of date, the findings of every table's latest profile (all null, mostly null, constant, unique but not a key) and how each table's rows grow between Snapshots, and as an editor to profile all, the out-of-date or selected tables from there, so that I see data quality and volume across the system without opening each table.
 58. As a member, I want the tool to suggest inferred relationships based on name similarity, matching types, value overlap and JOIN clauses found in stored procedures, functions and views, each with a confidence score and its evidence, so that undeclared joins are discovered.
 59. As an editor, I want to accept or reject inferred relationships, so that the Source Schema reflects reality.
 59a. As an editor, I want to add a relationship between two columns by hand, and to delete any relationship that is not a declared foreign key, so that the Source Schema holds joins inference cannot find and drops ones that are wrong.
@@ -455,6 +456,12 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 - Top-N values are **off by default**. They can be enabled per table by an owner and are never captured for protected columns.
 - Sampling uses `TABLESAMPLE` or a `LIMIT`-based approach with a configurable cap (default 100 000 rows).
 - Top-N values and min/max are real data: they are sent to the AI only when the owner shares *sample rows* with the AI, never with *profile statistics* alone.
+
+**Profiling page** (story 57a) — the Source System's Profiling folder summarizes what the per-table Profile tabs hold, and links to them:
+
+- *Status*: a table or view of the latest Snapshot is Not profiled, Profiled, or Out of date when its latest profile is older than the latest Snapshot. A sample that hit its row cap is marked Capped.
+- *Findings*: from each table's latest profile, one per column, the first matching rule wins: **All null** (null % = 100), **Mostly null** (null % > 50), **Constant** (one distinct value in a non-empty sample), **Unique, not a key** (distinct = sampled rows > 0 and the column is in no single-column PK, unique constraint or unique index; a view is never flagged; when the sample hit its cap it is unique only in the sampled rows, and the page says so). A protected column gets only the null rules, so no value of it is shown.
+- *Growth*: each table's row estimate in every Snapshot, as a linear rate per month from its first estimate to its latest, with a 12-month projection. A fall of more than 20 % between consecutive Snapshots (a purge or truncate) is flagged and the rate counts only from that Snapshot on. Views, tables without an estimate and tables with no change are left out and named. Growth needs at least two Snapshots; it reads only stored row estimates, never the source.
 
 ### 6.6 Relationship inference
 
