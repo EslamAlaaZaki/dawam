@@ -127,3 +127,57 @@ export function useDecideRelationship(workspaceId: string, systemId: string) {
       }),
   });
 }
+
+/** Add a relationship by hand (accepted at once); every list, and so the diagram, refreshes. */
+export function useAddRelationship(workspaceId: string, systemId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { from_column_id: string; to_column_id: string }) => {
+      const { data, error, response } = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships",
+        {
+          params: { path: { workspace_id: workspaceId, system_id: systemId } },
+          body,
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: relationshipsKey(workspaceId, systemId),
+      }),
+  });
+}
+
+/** Delete a relationship: a manual one goes, an inferred one is rejected for good. */
+export function useDeleteRelationship(workspaceId: string, systemId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error, response } = await client.DELETE(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}",
+        {
+          params: {
+            path: {
+              workspace_id: workspaceId,
+              system_id: systemId,
+              relationship_id: id,
+            },
+          },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: relationshipsKey(workspaceId, systemId),
+      }),
+  });
+}

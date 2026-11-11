@@ -221,10 +221,10 @@ describe("Source ER diagram", () => {
     const requests = renderApp(api, FOLDER);
     const list = await relationships();
     expect(
-      list.getByRole("row", { name: /core\.accounts core\.customers.* Declared/ }),
+      list.getByRole("row", { name: /core\.accounts.*core\.customers.* Declared/ }),
     ).toBeInTheDocument();
     expect(
-      list.getByRole("row", { name: /core\.transactions core\.accounts.* Inferred, accepted/ }),
+      list.getByRole("row", { name: /core\.transactions.*core\.accounts.* Inferred, accepted/ }),
     ).toBeInTheDocument();
     for (const name of ["customers", "accounts", "transactions", "events"]) {
       const canvas = screen.getByLabelText("ER diagram canvas");
@@ -244,8 +244,31 @@ describe("Source ER diagram", () => {
     const canvas = screen.getByLabelText("ER diagram canvas");
     expect(within(canvas).getByText("audit.events")).toBeInTheDocument();
     expect(within(canvas).queryByText("core.accounts")).not.toBeInTheDocument();
-    // The relationships list is not narrowed by the canvas filters.
-    expect(screen.getByRole("table", { name: "Relationships" })).toBeInTheDocument();
+    // The relationships list follows the filters: audit has none.
+    expect(screen.queryByRole("table", { name: "Relationships" })).not.toBeInTheDocument();
+    expect(screen.getByText("No relationships match these filters.")).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { name: /^Relationships/ });
+    expect(heading).toHaveTextContent("Relationships0");
+  });
+
+  it("narrows the relationships list to the focused table's relationships", async () => {
+    renderApp(api, FOLDER);
+    await relationships();
+    fireEvent.change(screen.getByLabelText("Focus on a table"), {
+      target: { value: "t-cust" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: /^Relationships/ }),
+      ).toHaveTextContent("Relationships1"),
+    );
+    const list = await relationships();
+    expect(
+      list.getByRole("row", { name: /core\.accounts.*core\.customers/ }),
+    ).toBeInTheDocument();
+    expect(
+      list.queryByRole("row", { name: /core\.transactions.*core\.accounts/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("focuses on a table and its neighbours", async () => {
@@ -403,7 +426,7 @@ describe("Relationship review", () => {
     expect(row.getByText("core.transactions.customer_ref")).toBeInTheDocument();
     expect(row.getByText("core.customers.ref")).toBeInTheDocument();
     expect(row.getByText("82%")).toBeInTheDocument();
-    expect(row.getByText("routine")).toBeInTheDocument();
+    expect(row.getByText("Routine JOIN")).toBeInTheDocument();
     for (const chip of ["name", "type", "unique", "join: core.v_balances, core.sp_close", "overlap 97%"]) {
       expect(row.getByText(chip)).toBeInTheDocument();
     }
@@ -460,7 +483,7 @@ describe("Relationship review", () => {
     fireEvent.mouseDown(screen.getByRole("tab", { name: /^Current/ }), { button: 0 });
     fireEvent.click(screen.getByRole("tab", { name: /^Current/ }));
     const current = within(await screen.findByRole("table", { name: "Relationships" }));
-    const row = within(current.getByText("customer_ref → ref").closest("tr")!);
+    const row = within(current.getByText("core.transactions.customer_ref").closest("tr")!);
     expect(row.getByText("Inferred, accepted")).toBeInTheDocument();
   });
 
@@ -499,5 +522,74 @@ describe("Relationship review", () => {
     expect(await panel.findByText("core.transactions.customer_ref")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Find relationships" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+  });
+  const MANUAL: Relationship = {
+    ...INFERRED,
+    id: "88888888-8888-4888-8888-888888888888",
+    origin: "manual",
+    confidence: null,
+    evidence: {},
+  };
+
+  it("lists a manually added relationship with its badge, no confidence, and who added it", async () => {
+    const { handler, state } = review(EDITOR);
+    state.rows = [MANUAL];
+    renderApp(handler, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    const current = within(await screen.findByRole("table", { name: "Relationships" }));
+    const row = within(current.getByText("core.transactions.acct_no").closest("tr")!);
+    expect(row.getByText("Manually added")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add relationship" })).toBeInTheDocument();
+    openTab(/^Accepted/);
+    const accepted = within((await screen.findAllByRole("row"))[1]!);
+    expect(await accepted.findByText("Added by hand")).toBeInTheDocument();
+    expect(accepted.getByText("—")).toBeInTheDocument();
+  });
+
+  it("deletes a relationship after a confirmation, and locks the declared ones", async () => {
+    const { handler, state } = review(EDITOR);
+    state.rows = [MANUAL];
+    let deleted = "";
+    const requests = renderApp((r) => {
+      if (r.method === "DELETE" && r.path.startsWith(`${SYSTEM}/relationships/`)) {
+        deleted = r.path.split("/").pop()!;
+        state.rows = [];
+        return new Response(null, { status: 204 });
+      }
+      return handler(r);
+    }, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    const current = within(await screen.findByRole("table", { name: "Relationships" }));
+    expect(current.getByRole("img", { name: /can't be deleted/ })).toBeInTheDocument();
+    fireEvent.click(current.getByRole("button", { name: "Delete relationship" }));
+    expect(deleted).toBe("");
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(deleted).toBe(MANUAL.id));
+    expect(requests.find((r) => r.method === "DELETE")?.csrf).toBe(CSRF_TOKEN);
+  });
+
+  it("hides add and delete from a member without the right", async () => {
+    const { handler, state } = review(WORKSPACE);
+    state.rows = [MANUAL];
+    renderApp(handler, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    await screen.findByRole("table", { name: "Relationships" });
+    expect(screen.queryByRole("button", { name: "Add relationship" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete relationship" })).not.toBeInTheDocument();
+  });
+  it("Accept on the Rejected tab asks to confirm, then moves the row to Accepted", async () => {
+    const { handler, state } = review(EDITOR);
+    state.rows = [{ ...SUGGESTED, status: "rejected" }];
+    renderApp(handler, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    openTab(/^Rejected/);
+    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    expect(state.rows[0]!.status).toBe("rejected");
+    fireEvent.click(await screen.findByRole("button", { name: "Accept relationship" }));
+    await waitFor(() => expect(state.rows[0]!.status).toBe("accepted"));
   });
 });

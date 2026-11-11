@@ -37,6 +37,8 @@ const rows = (n: number | null) =>
 const KindBadge = ({ edge }: { edge: ErEdge }) =>
   edge.kind === "declared" ? (
     <Badge variant="fk">Declared</Badge>
+  ) : edge.kind === "manual" ? (
+    <Badge>Manually added</Badge>
   ) : (
     <Badge variant="mapped">Inferred, accepted</Badge>
   );
@@ -173,7 +175,11 @@ function Details({
                       .map((e) => (
                         <span key={e.id} className="inline-flex items-center gap-1">
                           <Badge variant={e.kind === "declared" ? "fk" : "mapped"}>
-                            {e.kind === "declared" ? "FK" : "FK inferred"}
+                            {e.kind === "declared"
+                              ? "FK"
+                              : e.kind === "manual"
+                                ? "FK manual"
+                                : "FK inferred"}
                           </Badge>
                           <span className="font-mono text-mono">
                             → {link(e.to)}.{e.toCols.join(", ")}

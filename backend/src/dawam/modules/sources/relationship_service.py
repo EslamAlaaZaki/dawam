@@ -86,7 +86,8 @@ class Relationship:
     from_column: ColumnRef
     to_column: ColumnRef
     origin: str
-    confidence: float
+    confidence: float | None
+    """``None`` for a ``manual`` relationship."""
     evidence: dict[str, Any]
     status: str
     """``suggested``, ``accepted`` or ``rejected``."""
@@ -184,12 +185,18 @@ class RelationshipService:
             self._system(db, workspace_id, system_id)
             query = self._select().where(
                 SrcDbSchemaRecord.source_system_id == system_id,
-                RelationshipRecord.confidence >= min_confidence - 1e-9,
+                sa.or_(
+                    RelationshipRecord.confidence.is_(None),
+                    RelationshipRecord.confidence >= min_confidence - 1e-9,
+                ),
             )
             if status is not None:
                 query = query.where(RelationshipRecord.status == status)
             rows = db.execute(
-                query.order_by(RelationshipRecord.confidence.desc(), RelationshipRecord.detected_at)
+                query.order_by(
+                    RelationshipRecord.confidence.desc().nulls_last(),
+                    RelationshipRecord.detected_at,
+                )
             ).all()
             return [self._view(*row) for row in rows]
 
@@ -204,6 +211,164 @@ class RelationshipService:
     ) -> Relationship:
         """Reject a relationship; later runs do not propose it again."""
         return self._decide(user, workspace_id, system_id, relationship_id, "rejected")
+
+    def create_manual(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        system_id: uuid.UUID,
+        from_column_id: uuid.UUID,
+        to_column_id: uuid.UUID,
+    ) -> Relationship:
+        """Add a relationship by hand (owners and editors): ``manual``, ``accepted``, no
+        confidence. A pair already suggested or rejected becomes that manual row. 422
+        ``same_column``; 409 ``declared_foreign_key`` and ``already_accepted``; 404 when a
+        column is not a present column of a present table in the Source System."""
+        self._workspaces.authorize(user, Action.EDIT_SOURCE_ENHANCEMENTS, workspace_id)
+        if from_column_id == to_column_id:
+            raise ApiError(422, "same_column", "A column cannot reference itself.")
+        with Session(self._engine) as db, db.begin():
+            system = self._system(db, workspace_id, system_id)
+            present = set(
+                db.scalars(
+                    sa.select(SrcColumnRecord.id)
+                    .join(SrcTableRecord, SrcTableRecord.id == SrcColumnRecord.table_id)
+                    .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+                    .where(
+                        SrcColumnRecord.id.in_((from_column_id, to_column_id)),
+                        SrcDbSchemaRecord.source_system_id == system_id,
+                        SrcColumnRecord.status == "present",
+                        SrcTableRecord.status == "present",
+                    )
+                )
+            )
+            if present != {from_column_id, to_column_id}:
+                raise _not_found("Column")
+            snapshot_id = self._latest_snapshot(db, system_id)
+            if snapshot_id is not None and self._is_declared(
+                db, snapshot_id, from_column_id, to_column_id
+            ):
+                raise ApiError(
+                    409,
+                    "declared_foreign_key",
+                    "The source database already declares this foreign key.",
+                )
+            record = db.scalars(
+                sa.select(RelationshipRecord)
+                .where(
+                    sa.or_(
+                        sa.and_(
+                            RelationshipRecord.from_column_id == from_column_id,
+                            RelationshipRecord.to_column_id == to_column_id,
+                        ),
+                        sa.and_(
+                            RelationshipRecord.from_column_id == to_column_id,
+                            RelationshipRecord.to_column_id == from_column_id,
+                        ),
+                    )
+                )
+                .order_by(RelationshipRecord.status != "accepted")
+                .with_for_update()
+            ).first()
+            now = self._clock()
+            old: dict[str, Any] | None = None
+            if record is None:
+                record = RelationshipRecord(
+                    id=uuid.uuid4(), evidence={}, version=0, detected_at=now
+                )
+                db.add(record)
+            elif record.status == "accepted":
+                raise ApiError(
+                    409, "already_accepted", "This pair is already an accepted relationship."
+                )
+            else:
+                old = {"status": record.status, "origin": record.origin}
+            record.from_column_id, record.to_column_id = from_column_id, to_column_id
+            record.origin, record.confidence, record.status = "manual", None, "accepted"
+            record.version += 1
+            record.decided_by, record.decided_at = user.id, now
+            db.flush()
+            row = db.execute(self._select().where(RelationshipRecord.id == record.id)).one()
+            record_audit(
+                db,
+                workspace_id=system.workspace_id,
+                actor_id=user.id,
+                entity_type="relationship",
+                entity_id=record.id,
+                old=old,
+                new={"status": "accepted", "origin": "manual"},
+                at=now,
+            )
+            record_activity(
+                db,
+                workspace_id=system.workspace_id,
+                actor_id=user.id,
+                verb="relationship.added",
+                object_type="relationship",
+                object_id=record.id,
+                object_label=self._label(row),
+                details={"source_system_id": str(system.id), "origin": "manual"},
+                at=now,
+            )
+            return self._view(*row)
+
+    def delete(
+        self, user: User, workspace_id: uuid.UUID, system_id: uuid.UUID, relationship_id: uuid.UUID
+    ) -> None:
+        """Delete a relationship (owners and editors). A ``manual`` one is removed (the audit
+        entry keeps its values); an inferred one is rejected, so it is never suggested
+        again. A ``declared`` one cannot be deleted (409 ``declared_relationship``)."""
+        self._workspaces.authorize(user, Action.EDIT_SOURCE_ENHANCEMENTS, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            system = self._system(db, workspace_id, system_id)
+            row = db.execute(
+                self._select()
+                .where(
+                    RelationshipRecord.id == relationship_id,
+                    SrcDbSchemaRecord.source_system_id == system_id,
+                )
+                .with_for_update(of=RelationshipRecord)
+            ).first()
+            if row is None:
+                raise _not_found("Relationship")
+            record = row[0]
+            if record.origin == "declared":
+                raise ApiError(
+                    409,
+                    "declared_relationship",
+                    "A foreign key in the source database can't be deleted here.",
+                )
+            if record.origin != "manual":
+                self._apply_decision(db, system, row, user, "rejected")
+                return
+            now = self._clock()
+            record_audit(
+                db,
+                workspace_id=system.workspace_id,
+                actor_id=user.id,
+                entity_type="relationship",
+                entity_id=record.id,
+                old={
+                    "status": record.status,
+                    "origin": record.origin,
+                    "from_column_id": str(record.from_column_id),
+                    "to_column_id": str(record.to_column_id),
+                },
+                new=None,
+                at=now,
+            )
+            record_activity(
+                db,
+                workspace_id=system.workspace_id,
+                actor_id=user.id,
+                verb="relationship.deleted",
+                object_type="relationship",
+                object_id=record.id,
+                object_label=self._label(row),
+                details={"source_system_id": str(system.id), "origin": "manual"},
+                at=now,
+            )
+            db.delete(record)
 
     # -- the job ------------------------------------------------------------------------
 
@@ -490,6 +655,11 @@ class RelationshipService:
                 if record is None and reverse is not None and reverse.status == "rejected":
                     seen.add(key)
                     continue  # a rejected x -> y also suppresses y -> x
+                if (record or reverse) is not None and "manual" in (
+                    getattr(record, "origin", None),
+                    getattr(reverse, "origin", None),
+                ):
+                    continue  # a manual pair is the user's: never scored, withdrawn or proposed
                 if record is None:
                     db.add(
                         RelationshipRecord(
@@ -615,6 +785,78 @@ class RelationshipService:
             decided_at=record.decided_at,
         )
 
+    @staticmethod
+    def _label(row: Any) -> str:
+        return f"{row[2].name}.{row[1].name} -> {row[5].name}.{row[4].name}"
+
+    def _apply_decision(
+        self, db: Session, system: SourceSystemRecord, row: Any, user: User, decision: str
+    ) -> None:
+        record: RelationshipRecord = row[0]
+        old_status = record.status
+        if old_status == decision:
+            return
+        now = self._clock()
+        record.status = decision
+        record.version += 1
+        record.decided_by = user.id
+        record.decided_at = now
+        record_audit(
+            db,
+            workspace_id=system.workspace_id,
+            actor_id=user.id,
+            entity_type="relationship",
+            entity_id=record.id,
+            old={"status": old_status},
+            new={"status": decision},
+            at=now,
+        )
+        record_activity(
+            db,
+            workspace_id=system.workspace_id,
+            actor_id=user.id,
+            verb=f"relationship.{decision}",
+            object_type="relationship",
+            object_id=record.id,
+            object_label=self._label(row),
+            details={
+                "source_system_id": str(system.id),
+                "origin": record.origin,
+                "confidence": record.confidence,
+            },
+            at=now,
+        )
+
+    def _is_declared(
+        self, db: Session, snapshot_id: uuid.UUID, first: uuid.UUID, second: uuid.UUID
+    ) -> bool:
+        """Whether the Snapshot declares a foreign key between the two columns (either way)."""
+        ends = {
+            column_id: (table_id, name)
+            for column_id, table_id, name in db.execute(
+                sa.select(SrcColumnRecord.id, SrcColumnRecord.table_id, SrcColumnRecord.name).where(
+                    SrcColumnRecord.id.in_((first, second))
+                )
+            )
+        }
+        for table_id, ref_table_id, names, ref_names in db.execute(
+            sa.select(
+                SnapshotConstraintRecord.src_table_id,
+                SnapshotConstraintRecord.ref_table_id,
+                SnapshotConstraintRecord.columns,
+                SnapshotConstraintRecord.ref_columns,
+            ).where(
+                SnapshotConstraintRecord.snapshot_id == snapshot_id,
+                SnapshotConstraintRecord.type == "fk",
+                SnapshotConstraintRecord.src_table_id.in_([t for t, _ in ends.values()]),
+                SnapshotConstraintRecord.ref_table_id.in_([t for t, _ in ends.values()]),
+            )
+        ):
+            for name, ref_name in zip(names, ref_names, strict=False):
+                if {(table_id, name), (ref_table_id, ref_name)} == set(ends.values()):
+                    return True
+        return False
+
     def _decide(
         self,
         user: User,
@@ -636,42 +878,7 @@ class RelationshipService:
             ).first()
             if row is None:
                 raise _not_found("Relationship")
-            record = row[0]
-            old_status = record.status
-            if old_status != decision:
-                now = self._clock()
-                record.status = decision
-                record.version += 1
-                record.decided_by = user.id
-                record.decided_at = now
-                from_column, from_table, to_column, to_table = row[1], row[2], row[4], row[5]
-                record_audit(
-                    db,
-                    workspace_id=system.workspace_id,
-                    actor_id=user.id,
-                    entity_type="relationship",
-                    entity_id=record.id,
-                    old={"status": old_status},
-                    new={"status": decision},
-                    at=now,
-                )
-                record_activity(
-                    db,
-                    workspace_id=system.workspace_id,
-                    actor_id=user.id,
-                    verb=f"relationship.{decision}",
-                    object_type="relationship",
-                    object_id=record.id,
-                    object_label=(
-                        f"{from_table.name}.{from_column.name} -> {to_table.name}.{to_column.name}"
-                    ),
-                    details={
-                        "source_system_id": str(system.id),
-                        "origin": record.origin,
-                        "confidence": record.confidence,
-                    },
-                    at=now,
-                )
+            self._apply_decision(db, system, row, user, decision)
             db.flush()
             return self._view(*row)
 

@@ -1,10 +1,11 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Network } from "lucide-react";
+import { Network, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { isActive, useJobs } from "../api/jobs";
+import { useMembers } from "../api/members";
 import {
   relationshipsKey,
   useDecideRelationship,
@@ -27,9 +28,17 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
+import {
+  AcceptRejectedDialog,
+  AddRelationshipDialog,
+  DeleteRelationshipDialog,
+  type DeleteTarget,
+} from "./RelationshipDialogs";
 import { RelationshipsTable } from "./RelationshipsTable";
-import { relationshipEdges } from "./erGraph";
+import { RelationshipVisual, relationshipEnds, type Endpoint } from "./RelationshipVisual";
+import { relationshipEdges, type ErEdge } from "./erGraph";
 import {
   EmptyState,
   ErrorText,
@@ -141,32 +150,71 @@ function ColumnRef({ column }: { column: Relationship["from_column"] }) {
 }
 
 /** Confidence as a short bar and its percentage. */
-function Confidence({ ratio }: { ratio: number }) {
+function Confidence({ ratio }: { ratio: number | null }) {
+  if (ratio == null) {
+    return <span className="text-subtle-foreground">—</span>;
+  }
   return (
     <span className="inline-flex items-center gap-1.5 tabular-nums">
       <span aria-hidden className="h-1 w-16 overflow-hidden rounded-full bg-muted">
-        <span className="block h-full bg-primary" style={{ width: percent(ratio) }} />
+        <span
+          className={cn("block h-full", ratio < 0.7 ? "bg-warning" : "bg-primary")}
+          style={{ width: percent(ratio) }}
+        />
       </span>
       <span>{percent(ratio)}</span>
     </span>
   );
 }
 
-/** Accept and Reject for a suggested relationship; the decision's badge otherwise. */
+/**
+ * Accept and Reject for a suggested relationship; the decision's badge otherwise, with a
+ * delete button on an accepted one when `onDelete` is given.
+ */
 function Decision({
   relationship,
   canDecide,
   decide,
+  onDelete,
+  onAcceptRejected,
 }: {
   relationship: Relationship;
   canDecide: boolean;
   decide: ReturnType<typeof useDecideRelationship>;
+  onDelete?: (relationship: Relationship) => void;
+  onAcceptRejected?: (relationship: Relationship) => void;
 }) {
   if (relationship.status !== "suggested") {
     return relationship.status === "accepted" ? (
-      <Badge variant="mapped">Accepted</Badge>
+      <div className="flex items-center gap-2">
+        <Badge variant="mapped">Accepted</Badge>
+        {onDelete && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Delete relationship"
+            onClick={() => onDelete(relationship)}
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        )}
+      </div>
     ) : (
-      <Badge>Rejected</Badge>
+      <div className="flex items-center gap-2">
+        <Badge>Rejected</Badge>
+        {onAcceptRejected && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="text-success-strong"
+            onClick={() => onAcceptRejected(relationship)}
+          >
+            Accept
+          </Button>
+        )}
+      </div>
     );
   }
   if (!canDecide) {
@@ -177,7 +225,8 @@ function Decision({
       <Button
         type="button"
         size="sm"
-        variant="primary"
+        variant="secondary"
+        className="text-success-strong"
         disabled={decide.isPending}
         onClick={() => decide.mutate({ id: relationship.id, decision: "accept" })}
       >
@@ -186,6 +235,7 @@ function Decision({
       <Button
         type="button"
         size="sm"
+        variant="ghost"
         disabled={decide.isPending}
         onClick={() => decide.mutate({ id: relationship.id, decision: "reject" })}
       >
@@ -195,11 +245,76 @@ function Decision({
   );
 }
 
+/** The kind filter of the Current list. */
+type KindFilter = "all" | ErEdge["kind"];
+
+const KIND_FILTERS: { kind: KindFilter; label: string }[] = [
+  { kind: "all", label: "All" },
+  { kind: "declared", label: "Declared" },
+  { kind: "inferred", label: "Inferred" },
+  { kind: "manual", label: "Manual" },
+];
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]!.toUpperCase())
+    .join("");
+
+/** Who decided and when, with an initials avatar: "Accepted by Ada · 1/6/2026". */
+function DecidedBy({
+  verb,
+  relationship,
+  names,
+}: {
+  verb: string;
+  relationship: Relationship;
+  names: ReadonlyMap<string, string>;
+}) {
+  const name = (relationship.decided_by && names.get(relationship.decided_by)) || "a member";
+  return (
+    <span className="inline-flex items-center gap-2 text-muted-foreground">
+      <span
+        aria-hidden
+        className="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium"
+      >
+        {initials(name)}
+      </span>
+      <span>
+        {verb} {name}
+        {relationship.decided_at &&
+          ` · ${new Date(relationship.decided_at).toLocaleDateString()}`}
+      </span>
+    </span>
+  );
+}
+
+/** Evidence chips, or "Added by hand" for a manual relationship. */
+function Evidence({ relationship }: { relationship: Relationship }) {
+  if (relationship.origin === "manual") {
+    return <span className="text-muted-foreground">Added by hand</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {signalChips(relationship).map((chip) => (
+        <Badge key={chip} variant="info">
+          {chip}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+const originLabel = (origin: Relationship["origin"]) =>
+  origin === "manual" ? "Manually added" : origin === "routine" ? "Routine JOIN" : "Rules";
+
 /**
- * A Source System's inferred relationships (spec story 60): the Suggested / Accepted /
- * Rejected lists, most confident first, as one table that lets an owner or editor decide
- * each one. Any member can read the lists; deciding needs the enhancement right and an
- * active Workspace.
+ * A Source System's relationships (spec story 60): Current (in effect, filterable by
+ * kind), and the Suggested / Accepted / Rejected lists, most confident first, that let an
+ * owner or editor decide, add and delete. Any member can read the lists; changing them
+ * needs the enhancement right and an active Workspace.
  */
 export function RelationshipReview({
   workspace,
@@ -212,19 +327,24 @@ export function RelationshipReview({
   initialView?: "current" | "suggested";
 }) {
   const [status, setStatus] = useState<View>(initialView);
+  const [kind, setKind] = useState<KindFilter>("all");
   const byStatus = {
     suggested: useRelationshipsByStatus(workspace.id, systemId, "suggested"),
     accepted: useRelationshipsByStatus(workspace.id, systemId, "accepted"),
     rejected: useRelationshipsByStatus(workspace.id, systemId, "rejected"),
   };
   const schema = useSourceSchema(workspace.id, systemId, true);
+  const tables = useMemo(
+    () => new Map((schema.data?.tables ?? []).map((t) => [t.id, t])),
+    [schema.data],
+  );
   const current = useMemo(() => {
     if (!schema.data || !byStatus.accepted.data) return null;
     return {
       edges: relationshipEdges(schema.data.tables, byStatus.accepted.data),
-      tables: new Map(schema.data.tables.map((t) => [t.id, t])),
+      tables,
     };
-  }, [schema.data, byStatus.accepted.data]);
+  }, [schema.data, byStatus.accepted.data, tables]);
   const counts: Record<View, number | undefined> = {
     current: current?.edges.length,
     suggested: byStatus.suggested.data?.length,
@@ -235,6 +355,37 @@ export function RelationshipReview({
   const decide = useDecideRelationship(workspace.id, systemId);
   const canDecide =
     workspace.status !== "archived" && allows(workspace, "source_schema.enhance");
+  const members = useMembers(workspace.id);
+  const names = new Map((members.data ?? []).map((m) => [m.user_id, m.display_name]));
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
+  const [accepting, setAccepting] = useState<{
+    id: string;
+    from: Endpoint;
+    to: Endpoint;
+    cardinality: string;
+  } | null>(null);
+
+  const askDelete = (relationship: Relationship) => {
+    const ends = relationshipEnds(relationship, tables);
+    const by = relationship.decided_by && names.get(relationship.decided_by);
+    setDeleting({
+      id: relationship.id,
+      manual: relationship.origin === "manual",
+      ...ends,
+      kind: relationship.origin === "manual" ? "Manually added" : "Inferred, accepted",
+      confidence: relationship.confidence,
+      decidedBy: by
+        ? `${relationship.origin === "manual" ? "Added" : "Accepted"} by ${by}`
+        : "",
+    });
+  };
+  const askAccept = (relationship: Relationship) =>
+    setAccepting({ id: relationship.id, ...relationshipEnds(relationship, tables) });
+
+  const shownEdges = (current?.edges ?? []).filter((e) => kind === "all" || e.kind === kind);
+  const kindCount = (k: KindFilter) =>
+    (current?.edges ?? []).filter((e) => k === "all" || e.kind === k).length;
 
   return (
     <section aria-label="Relationships" className="flex flex-col gap-3">
@@ -252,11 +403,47 @@ export function RelationshipReview({
                     {counts[tab.status]}
                   </span>
                 )}
+                {tab.status === "suggested" && (counts.suggested ?? 0) > 0 && (
+                  <span aria-hidden className="ms-1 size-1.5 rounded-full bg-warning" />
+                )}
               </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
+        {canDecide && status === "current" && current && (
+          <Button
+            type="button"
+            variant="primary"
+            className="ms-auto"
+            onClick={() => setAdding(true)}
+          >
+            <Plus aria-hidden />
+            Add relationship
+          </Button>
+        )}
       </div>
+      {canDecide && current && (
+        <AddRelationshipDialog
+          open={adding}
+          onOpenChange={setAdding}
+          workspaceId={workspace.id}
+          systemId={systemId}
+          tables={schema.data?.tables ?? []}
+          edges={current.edges}
+        />
+      )}
+      <DeleteRelationshipDialog
+        target={deleting}
+        onClose={() => setDeleting(null)}
+        workspaceId={workspace.id}
+        systemId={systemId}
+      />
+      <AcceptRejectedDialog
+        target={accepting}
+        onClose={() => setAccepting(null)}
+        workspaceId={workspace.id}
+        systemId={systemId}
+      />
       {status === "current" &&
         (schema.isError || byStatus.accepted.isError ? (
           <ErrorText>
@@ -264,7 +451,43 @@ export function RelationshipReview({
             {(schema.error ?? byStatus.accepted.error)?.message}
           </ErrorText>
         ) : current ? (
-          <RelationshipsTable edges={current.edges} tables={current.tables} />
+          <>
+            <div role="group" aria-label="Filter by kind" className="flex flex-wrap gap-2">
+              {KIND_FILTERS.map((f) => (
+                <Button
+                  key={f.kind}
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className={
+                    kind === f.kind
+                      ? "border-primary bg-primary-subtle text-foreground"
+                      : undefined
+                  }
+                  aria-pressed={kind === f.kind}
+                  onClick={() => setKind(f.kind)}
+                >
+                  {f.label}
+                  <span className="tabular-nums">{kindCount(f.kind)}</span>
+                </Button>
+              ))}
+            </div>
+            <RelationshipsTable
+              edges={shownEdges}
+              tables={current.tables}
+              empty="No relationships of this kind."
+              onDelete={
+                canDecide
+                  ? (edge) => {
+                      const relationship = byStatus.accepted.data?.find(
+                        (r) => r.id === edge.relationshipId,
+                      );
+                      if (relationship) askDelete(relationship);
+                    }
+                  : undefined
+              }
+            />
+          </>
         ) : (
           <Loading label="Loading relationships…" className="p-0" />
         ))}
@@ -288,50 +511,63 @@ export function RelationshipReview({
                 <TableHead>Relationship</TableHead>
                 <TableHead>Confidence</TableHead>
                 <TableHead>Evidence</TableHead>
-                <TableHead>Origin</TableHead>
+                <TableHead>{status === "suggested" ? "Origin" : "Kind"}</TableHead>
+                {status !== "suggested" && <TableHead>Decided</TableHead>}
                 <TableHead>
-                  <span className="sr-only">Decision</span>
+                  <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {list.data.map((relationship) => (
-                <TableRow key={relationship.id}>
-                  <TableCell className="whitespace-normal">
-                    <div className="flex min-w-56 flex-col py-1">
-                      <ColumnRef column={relationship.from_column} />
-                      <span className="inline-flex gap-1">
-                        <span aria-hidden className="text-subtle-foreground">
-                          →
-                        </span>
-                        <ColumnRef column={relationship.to_column} />
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Confidence ratio={relationship.confidence} />
-                  </TableCell>
-                  <TableCell className="whitespace-normal">
-                    <div className="flex flex-wrap gap-1">
-                      {signalChips(relationship).map((chip) => (
-                        <Badge key={chip} variant="info">
-                          {chip}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge>{relationship.origin}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Decision
-                      relationship={relationship}
-                      canDecide={canDecide}
-                      decide={decide}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {list.data.map((relationship) => {
+                const ends = relationshipEnds(relationship, tables);
+                return (
+                  <TableRow key={relationship.id}>
+                    <TableCell className="whitespace-normal">
+                      <RelationshipVisual
+                        {...ends}
+                        dashed
+                        muted={relationship.status === "rejected"}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Confidence ratio={relationship.confidence} />
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      <Evidence relationship={relationship} />
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={relationship.origin === "manual" ? "neutral" : "mapped"}>
+                        {originLabel(relationship.origin)}
+                      </Badge>
+                    </TableCell>
+                    {status !== "suggested" && (
+                      <TableCell className="whitespace-normal">
+                        <DecidedBy
+                          verb={
+                            relationship.status === "rejected"
+                              ? "Rejected by"
+                              : relationship.origin === "manual"
+                                ? "Added by"
+                                : "Accepted by"
+                          }
+                          relationship={relationship}
+                          names={names}
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <Decision
+                        relationship={relationship}
+                        canDecide={canDecide}
+                        decide={decide}
+                        onDelete={canDecide ? askDelete : undefined}
+                        onAcceptRejected={canDecide ? askAccept : undefined}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableCard>
@@ -339,6 +575,7 @@ export function RelationshipReview({
     </section>
   );
 }
+
 
 /**
  * One table's suggested and accepted inferred relationships, from either end, on the

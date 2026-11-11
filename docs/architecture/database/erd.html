@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "d7a3f5b2c618"
+  "e4b7a1c9d352"
  ],
  "modules": [
   {
@@ -12642,14 +12642,14 @@ a.tlink:hover { text-decoration: underline; }
      "in_orm": true,
      "attribute": "origin",
      "app_default": null,
-     "description": "``inferred`` (rules) or ``routine`` (a JOIN in a view or routine); later ``declared``,\n``ai`` and ``manual``.",
+     "description": "``inferred`` (rules), ``routine`` (a JOIN in a view or routine) or ``manual`` (an\neditor added it); later ``declared`` and ``ai``.",
      "pk": false,
      "fk": []
     },
     {
      "name": "confidence",
      "type": "double precision",
-     "nullable": false,
+     "nullable": true,
      "default": null,
      "identity": null,
      "generated": null,
@@ -12657,7 +12657,7 @@ a.tlink:hover { text-decoration: underline; }
      "in_orm": true,
      "attribute": "confidence",
      "app_default": null,
-     "description": null,
+     "description": "0 to 1; ``NULL`` for a ``manual`` relationship, which has no score.",
      "pk": false,
      "fk": []
     },

@@ -243,7 +243,8 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 57. As an editor, I want profiling to respect a configurable row-sample limit and query timeout, so that production sources aren't overloaded.
 58. As a member, I want the tool to suggest inferred relationships based on name similarity, matching types, value overlap and JOIN clauses found in stored procedures, functions and views, each with a confidence score and its evidence, so that undeclared joins are discovered.
 59. As an editor, I want to accept or reject inferred relationships, so that the Source Schema reflects reality.
-60. As a member, I want an ER diagram of a Source System (declared and accepted relationships) that I can filter by Database Schema or table, so that I can understand the structure visually.
+59a. As an editor, I want to add a relationship between two columns by hand, and to delete any relationship that is not a declared foreign key, so that the Source Schema holds joins inference cannot find and drops ones that are wrong.
+60. As a member, I want an ER diagram of a Source System (declared, accepted and manually added relationships) that I can filter by Database Schema or table, so that I can understand the structure visually.
 61. As an editor, I want to add business descriptions, tags (e.g. `PII`, `master-data`, `transactional`) and a sensitivity flag to tables and columns, so that the Source Schema carries business meaning.
 62. As an editor, I want to classify each source table (master, transactional, reference, log, landing) and label it with an SCD hint (e.g. "changes slowly, history matters"), so that DW Modeling decisions are informed.
 63. As a member, I want a source summary dashboard (table count, documented %, profiled %, relationships found, PII found), so that I can gauge analysis completeness.
@@ -466,6 +467,13 @@ Rule-based candidates, then optional AI confirmation. Candidate pairs are scored
 - JOIN conditions parsed with sqlglot from stored procedures, functions and view definitions
 
 The output is a confidence score from 0 to 1 with its evidence. Only candidates at or above a threshold (default 0.6) are shown. The AI may then confirm or reject candidates by exploring the data (§6.8), adding its query results as evidence.
+
+**Manual relationships and delete.** An owner or editor (active Workspace) can also add a relationship by hand and delete one. People only: the AI Change Set handler keeps to accept and reject.
+
+- **Add.** One column to one column (no composite joins), both present columns of present tables in the same Source System. It is stored with `origin = manual` and `status = accepted` at once, with no confidence (`confidence` is null; it is never hidden by the threshold and shows as "—"). `decided_by` and `decided_at` record who added it and when. It is blocked when a column would reference itself, when the pair is a declared foreign key, or when the pair is already accepted (either direction). Differing column types, or a target that is not a primary key or unique, only warn. A pair already suggested, or previously rejected, becomes the manual, accepted row.
+- **Delete.** Declared foreign keys cannot be deleted. An inferred or routine relationship becomes `rejected` (never suggested again). A manual one is removed; its audit entry keeps the old values, and a later run may suggest the pair again.
+- **Re-runs.** Relationship inference skips manual pairs entirely, like declared ones: no score or evidence update, never withdrawn, never proposed again while the manual row exists.
+- Add and delete are audited, appear in the activity feed and count as Source Schema enhancements that can prompt a Data Warehouse regeneration (§6.10); nothing in the Data Warehouse changes until the user regenerates.
 
 ### 6.7 Staging generation
 
@@ -807,7 +815,7 @@ RenameCandidate(id, snapshot_id, object_type[db_schema|table|column], old_object
 ColumnProfile(id, src_column_id, job_id, row_count, null_pct, distinct_count, min, max,
               avg_len, max_len, top_values JSON?, patterns[], profiled_at)
 Relationship(id, from_column_id, to_column_id, origin[declared|inferred|routine|ai|manual],
-             confidence, evidence JSON, status[suggested|accepted|rejected], version)
+             confidence (null for manual), evidence JSON, status[suggested|accepted|rejected], version)
 SourceLink(id, source_system_id, kind[repo|jira|confluence|other], title, url, note, created_by)
 FileObjectLink(file_id, object_type[table|column], object_id)   -- documents linked to tables/columns
 

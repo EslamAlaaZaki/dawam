@@ -9,8 +9,13 @@ export interface ErEdge {
   id: string;
   from: string;
   to: string;
-  /** `declared` is a foreign key of the Snapshot; `inferred` an accepted inferred relationship. */
-  kind: "declared" | "inferred";
+  /**
+   * `declared` is a foreign key of the Snapshot; `inferred` an accepted inferred
+   * relationship; `manual` one a person added.
+   */
+  kind: "declared" | "inferred" | "manual";
+  /** The relationship's id, for the ones that can be deleted (not `declared`). */
+  relationshipId?: string;
   label: string;
   /** The referencing columns, in the `from` table. */
   fromCols: string[];
@@ -57,7 +62,7 @@ export function isUnique(table: Table, columns: readonly string[]): boolean {
 const anyNullable = (table: Table, columns: readonly string[]) =>
   table.columns.some((c) => columns.includes(c.name) && c.is_nullable);
 
-/** Every relationship between present tables: declared foreign keys, then accepted inferred ones. */
+/** Every relationship between present tables: declared foreign keys, then accepted inferred and manual ones. */
 export function relationshipEdges(
   tables: readonly Table[],
   accepted: readonly Relationship[],
@@ -92,9 +97,10 @@ export function relationshipEdges(
       const fromCols = [rel.from_column.column];
       edges.push({
         id: `inferred:${rel.id}`,
+        relationshipId: rel.id,
         from: rel.from_column.table_id,
         to: rel.to_column.table_id,
-        kind: "inferred",
+        kind: rel.origin === "manual" ? "manual" : "inferred",
         label: `${rel.from_column.column} → ${rel.to_column.column}`,
         fromCols,
         toCols: [rel.to_column.column],
