@@ -7,7 +7,7 @@ import { Badge } from "../components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { cn } from "../lib/utils";
 import { monoClasses } from "./parts";
-import type { EndTag } from "./RelationshipVisual";
+import { tagVariant, type EndTag } from "./RelationshipVisual";
 
 /** One choice: an optional key tag, a name, a small detail (the type) and a right-hand note. */
 export interface PickerItem {
@@ -23,8 +23,6 @@ export interface PickerGroup {
   label: string;
   items: PickerItem[];
 }
-
-export const tagVariant = { FK: "fk", PK: "pk", UQ: "neutral", COL: "neutral" } as const;
 
 /** `text` with the part matching `query` in the primary colour. */
 function Highlight({ text, query }: { text: string; query: string }) {
@@ -87,15 +85,16 @@ export function SearchPicker({
   const current = Math.min(active, Math.max(flat.length - 1, 0));
   const optionId = (index: number) => `${uid}-option-${index}`;
 
-  useEffect(() => {
+  // Each time the popover opens: clear the search and start on the current choice.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setQuery("");
       const chosen = groups.flatMap((g) => g.items).findIndex((i) => i.id === selectedId);
       setActive(Math.max(chosen, 0));
     }
-    // Reset only when the popover opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }
 
   useEffect(() => {
     listRef.current?.querySelector(`[id="${optionId(current)}"]`)?.scrollIntoView?.({
@@ -127,7 +126,7 @@ export function SearchPicker({
     }
   }
 
-  let index = -1;
+  const indexOf = new Map(flat.map((item, i) => [item.id, i]));
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -186,8 +185,7 @@ export function SearchPicker({
                 <span className="tabular-nums">{group.items.length}</span>
               </div>
               {group.items.map((item) => {
-                index += 1;
-                const mine = index;
+                const mine = indexOf.get(item.id) ?? 0;
                 return (
                   <div
                     key={item.id}

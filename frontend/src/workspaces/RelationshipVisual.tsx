@@ -61,7 +61,8 @@ export function relationshipEnds(
   };
 }
 
-const tagVariant = { FK: "fk", PK: "pk", UQ: "neutral", COL: "neutral" } as const;
+/** The Badge variant for each key tag. */
+export const tagVariant = { FK: "fk", PK: "pk", UQ: "neutral", COL: "neutral" } as const;
 
 function Chip({
   end,

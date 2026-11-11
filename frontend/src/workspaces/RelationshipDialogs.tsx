@@ -24,10 +24,11 @@ import { toast } from "../components/ui/sonner";
 import { cn } from "../lib/utils";
 import { isUnique, presentColumns, type ErEdge } from "./erGraph";
 import { ErrorText, labelClasses, monoClasses } from "./parts";
-import { SearchPicker, tagVariant, type PickerGroup, type PickerItem } from "./SearchPicker";
+import { SearchPicker, type PickerGroup, type PickerItem } from "./SearchPicker";
 import {
   RelationshipCards,
   RelationshipVisual,
+  tagVariant,
   targetTag,
   type Endpoint,
   type EndTag,
