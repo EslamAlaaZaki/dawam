@@ -320,14 +320,21 @@ export function SourceErDiagram({
         <div className="flex flex-col gap-1">
           <h4 id="er-relationships" className="flex items-center gap-2 text-lg font-semibold">
             Relationships
-            <Badge className="tabular-nums">{graph.all.length}</Badge>
+            <Badge className="tabular-nums">{edges.length}</Badge>
           </h4>
           <Hint>
             Declared foreign keys from the Snapshot, plus inferred relationships accepted in
             the Source schema.
           </Hint>
         </div>
-        <RelationshipsTable edges={graph.all} tables={graph.byId} onOpenTable={openTable} />
+        <RelationshipsTable
+          edges={edges}
+          tables={graph.byId}
+          onOpenTable={openTable}
+          empty={
+            graph.all.length > 0 ? "No relationships match these filters." : undefined
+          }
+        />
       </section>
 
       <ErTableDetails

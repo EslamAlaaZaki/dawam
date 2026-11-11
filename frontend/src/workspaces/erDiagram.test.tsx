@@ -244,8 +244,31 @@ describe("Source ER diagram", () => {
     const canvas = screen.getByLabelText("ER diagram canvas");
     expect(within(canvas).getByText("audit.events")).toBeInTheDocument();
     expect(within(canvas).queryByText("core.accounts")).not.toBeInTheDocument();
-    // The relationships list is not narrowed by the canvas filters.
-    expect(screen.getByRole("table", { name: "Relationships" })).toBeInTheDocument();
+    // The relationships list follows the filters: audit has none.
+    expect(screen.queryByRole("table", { name: "Relationships" })).not.toBeInTheDocument();
+    expect(screen.getByText("No relationships match these filters.")).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { name: /^Relationships/ });
+    expect(heading).toHaveTextContent("Relationships0");
+  });
+
+  it("narrows the relationships list to the focused table's relationships", async () => {
+    renderApp(api, FOLDER);
+    await relationships();
+    fireEvent.change(screen.getByLabelText("Focus on a table"), {
+      target: { value: "t-cust" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: /^Relationships/ }),
+      ).toHaveTextContent("Relationships1"),
+    );
+    const list = await relationships();
+    expect(
+      list.getByRole("row", { name: /core\.accounts core\.customers/ }),
+    ).toBeInTheDocument();
+    expect(
+      list.queryByRole("row", { name: /core\.transactions core\.accounts/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("focuses on a table and its neighbours", async () => {

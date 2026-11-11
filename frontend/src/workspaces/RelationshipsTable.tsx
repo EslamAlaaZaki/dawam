@@ -19,19 +19,22 @@ type SchemaTable = SourceSchema["tables"][number];
 /**
  * The relationships in effect (declared foreign keys and accepted inferred ones) as a table:
  * from → to, the joined columns, the cardinality and the kind. With `onOpenTable` the
- * table names are buttons; without it they are plain text.
+ * table names are buttons; without it they are plain text. `empty` replaces the default
+ * message shown when there are no edges.
  */
 export function RelationshipsTable({
   edges,
   tables,
   onOpenTable,
+  empty = "No relationships yet.",
 }: {
   edges: readonly ErEdge[];
   tables: ReadonlyMap<string, SchemaTable>;
   onOpenTable?: (id: string) => void;
+  empty?: string;
 }) {
   if (edges.length === 0) {
-    return <EmptyState>No relationships yet.</EmptyState>;
+    return <EmptyState>{empty}</EmptyState>;
   }
   const name = (id: string) => {
     const table = tables.get(id);
