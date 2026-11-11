@@ -39,7 +39,7 @@ Workspaces/
 └── Ministry DW/                         ← Workspace
     ├── Systems/
     │   └── System A/                    ← Source System (one database)
-    │       ├── Connection | Schema Import
+    │       ├── Connection
     │       ├── Source Schema            ← latest Snapshot + discovered relationships,
     │       │                              descriptions, labels
     │       ├── Profiling

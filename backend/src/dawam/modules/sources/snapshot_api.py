@@ -172,6 +172,11 @@ class SnapshotTable(BaseModel):
         default=None,
         description="Send it back when editing the enhancements; set only in the Source Schema.",
     )
+    profiled_at: datetime | None = Field(
+        default=None,
+        description="When the table was last profiled, null if never; set only in the "
+        "Source Schema.",
+    )
 
 
 class SnapshotRoutine(BaseModel):

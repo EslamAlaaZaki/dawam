@@ -126,7 +126,7 @@ describe("the Workspace frame", () => {
     expect(
       await screen.findByRole("heading", { name: "Retail DW" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Your role: Editor")).toBeInTheDocument();
+    expect(screen.getByLabelText("Your role: Editor")).toBeInTheDocument();
     const stepper = await screen.findByRole("region", {
       name: "Stage progress",
     });

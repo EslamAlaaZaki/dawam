@@ -1,5 +1,10 @@
+import { Check, Copy } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
 
+import { Button } from "../components/ui/button";
+import { toast } from "../components/ui/sonner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 
 export {
@@ -87,6 +92,62 @@ export const linkButtonClasses =
 export const preClasses =
   "max-h-80 overflow-auto rounded-lg border border-border bg-surface p-3 font-mono text-mono";
 
+const PREVIEW_LINES = 12;
+
+/**
+ * Code and SQL, shown in a box that never grows: at most 12 lines, each cut at the box
+ * width. A copy button takes the full text.
+ */
+export function CodePreview({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const lines = code.split("\n");
+  const shown = lines.slice(0, PREVIEW_LINES);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      toast.error("Could not copy the definition.");
+      return;
+    }
+    setCopied(true);
+    toast.success("Definition copied.");
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <div className="relative rounded-lg border border-border bg-surface">
+      <pre className="m-0 overflow-hidden p-3 pr-12 font-mono text-mono">
+        {shown.map((line, i) => (
+          <div key={i} className="truncate whitespace-pre">
+            {line || " "}
+          </div>
+        ))}
+        {lines.length > PREVIEW_LINES && <div>…</div>}
+      </pre>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 right-2"
+            aria-label="Copy definition"
+            onClick={copy}
+          >
+            {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Copy definition</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 /** A bordered list of rows, for object lists. */
 export const listCardClasses =
   "divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface-raised";
@@ -97,3 +158,37 @@ export const checkLabelClasses = "flex items-center gap-2 text-sm font-medium";
 
 /** The fieldset of a form: no border, controls stacked like the card around it. */
 export const fieldsetClasses = "m-0 flex min-w-0 flex-col gap-3.5 border-0 p-0";
+
+const calloutTones = {
+  neutral: "bg-muted text-muted-foreground",
+  success: "bg-success-subtle text-foreground [&>svg]:text-success-strong",
+  warning: "bg-warning-subtle text-foreground [&>svg]:text-warning-strong",
+  danger: "bg-danger-subtle text-foreground [&>svg]:text-danger-strong",
+} as const;
+
+/** A tinted box with an icon: a notice, or the outcome of a test or a check. */
+export function Callout({
+  tone = "neutral",
+  icon,
+  className,
+  children,
+  ...props
+}: Omit<ComponentProps<"div">, "children"> & {
+  tone?: keyof typeof calloutTones;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-3 rounded-lg px-3.5 py-3 text-sm [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0",
+        calloutTones[tone],
+        className,
+      )}
+      {...props}
+    >
+      {icon}
+      <div className="flex min-w-0 flex-1 flex-col gap-2">{children}</div>
+    </div>
+  );
+}

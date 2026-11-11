@@ -472,7 +472,7 @@ describe("creating a Workspace", () => {
     expect(
       await screen.findByRole("heading", { name: "Retail DW" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Your role: Owner")).toBeInTheDocument();
+    expect(screen.getByLabelText("Your role: Owner")).toBeInTheDocument();
     expect(currentLocation()).toBe(
       "/workspaces/33333333-3333-4333-8333-333333333333",
     );
@@ -692,7 +692,7 @@ describe("a Workspace's page", () => {
     expect(
       await screen.findByRole("heading", { name: "Retail DW" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(`Your role: ${label}`)).toBeInTheDocument();
+    expect(screen.getByLabelText(`Your role: ${label}`)).toBeInTheDocument();
     const dialog = await openSettings();
     expect(
       within(dialog).queryByRole("tab", { name: "Archive & delete" }),

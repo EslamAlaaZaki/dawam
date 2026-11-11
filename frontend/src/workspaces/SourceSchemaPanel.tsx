@@ -1,36 +1,97 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import {
+  Activity,
+  ChevronDown,
+  Database,
+  Download,
+  FolderInput,
+  History,
+  RefreshCw,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { dataDictionaryUrl, useSaveDataDictionary } from "../api/files";
 import { isActive, useJobs } from "../api/jobs";
 import {
+  tableProfilesKey,
+  useImportStatus,
+  useProfilingRuns,
+  useStartProfiling,
+} from "../api/profiling";
+import {
   snapshotsKey,
   sourceSchemaKey,
   useSnapshots,
+  useSourceSchema,
   useStartExtraction,
+  type SnapshotSummary,
 } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { toast } from "../components/ui/sonner";
-import { SchemaBrowser } from "./SchemaBrowser";
-import { SnapshotDiffView } from "./SnapshotDiffView";
 import {
-  Actions,
-  EmptyState,
-  ErrorText,
-  h3Classes,
-  listCardClasses,
-} from "./parts";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import { toast } from "../components/ui/sonner";
+import { cn } from "../lib/utils";
+import { SchemaBrowser, Sep } from "./SchemaBrowser";
+import { SnapshotDiffView } from "./SnapshotDiffView";
+import { EmptyState, ErrorText, listCardClasses } from "./parts";
 import { Loading } from "../shell/Loading";
 
+/** A count and its noun, singular for one. */
+function Counted({
+  count,
+  one,
+  many,
+}: {
+  count: number;
+  one: string;
+  many: string;
+}) {
+  return (
+    <span>
+      <span className="font-medium text-foreground">{count}</span>{" "}
+      {count === 1 ? one : many}
+    </span>
+  );
+}
+
+/** A Snapshot's counts, as the latest-Snapshot line and the Snapshot list show them. */
+function SnapshotCounts({ snapshot }: { snapshot: SnapshotSummary }) {
+  return (
+    <>
+      <Counted
+        count={snapshot.schema_count}
+        one="Database Schema"
+        many="Database Schemas"
+      />
+      <Sep />
+      <Counted
+        count={snapshot.table_count}
+        one="table and view"
+        many="tables and views"
+      />
+      <Sep />
+      <Counted count={snapshot.column_count} one="column" many="columns" />
+      <Sep />
+      <Counted count={snapshot.routine_count} one="routine" many="routines" />
+    </>
+  );
+}
+
 /**
- * A Source System's Source Schema (spec stories 45, 46, 54): the browser over its latest
- * Snapshot, its Snapshots newest first, and for owners and editors a button that extracts
- * metadata from the Connection as a background job. Both refresh once that job finishes.
+ * A Source System's Source Schema (spec stories 45, 46, 54-57): the latest Snapshot's
+ * counts under the title with every Snapshot behind a toggle, the browser over the latest
+ * Snapshot, and the diff between Snapshots. Owners and editors extract metadata from the
+ * Connection and profile every table and view, each as a background job; the page
+ * refreshes once a job finishes.
  */
 export function SourceSchemaPanel({
   workspace,
@@ -41,11 +102,17 @@ export function SourceSchemaPanel({
 }) {
   const canExtract = allows(workspace, "source_system.extract");
   const snapshots = useSnapshots(workspace.id, system.id);
+  const hasSnapshot = snapshots.isSuccess && snapshots.data.length > 0;
+  const schema = useSourceSchema(workspace.id, system.id, hasSnapshot);
   const extract = useStartExtraction(workspace.id, system.id);
   const canSave = allows(workspace, "file.upload");
   const save = useSaveDataDictionary(workspace.id, system.id);
+  const importStatus = useImportStatus(workspace.id, system.id);
+  const profileAll = useStartProfiling(workspace.id, system.id);
+  const runs = useProfilingRuns(workspace.id, system.id);
   const jobs = useJobs(workspace.id);
   const queryClient = useQueryClient();
+  const [showSnapshots, setShowSnapshots] = useState(false);
 
   const startedId = extract.data?.job_id;
   const started = jobs.data?.items.find((job) => job.id === startedId);
@@ -61,14 +128,142 @@ export function SourceSchemaPanel({
     }
   }, [finished, queryClient, workspace.id, system.id]);
 
+  const unavailable =
+    importStatus.data?.imported === true && !importStatus.data.has_connection;
+  const canProfile =
+    allows(workspace, "source_system.profile") &&
+    importStatus.isSuccess &&
+    !unavailable;
+  const present = (schema.data?.tables ?? []).filter(
+    (t) => t.status == null || t.status === "present",
+  );
+  const latest = snapshots.data?.find((s) => s.is_latest);
+  const refreshing = snapshots.isFetching || schema.isFetching;
+
+  /** Reload what the page already shows; no query is added. */
+  function refresh() {
+    for (const queryKey of [
+      snapshotsKey(workspace.id, system.id),
+      sourceSchemaKey(workspace.id, system.id),
+      tableProfilesKey(workspace.id, system.id),
+    ]) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+  }
+
+  function startProfileAll() {
+    const tableIds = present.map((t) => t.id);
+    profileAll.mutate(tableIds, {
+      onSuccess: (job) => {
+        runs.follow({ jobId: job.job_id, tableIds });
+        toast.success(
+          `Profiling started for ${tableIds.length} tables and views. Follow it under Background jobs.`,
+        );
+      },
+    });
+  }
+
   return (
-    <section aria-labelledby="folder-title" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h3 id="folder-title" className={h3Classes}>
-          Source Schema
-        </h3>
-        {canExtract && (
-          <Actions className="ml-auto">
+    <section aria-labelledby="folder-title" className="flex flex-col gap-5">
+      <header className="flex flex-wrap items-start gap-4 border-b border-border pb-5">
+        <div className="flex min-w-0 flex-1 basis-80 flex-col gap-2">
+          <h1
+            id="folder-title"
+            className="text-2xl font-semibold tracking-tight text-balance text-foreground"
+          >
+            Source schema
+          </h1>
+          {hasSnapshot && (
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground tabular-nums">
+              {latest && (
+                <>
+                  <Badge variant="accent">Latest</Badge>
+                  <span>{new Date(latest.taken_at).toLocaleString()}</span>
+                  <Sep />
+                  <SnapshotCounts snapshot={latest} />
+                  <Sep />
+                </>
+              )}
+              <button
+                type="button"
+                aria-expanded={showSnapshots}
+                aria-controls="snapshot-list"
+                onClick={() => setShowSnapshots((shown) => !shown)}
+                className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3.5"
+              >
+                <History aria-hidden />
+                {snapshots.data.length === 1
+                  ? "1 snapshot"
+                  : `${snapshots.data.length} snapshots`}
+                <ChevronDown
+                  aria-hidden
+                  className={cn(
+                    "transition-transform",
+                    showSnapshots && "rotate-180",
+                  )}
+                />
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Refresh"
+            title="Refresh the Snapshots, the Source Schema and the profiles"
+            onClick={refresh}
+          >
+            <RefreshCw
+              aria-hidden
+              className={cn(refreshing && "motion-safe:animate-spin")}
+            />
+          </Button>
+          {hasSnapshot && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button">
+                  <Download aria-hidden />
+                  Data dictionary
+                  <ChevronDown aria-hidden className="text-subtle-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-48">
+                <DropdownMenuItem asChild>
+                  <a href={dataDictionaryUrl(workspace.id, system.id)} download>
+                    <Download aria-hidden />
+                    Download (XLSX)
+                  </a>
+                </DropdownMenuItem>
+                {canSave && (
+                  <DropdownMenuItem
+                    disabled={save.isPending}
+                    onSelect={() =>
+                      save.mutate(undefined, {
+                        onSuccess: (file) =>
+                          toast.success(`Saved ${file.name} to the file area.`),
+                      })
+                    }
+                  >
+                    <FolderInput aria-hidden />
+                    Save to files
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {canProfile && present.length > 0 && (
+            <Button
+              type="button"
+              disabled={profileAll.isPending}
+              onClick={startProfileAll}
+            >
+              <Activity aria-hidden />
+              Profile all tables
+            </Button>
+          )}
+          {canExtract && (
             <Button
               type="button"
               variant="primary"
@@ -82,12 +277,34 @@ export function SourceSchemaPanel({
                 })
               }
             >
+              <Database aria-hidden />
               Extract metadata
             </Button>
-          </Actions>
-        )}
-      </div>
+          )}
+        </div>
+      </header>
       {extract.isError && <ErrorText>{extract.error.message}</ErrorText>}
+      {save.isError && <ErrorText>{save.error.message}</ErrorText>}
+      {profileAll.isError && <ErrorText>{profileAll.error.message}</ErrorText>}
+      {hasSnapshot && showSnapshots && (
+        <ul
+          id="snapshot-list"
+          aria-label="Snapshots"
+          className={`${listCardClasses} [&_li]:flex [&_li]:flex-wrap [&_li]:items-center [&_li]:gap-2 [&_li]:px-3 [&_li]:py-2 [&_li]:text-sm [&_li]:tabular-nums`}
+        >
+          {snapshots.data.map((snapshot) => (
+            <li key={snapshot.id}>
+              <span className="text-foreground">
+                {new Date(snapshot.taken_at).toLocaleString()}
+              </span>
+              {snapshot.is_latest && <Badge variant="accent">Latest</Badge>}
+              <span className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                <SnapshotCounts snapshot={snapshot} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
       {snapshots.isPending && <Loading className="p-0" />}
       {snapshots.isError && (
         <ErrorText>
@@ -99,54 +316,13 @@ export function SourceSchemaPanel({
           No Snapshot yet. Extract metadata from the Connection.
         </EmptyState>
       )}
-      {snapshots.isSuccess && snapshots.data.length > 0 && (
-        <Actions>
-          <Button asChild>
-            <a href={dataDictionaryUrl(workspace.id, system.id)} download>
-              Download data dictionary (XLSX)
-            </a>
-          </Button>
-          {canSave && (
-            <Button
-              type="button"
-              disabled={save.isPending}
-              onClick={() =>
-                save.mutate(undefined, {
-                  onSuccess: (file) =>
-                    toast.success(`Saved ${file.name} to the file area.`),
-                })
-              }
-            >
-              Save data dictionary to files
-            </Button>
-          )}
-        </Actions>
-      )}
-      {save.isError && <ErrorText>{save.error.message}</ErrorText>}
-      {snapshots.isSuccess && snapshots.data.length > 0 && (
-        <SchemaBrowser workspace={workspace} systemId={system.id} />
-      )}
-      {snapshots.isSuccess && snapshots.data.length > 0 && (
-        <ul
-          aria-label="Snapshots"
-          className={`${listCardClasses} [&_li]:px-3 [&_li]:py-2 [&_li]:text-sm [&_li]:tabular-nums`}
-        >
-          {snapshots.data.map((snapshot) => (
-            <li key={snapshot.id}>
-              {new Date(snapshot.taken_at).toLocaleString()}
-              {snapshot.is_latest && (
-                <>
-                  {" "}
-                  <Badge variant="accent">Latest</Badge>
-                </>
-              )}
-              {": "}
-              {snapshot.schema_count} Database Schemas, {snapshot.table_count}{" "}
-              tables and views, {snapshot.column_count} columns,{" "}
-              {snapshot.routine_count} routines
-            </li>
-          ))}
-        </ul>
+      {hasSnapshot && (
+        <SchemaBrowser
+          workspace={workspace}
+          systemId={system.id}
+          profiling={runs.profiling}
+          onProfilingStarted={runs.follow}
+        />
       )}
       {snapshots.isSuccess && (
         <SnapshotDiffView

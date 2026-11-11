@@ -39,6 +39,7 @@ from .internal.diff import SnapshotDiff, SuspectedPiiColumn, diff_snapshots
 from .internal.pii import PROTECTING_STATUSES, protected_column_ids
 from .internal.snapshots import store_catalog
 from .tables import (
+    ColumnProfileRecord,
     ConnectionRecord,
     DefinitionTextRecord,
     PiiFindingRecord,
@@ -152,6 +153,8 @@ class SnapshotTable:
     scd_hint: str | None = None
     include_view_in_staging: bool | None = None
     version: int | None = None
+    profiled_at: datetime | None = None
+    """When its present columns were last profiled; set only in the Source Schema."""
 
 
 @dataclass(frozen=True)
@@ -696,6 +699,7 @@ class SnapshotService:
         enhanced_columns: dict[uuid.UUID, SrcColumnRecord] = {}
         protected: set[uuid.UUID] = set()
         enhanced_tables: dict[uuid.UUID, SrcTableRecord] = {}
+        profiled_at: dict[uuid.UUID, datetime] = {}
         if with_status:
             enhanced_columns = {
                 c.id: c
@@ -722,6 +726,22 @@ class SnapshotService:
                     )
                 )
             }
+            # A table's profile time is its present columns' latest, as its profile shows.
+            profiled_at = dict(
+                db.execute(
+                    sa.select(
+                        SrcColumnRecord.table_id, sa.func.max(ColumnProfileRecord.profiled_at)
+                    )
+                    .join(
+                        ColumnProfileRecord, ColumnProfileRecord.src_column_id == SrcColumnRecord.id
+                    )
+                    .where(
+                        SrcColumnRecord.table_id.in_(enhanced_tables),
+                        SrcColumnRecord.status == "present",
+                    )
+                    .group_by(SrcColumnRecord.table_id)
+                ).all()
+            )
         texts = {
             row.hash: row.text
             for row in db.execute(
@@ -810,6 +830,7 @@ class SnapshotService:
                         "scd_hint": current.scd_hint,
                         "include_view_in_staging": current.include_view_in_staging,
                         "version": current.version,
+                        "profiled_at": profiled_at.get(current.id),
                     }
                 ),
                 id=t.src_table_id,
