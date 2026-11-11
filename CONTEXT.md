@@ -53,7 +53,7 @@ An immutable, point-in-time capture of a Source System's metadata (tables, colum
 _Avoid_: Version, scan
 
 **Source Schema**:
-The enhanced picture of a Source System's structure: the latest Snapshot plus discovered relationships, descriptions and labels added by users and the AI.
+The enhanced picture of a Source System's structure: the latest Snapshot plus discovered and manually added relationships, descriptions and labels added by users and the AI.
 _Avoid_: Catalog, source model
 
 **Database Schema**:
