@@ -385,6 +385,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
             />
           ) : schemaSystem ? (
             <SourceSchemaPanel
+              key={folder.id}
               workspace={workspace.data}
               system={schemaSystem}
             />
