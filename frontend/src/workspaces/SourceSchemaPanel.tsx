@@ -339,13 +339,13 @@ export function SourceSchemaPanel({
             <TabsTrigger value="browse">Tables and routines</TabsTrigger>
             <TabsTrigger value="relationships">
               Relationships
-              {suggested.data && (
+              {suggested.data && suggested.data.length > 0 && (
                 <Badge
-                  variant={suggested.data.length > 0 ? "accent" : "neutral"}
+                  variant="accent"
                   className="ms-1.5 tabular-nums"
-                  title={`${suggested.data.length} suggested relationships to review`}
+                  title={`${suggested.data.length} suggested ${suggested.data.length === 1 ? "relationship" : "relationships"} to review`}
                 >
-                  {suggested.data.length}
+                  {suggested.data.length} to review
                 </Badge>
               )}
             </TabsTrigger>
