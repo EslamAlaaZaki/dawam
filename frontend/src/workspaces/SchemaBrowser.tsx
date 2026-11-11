@@ -858,7 +858,7 @@ function TablePage({
         </div>
       )}
       <Tabs value={tab} onValueChange={setTab} className="min-w-0">
-        <TabsList className="overflow-x-auto px-5">
+        <TabsList className="flex-wrap px-5">
           <TabsTrigger value="columns" className="text-sm">
             Columns
             <span className="ms-1 font-normal text-subtle-foreground tabular-nums">
