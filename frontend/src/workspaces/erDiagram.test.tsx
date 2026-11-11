@@ -183,7 +183,14 @@ afterEach(() => {
 });
 
 async function relationships() {
-  return within(await screen.findByRole("list", { name: "Relationships" }));
+  return within(await screen.findByRole("table", { name: "Relationships" }));
+}
+
+/** Open a tab below the diagram (Radix tabs activate on mouse down). */
+function openTab(name: RegExp) {
+  const tab = screen.getByRole("tab", { name });
+  fireEvent.mouseDown(tab, { button: 0 });
+  fireEvent.click(tab);
 }
 
 describe("Source ER diagram", () => {
@@ -213,10 +220,10 @@ describe("Source ER diagram", () => {
     const requests = renderApp(api, FOLDER);
     const list = await relationships();
     expect(
-      list.getByText(/core\.accounts to core\.customers.*, declared/),
+      list.getByRole("row", { name: /core\.accounts core\.customers.* Declared/ }),
     ).toBeInTheDocument();
     expect(
-      list.getByText(/core\.transactions to core\.accounts.*, inferred, accepted/),
+      list.getByRole("row", { name: /core\.transactions core\.accounts.* Inferred, accepted/ }),
     ).toBeInTheDocument();
     for (const name of ["customers", "accounts", "transactions", "events"]) {
       const canvas = screen.getByLabelText("ER diagram canvas");
@@ -236,7 +243,7 @@ describe("Source ER diagram", () => {
     const canvas = screen.getByLabelText("ER diagram canvas");
     expect(within(canvas).getByText("audit.events")).toBeInTheDocument();
     expect(within(canvas).queryByText("core.accounts")).not.toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "Relationships" })?.children).toHaveLength(0);
+    expect(screen.getByText("No relationships between these tables.")).toBeInTheDocument();
   });
 
   it("focuses on a table and its neighbours", async () => {
@@ -257,7 +264,7 @@ describe("Source ER diagram", () => {
       expect(canvas.getByText(name)).toBeInTheDocument();
     }
     const list = await relationships();
-    expect(list.getAllByRole("listitem")).toHaveLength(2);
+    expect(list.getAllByRole("row")).toHaveLength(3);
   });
 
   it("says so when the filters leave no table", async () => {
@@ -349,6 +356,8 @@ function review(workspace: Workspace, inferenceJobStatus = "succeeded") {
 describe("Relationship review", () => {
   it("lists suggestions with their evidence, never data values", async () => {
     renderApp(review(EDITOR).handler, FOLDER);
+    await screen.findByRole("tab", { name: /Review inferred/ });
+    openTab(/Review inferred/);
     const panel = within(await screen.findByRole("region", { name: "Relationships" }));
     const row = within(await panel.findByRole("listitem"));
     expect(row.getByText("core.transactions.customer_ref")).toBeInTheDocument();
@@ -364,6 +373,8 @@ describe("Relationship review", () => {
     const { handler, state } = review(EDITOR);
     state.hidden = true;
     const requests = renderApp(handler, FOLDER);
+    await screen.findByRole("tab", { name: /Review inferred/ });
+    openTab(/Review inferred/);
     fireEvent.click(await screen.findByRole("button", { name: "Find relationships" }));
     await waitFor(() => expect(state.started).toBe(1));
     const panel = within(screen.getByRole("region", { name: "Relationships" }));
@@ -375,14 +386,20 @@ describe("Relationship review", () => {
 
   it("Accept moves a row to Accepted and the diagram lists it", async () => {
     renderApp(review(EDITOR).handler, FOLDER);
+    await screen.findByRole("tab", { name: /Review inferred/ });
+    openTab(/Review inferred/);
     fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument(),
     );
+    openTab(/^Relationships/);
     const list = await relationships();
     expect(
-      await list.findByText(/core\.transactions to core\.customers.*, inferred, accepted/),
+      await list.findByRole("row", {
+        name: /core\.transactions core\.customers.* Inferred, accepted/,
+      }),
     ).toBeInTheDocument();
+    openTab(/Review inferred/);
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Accepted" }), { button: 0 });
     fireEvent.click(screen.getByRole("tab", { name: "Accepted" }));
     expect(await screen.findByText("core.transactions.customer_ref")).toBeInTheDocument();
@@ -390,6 +407,8 @@ describe("Relationship review", () => {
 
   it("Reject moves a row to Rejected", async () => {
     renderApp(review(EDITOR).handler, FOLDER);
+    await screen.findByRole("tab", { name: /Review inferred/ });
+    openTab(/Review inferred/);
     fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument(),
@@ -401,6 +420,8 @@ describe("Relationship review", () => {
 
   it("shows the lists without buttons to a member without the right", async () => {
     renderApp(review(WORKSPACE).handler, FOLDER);
+    await screen.findByRole("tab", { name: /Review inferred/ });
+    openTab(/Review inferred/);
     const panel = within(await screen.findByRole("region", { name: "Relationships" }));
     expect(await panel.findByText("core.transactions.customer_ref")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Find relationships" })).not.toBeInTheDocument();
@@ -410,6 +431,8 @@ describe("Relationship review", () => {
 
   it("is read-only in an archived Workspace", async () => {
     renderApp(review({ ...EDITOR, status: "archived" }).handler, FOLDER);
+    await screen.findByRole("tab", { name: /Review inferred/ });
+    openTab(/Review inferred/);
     const panel = within(await screen.findByRole("region", { name: "Relationships" }));
     expect(await panel.findByText("core.transactions.customer_ref")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Find relationships" })).not.toBeInTheDocument();

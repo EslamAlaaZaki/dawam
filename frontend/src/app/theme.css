@@ -418,14 +418,83 @@
 
 /* The PII marker (a shield icon with a label) in diagrams: danger-strong reads on background, primary-subtle
    and the dark grounds. */
-.dawam-flow .pii-marker {
+.dawam-flow .pii-marker,
+.er-diagram .pii-marker {
   display: inline-flex;
   flex: none;
   margin-left: 4px;
   color: var(--danger-strong);
 }
 
-.dawam-flow .pii-marker svg {
+.dawam-flow .pii-marker svg,
+.er-diagram .pii-marker svg {
   width: 12px;
   height: 12px;
 }
+
+/* The Source ER diagram (after docs/architecture/database/erd.html): a dotted canvas, a
+   dashed box per Database Schema, column-to-column edges with crow's-foot ends. Declared
+   foreign keys are solid, accepted inferred relationships dashed in the mapped tag colour;
+   a hovered or focused table's edges turn primary and show their columns. */
+.er-canvas {
+  background-color: var(--background);
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.er-canvas[data-panning] {
+  cursor: grabbing;
+}
+
+.er-schema {
+  border: 1px dashed color-mix(in srgb, var(--primary) 22%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 3%, transparent);
+}
+
+.er-line,
+.er-glyph {
+  fill: none;
+  stroke: var(--subtle-foreground);
+  stroke-width: 1.3;
+}
+
+.er-glyph-fill {
+  fill: var(--surface-raised);
+  stroke: var(--subtle-foreground);
+  stroke-width: 1.3;
+}
+
+.er-inferred .er-line {
+  stroke-dasharray: 6 4;
+}
+
+.er-inferred .er-line,
+.er-inferred .er-glyph,
+.er-inferred .er-glyph-fill {
+  stroke: var(--tag-mapped);
+}
+
+.er-hi .er-line,
+.er-hi .er-glyph,
+.er-hi .er-glyph-fill {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+
+.er-edge-label {
+  fill: var(--primary);
+  font: 500 var(--text-2xs) var(--font-mono);
+  paint-order: stroke;
+  stroke: var(--background);
+  stroke-width: 4;
+}
+
+.er-legend-shield {
+  fill: none;
+  stroke: var(--tag-pii);
+  stroke-width: 1.4;
+}
+
