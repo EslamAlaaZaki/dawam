@@ -199,11 +199,14 @@ export function DocumentsPanel({
   area,
   title,
   ownerName,
+  hideTitle = false,
 }: {
   workspace: Workspace;
   area: FileArea;
   title: string;
   ownerName: string;
+  /** Keep the title for screen readers only: the breadcrumb already names the page. */
+  hideTitle?: boolean;
 }) {
   const files = useAreaFiles(workspace.id, area);
   const members = useMembers(workspace.id);
@@ -233,6 +236,7 @@ export function DocumentsPanel({
     <section aria-labelledby="folder-title" className="flex flex-col gap-5">
       <PageHeader
         title={<span id="folder-title">{title}</span>}
+        hideTitle={hideTitle}
         actions={
           files.data && files.data.length > 0 ? (
             <a

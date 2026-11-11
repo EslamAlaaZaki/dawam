@@ -5,15 +5,24 @@ export function PageHeader({
   title,
   description,
   actions,
+  hideTitle = false,
 }: {
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  /** Keep the title for screen readers only (the breadcrumb names the page). */
+  hideTitle?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
       <div className="min-w-0">
-        <h2 className="text-2xl font-semibold tracking-tight text-balance text-foreground">
+        <h2
+          className={
+            hideTitle
+              ? "sr-only"
+              : "text-2xl font-semibold tracking-tight text-balance text-foreground"
+          }
+        >
           {title}
         </h2>
         {description && (

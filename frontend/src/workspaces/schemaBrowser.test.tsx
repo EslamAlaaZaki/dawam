@@ -254,7 +254,7 @@ describe("the Source Schema browser", () => {
       "PK",
     );
     fireEvent.mouseDown(
-      within(page).getByRole("tab", { name: /Keys and indexes/ }),
+      within(page).getByRole("tab", { name: /Keys and relationships/ }),
     );
     const keys = await within(page).findByRole("table", { name: "Keys" });
     expect(keys).toHaveTextContent("PK");

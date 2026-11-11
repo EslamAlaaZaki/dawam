@@ -43,7 +43,6 @@ import {
   EmptyState,
   ErrorText,
   TableCard,
-  h3Classes,
   monoClasses,
 } from "./parts";
 import { Loading } from "../shell/Loading";
@@ -109,7 +108,7 @@ export function PiiPanel({
   return (
     <section aria-labelledby="folder-title" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h3 id="folder-title" className={h3Classes}>
+        <h3 id="folder-title" className="sr-only">
           PII
         </h3>
         {canReview && (

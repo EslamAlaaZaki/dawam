@@ -1,7 +1,8 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { Network } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { isActive, useJobs } from "../api/jobs";
 import {
@@ -12,15 +13,36 @@ import {
   type Relationship,
   type RelationshipStatus,
 } from "../api/relationships";
+import { useSourceSchema } from "../api/snapshots";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Loading } from "../shell/Loading";
-import { EmptyState, ErrorText, Hint, h4Classes, monoClasses } from "./parts";
+import { RelationshipsTable } from "./RelationshipsTable";
+import { relationshipEdges } from "./erGraph";
+import {
+  EmptyState,
+  ErrorText,
+  TableCard,
+  h5Classes,
+  monoClasses,
+} from "./parts";
 
-const TABS: { status: RelationshipStatus; label: string }[] = [
+/** "current" lists the relationships in effect; the others the inferred ones by status. */
+type View = "current" | RelationshipStatus;
+
+const TABS: { status: View; label: string }[] = [
+  { status: "current", label: "Current" },
   { status: "suggested", label: "Suggested" },
   { status: "accepted", label: "Accepted" },
   { status: "rejected", label: "Rejected" },
@@ -55,22 +77,20 @@ const columnName = (c: Relationship["from_column"]) =>
   `${c.db_schema}.${c.table}.${c.column}`;
 
 /**
- * A Source System's inferred relationships (spec story 60): Find relationships starts the
- * inference job, and the Suggested / Accepted / Rejected lists, most confident first, let an
- * owner or editor decide each one. Any member can read the lists; the buttons need the
- * profiling right (to start) or the enhancement right (to decide) and an active Workspace.
+ * Find relationships (spec story 60): starts the inference job and refreshes the lists when
+ * it finishes. Needs the profiling right and an active Workspace; otherwise renders nothing.
+ * The Source schema page shows it in its header, next to Profile all tables.
  */
-export function RelationshipReview({
+export function FindRelationships({
   workspace,
   systemId,
+  onStarted,
 }: {
   workspace: Workspace;
   systemId: string;
+  onStarted?: () => void;
 }) {
-  const [status, setStatus] = useState<RelationshipStatus>("suggested");
-  const list = useRelationshipsByStatus(workspace.id, systemId, status);
   const start = useStartInference(workspace.id, systemId);
-  const decide = useDecideRelationship(workspace.id, systemId);
   const jobs = useJobs(workspace.id);
   const queryClient = useQueryClient();
 
@@ -85,110 +105,320 @@ export function RelationshipReview({
     }
   }, [finished, queryClient, workspace.id, systemId]);
 
-  const active = workspace.status !== "archived";
-  const canFind = active && allows(workspace, "source_system.profile");
-  const canDecide = active && allows(workspace, "source_schema.enhance");
+  const canFind =
+    workspace.status !== "archived" && allows(workspace, "source_system.profile");
   const running = start.isPending || (started != null && isActive(started));
+  if (!canFind) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        type="button"
+        disabled={running}
+        onClick={() =>
+          start.mutate(undefined, {
+            onSuccess: () => {
+              toast.success(
+                "Looking for relationships. Follow it under Background jobs.",
+              );
+              onStarted?.();
+            },
+          })
+        }
+      >
+        <Network aria-hidden />
+        {running ? "Finding relationships…" : "Find relationships"}
+      </Button>
+      {start.isError && <ErrorText>{start.error.message}</ErrorText>}
+    </div>
+  );
+}
+
+/** A column as `schema.table.column`, in mono. */
+function ColumnRef({ column }: { column: Relationship["from_column"] }) {
+  return <span className={`${monoClasses} break-all`}>{columnName(column)}</span>;
+}
+
+/** Confidence as a short bar and its percentage. */
+function Confidence({ ratio }: { ratio: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 tabular-nums">
+      <span aria-hidden className="h-1 w-16 overflow-hidden rounded-full bg-muted">
+        <span className="block h-full bg-primary" style={{ width: percent(ratio) }} />
+      </span>
+      <span>{percent(ratio)}</span>
+    </span>
+  );
+}
+
+/** Accept and Reject for a suggested relationship; the decision's badge otherwise. */
+function Decision({
+  relationship,
+  canDecide,
+  decide,
+}: {
+  relationship: Relationship;
+  canDecide: boolean;
+  decide: ReturnType<typeof useDecideRelationship>;
+}) {
+  if (relationship.status !== "suggested") {
+    return relationship.status === "accepted" ? (
+      <Badge variant="mapped">Accepted</Badge>
+    ) : (
+      <Badge>Rejected</Badge>
+    );
+  }
+  if (!canDecide) {
+    return null;
+  }
+  return (
+    <div className="flex gap-2">
+      <Button
+        type="button"
+        size="sm"
+        variant="primary"
+        disabled={decide.isPending}
+        onClick={() => decide.mutate({ id: relationship.id, decision: "accept" })}
+      >
+        Accept
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        disabled={decide.isPending}
+        onClick={() => decide.mutate({ id: relationship.id, decision: "reject" })}
+      >
+        Reject
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * A Source System's inferred relationships (spec story 60): the Suggested / Accepted /
+ * Rejected lists, most confident first, as one table that lets an owner or editor decide
+ * each one. Any member can read the lists; deciding needs the enhancement right and an
+ * active Workspace.
+ */
+export function RelationshipReview({
+  workspace,
+  systemId,
+  initialView = "current",
+}: {
+  workspace: Workspace;
+  systemId: string;
+  /** The list it opens on: Current, or Suggested when the visit is to review. */
+  initialView?: "current" | "suggested";
+}) {
+  const [status, setStatus] = useState<View>(initialView);
+  const byStatus = {
+    suggested: useRelationshipsByStatus(workspace.id, systemId, "suggested"),
+    accepted: useRelationshipsByStatus(workspace.id, systemId, "accepted"),
+    rejected: useRelationshipsByStatus(workspace.id, systemId, "rejected"),
+  };
+  const schema = useSourceSchema(workspace.id, systemId, true);
+  const current = useMemo(() => {
+    if (!schema.data || !byStatus.accepted.data) return null;
+    return {
+      edges: relationshipEdges(schema.data.tables, byStatus.accepted.data),
+      tables: new Map(schema.data.tables.map((t) => [t.id, t])),
+    };
+  }, [schema.data, byStatus.accepted.data]);
+  const counts: Record<View, number | undefined> = {
+    current: current?.edges.length,
+    suggested: byStatus.suggested.data?.length,
+    accepted: byStatus.accepted.data?.length,
+    rejected: byStatus.rejected.data?.length,
+  };
+  const list = byStatus[status === "current" ? "accepted" : status];
+  const decide = useDecideRelationship(workspace.id, systemId);
+  const canDecide =
+    workspace.status !== "archived" && allows(workspace, "source_schema.enhance");
 
   return (
     <section aria-label="Relationships" className="flex flex-col gap-3">
-      <h4 className={h4Classes}>Relationships</h4>
-      {canFind && (
-        <div>
-          <Button
-            type="button"
-            disabled={running}
-            onClick={() =>
-              start.mutate(undefined, {
-                onSuccess: () =>
-                  toast.success(
-                    "Looking for relationships. Follow it under Background jobs.",
-                  ),
-              })
-            }
-          >
-            Find relationships
-          </Button>
-        </div>
-      )}
-      {start.isError && <ErrorText>{start.error.message}</ErrorText>}
-      {running && <Hint>Looking for relationships…</Hint>}
-      <Tabs
-        value={status}
-        onValueChange={(value) => setStatus(value as RelationshipStatus)}
-      >
-        <TabsList className="px-0">
-          {TABS.map((tab) => (
-            <TabsTrigger key={tab.status} value={tab.status}>
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Tabs
+          value={status}
+          onValueChange={(value) => setStatus(value as View)}
+        >
+          <TabsList className="px-0">
+            {TABS.map((tab) => (
+              <TabsTrigger key={tab.status} value={tab.status} className="text-sm">
+                {tab.label}
+                {counts[tab.status] !== undefined && (
+                  <span className="ms-1 font-normal text-subtle-foreground tabular-nums">
+                    {counts[tab.status]}
+                  </span>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
+      {status === "current" &&
+        (schema.isError || byStatus.accepted.isError ? (
+          <ErrorText>
+            Could not load the relationships:{" "}
+            {(schema.error ?? byStatus.accepted.error)?.message}
+          </ErrorText>
+        ) : current ? (
+          <RelationshipsTable edges={current.edges} tables={current.tables} />
+        ) : (
+          <Loading label="Loading relationships…" className="p-0" />
+        ))}
       {decide.isError && <ErrorText>{decide.error.message}</ErrorText>}
-      {list.isPending && (
+      {status !== "current" && list.isPending && (
         <Loading label="Loading relationships…" className="p-0" />
       )}
-      {list.isError && (
+      {status !== "current" && list.isError && (
         <ErrorText>
           Could not load the relationships: {list.error.message}
         </ErrorText>
       )}
-      {list.isSuccess && list.data.length === 0 && (
+      {status !== "current" && list.isSuccess && list.data.length === 0 && (
         <EmptyState>No {status} relationships.</EmptyState>
       )}
-      {list.isSuccess && list.data.length > 0 && (
-        <ul className="flex flex-col gap-3">
-          {list.data.map((relationship) => (
-            <li
-              key={relationship.id}
-              className="flex flex-col gap-2 rounded-md border border-border p-3"
-            >
-              <div className={`${monoClasses} flex flex-col break-all`}>
-                <span>{columnName(relationship.from_column)}</span>
-                <span aria-hidden="true">→</span>
-                <span>{columnName(relationship.to_column)}</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge variant="accent">
-                  {percent(relationship.confidence)}
-                </Badge>
-                <Badge>{relationship.origin}</Badge>
-                {signalChips(relationship).map((chip) => (
-                  <Badge key={chip} variant="info">
-                    {chip}
-                  </Badge>
-                ))}
-              </div>
-              {canDecide && relationship.status === "suggested" && (
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="primary"
-                    disabled={decide.isPending}
-                    onClick={() =>
-                      decide.mutate({ id: relationship.id, decision: "accept" })
-                    }
-                  >
-                    Accept
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={decide.isPending}
-                    onClick={() =>
-                      decide.mutate({ id: relationship.id, decision: "reject" })
-                    }
-                  >
-                    Reject
-                  </Button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+      {status !== "current" && list.isSuccess && list.data.length > 0 && (
+        <TableCard>
+          <Table aria-label={`${status} relationships`}>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Relationship</TableHead>
+                <TableHead>Confidence</TableHead>
+                <TableHead>Evidence</TableHead>
+                <TableHead>Origin</TableHead>
+                <TableHead>
+                  <span className="sr-only">Decision</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {list.data.map((relationship) => (
+                <TableRow key={relationship.id}>
+                  <TableCell className="whitespace-normal">
+                    <div className="flex min-w-56 flex-col py-1">
+                      <ColumnRef column={relationship.from_column} />
+                      <span className="inline-flex gap-1">
+                        <span aria-hidden className="text-subtle-foreground">
+                          →
+                        </span>
+                        <ColumnRef column={relationship.to_column} />
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Confidence ratio={relationship.confidence} />
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    <div className="flex flex-wrap gap-1">
+                      {signalChips(relationship).map((chip) => (
+                        <Badge key={chip} variant="info">
+                          {chip}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge>{relationship.origin}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Decision
+                      relationship={relationship}
+                      canDecide={canDecide}
+                      decide={decide}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
     </section>
+  );
+}
+
+/**
+ * One table's suggested and accepted inferred relationships, from either end, on the
+ * table page of the Source Schema browser; suggested ones can be decided in place, with
+ * the same right as the review.
+ */
+export function TableRelationships({
+  workspace,
+  systemId,
+  tableId,
+}: {
+  workspace: Workspace;
+  systemId: string;
+  tableId: string;
+}) {
+  const suggested = useRelationshipsByStatus(workspace.id, systemId, "suggested");
+  const accepted = useRelationshipsByStatus(workspace.id, systemId, "accepted");
+  const decide = useDecideRelationship(workspace.id, systemId);
+  const canDecide =
+    workspace.status !== "archived" && allows(workspace, "source_schema.enhance");
+  const mine = [...(suggested.data ?? []), ...(accepted.data ?? [])].filter(
+    (r) => r.from_column.table_id === tableId || r.to_column.table_id === tableId,
+  );
+  const failed = suggested.error ?? accepted.error;
+
+  return (
+    <>
+      <h3 className={h5Classes}>
+        Inferred relationships{" "}
+        <span className="font-normal text-subtle-foreground tabular-nums">
+          {mine.length}
+        </span>
+      </h3>
+      {decide.isError && <ErrorText>{decide.error.message}</ErrorText>}
+      {failed ? (
+        <ErrorText>Could not load the relationships: {failed.message}</ErrorText>
+      ) : suggested.isPending || accepted.isPending ? (
+        <Loading label="Loading relationships…" className="p-0" />
+      ) : mine.length === 0 ? (
+        <EmptyState>No inferred relationships for this table.</EmptyState>
+      ) : (
+        <TableCard>
+          <Table aria-label="Inferred relationships">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Relationship</TableHead>
+                <TableHead>Confidence</TableHead>
+                <TableHead>
+                  <span className="sr-only">Decision</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {mine.map((relationship) => (
+                <TableRow key={relationship.id}>
+                  <TableCell className="whitespace-normal">
+                    <span className="inline-flex flex-wrap gap-1">
+                      <ColumnRef column={relationship.from_column} />
+                      <span aria-hidden className="text-subtle-foreground">
+                        →
+                      </span>
+                      <ColumnRef column={relationship.to_column} />
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Confidence ratio={relationship.confidence} />
+                  </TableCell>
+                  <TableCell>
+                    <Decision
+                      relationship={relationship}
+                      canDecide={canDecide}
+                      decide={decide}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
+      )}
+    </>
   );
 }

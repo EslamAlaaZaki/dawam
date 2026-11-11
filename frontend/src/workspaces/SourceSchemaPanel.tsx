@@ -10,10 +10,12 @@ import {
   History,
   RefreshCw,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { dataDictionaryUrl, useSaveDataDictionary } from "../api/files";
 import { isActive, useJobs } from "../api/jobs";
+import { useRelationshipsByStatus } from "../api/relationships";
 import {
   tableProfilesKey,
   useImportStatus,
@@ -39,7 +41,9 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { toast } from "../components/ui/sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { cn } from "../lib/utils";
+import { FindRelationships, RelationshipReview } from "./RelationshipReview";
 import { SchemaBrowser, Sep } from "./SchemaBrowser";
 import { SnapshotDiffView } from "./SnapshotDiffView";
 import { EmptyState, ErrorText, listCardClasses } from "./parts";
@@ -90,8 +94,9 @@ function SnapshotCounts({ snapshot }: { snapshot: SnapshotSummary }) {
  * A Source System's Source Schema (spec stories 45, 46, 54-57): the latest Snapshot's
  * counts under the title with every Snapshot behind a toggle, the browser over the latest
  * Snapshot, and the diff between Snapshots. Owners and editors extract metadata from the
- * Connection and profile every table and view, each as a background job; the page
- * refreshes once a job finishes.
+ * Connection, profile every table and view and find relationships, each as a background
+ * job; the page refreshes once a job finishes. The Relationships tab reviews the inferred
+ * relationships (`?tab=relationships` opens it, as the ER diagram's link does).
  */
 export function SourceSchemaPanel({
   workspace,
@@ -113,6 +118,16 @@ export function SourceSchemaPanel({
   const jobs = useJobs(workspace.id);
   const queryClient = useQueryClient();
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState(
+    searchParams.get("tab") === "relationships" ? "relationships" : "browse",
+  );
+  // The review opens on Suggested when the visit is to review (the ER diagram's link, Find
+  // relationships), and on Current when the tab is simply opened.
+  const [relView, setRelView] = useState<"current" | "suggested">(
+    searchParams.get("tab") === "relationships" ? "suggested" : "current",
+  );
+  const suggested = useRelationshipsByStatus(workspace.id, system.id, "suggested");
 
   const startedId = extract.data?.job_id;
   const started = jobs.data?.items.find((job) => job.id === startedId);
@@ -169,7 +184,7 @@ export function SourceSchemaPanel({
         <div className="flex min-w-0 flex-1 basis-80 flex-col gap-2">
           <h1
             id="folder-title"
-            className="text-2xl font-semibold tracking-tight text-balance text-foreground"
+            className="sr-only"
           >
             Source schema
           </h1>
@@ -263,6 +278,16 @@ export function SourceSchemaPanel({
               Profile all tables
             </Button>
           )}
+          {hasSnapshot && (
+            <FindRelationships
+              workspace={workspace}
+              systemId={system.id}
+              onStarted={() => {
+                setRelView("suggested");
+                setTab("relationships");
+              }}
+            />
+          )}
           {canExtract && (
             <Button
               type="button"
@@ -316,21 +341,67 @@ export function SourceSchemaPanel({
           No Snapshot yet. Extract metadata from the Connection.
         </EmptyState>
       )}
-      {hasSnapshot && (
-        <SchemaBrowser
-          workspace={workspace}
-          systemId={system.id}
-          profiling={runs.profiling}
-          onProfilingStarted={runs.follow}
-        />
-      )}
-      {snapshots.isSuccess && (
-        <SnapshotDiffView
-          key={snapshots.data.map((s) => s.id).join()}
-          workspaceId={workspace.id}
-          systemId={system.id}
-          snapshots={snapshots.data}
-        />
+      {hasSnapshot ? (
+        <Tabs
+          value={tab}
+          onValueChange={(value) => {
+            setRelView("current");
+            setTab(value);
+          }}
+          className="gap-5"
+        >
+          <TabsList className="px-0" aria-label="Source schema">
+            <TabsTrigger value="browse">Tables and routines</TabsTrigger>
+            <TabsTrigger value="relationships">
+              Relationships
+              {suggested.data && suggested.data.length > 0 && (
+                <Badge
+                  variant="accent"
+                  className="ms-1.5 tabular-nums"
+                  title={`${suggested.data.length} suggested ${suggested.data.length === 1 ? "relationship" : "relationships"} to review`}
+                >
+                  {suggested.data.length} to review
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          {/* Kept mounted, so the browser keeps its place while the review is open. */}
+          <TabsContent
+            value="browse"
+            forceMount
+            className="flex flex-col gap-5 data-[state=inactive]:hidden"
+          >
+            <SchemaBrowser
+              workspace={workspace}
+              systemId={system.id}
+              profiling={runs.profiling}
+              onProfilingStarted={runs.follow}
+            />
+            <SnapshotDiffView
+              key={snapshots.data.map((s) => s.id).join()}
+              workspaceId={workspace.id}
+              systemId={system.id}
+              snapshots={snapshots.data}
+            />
+          </TabsContent>
+          <TabsContent value="relationships">
+            <RelationshipReview
+              key={relView}
+              workspace={workspace}
+              systemId={system.id}
+              initialView={relView}
+            />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        snapshots.isSuccess && (
+          <SnapshotDiffView
+            key={snapshots.data.map((s) => s.id).join()}
+            workspaceId={workspace.id}
+            systemId={system.id}
+            snapshots={snapshots.data}
+          />
+        )
       )}
     </section>
   );
