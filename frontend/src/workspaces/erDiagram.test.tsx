@@ -397,6 +397,7 @@ describe("Relationship review", () => {
     renderApp(review(EDITOR).handler, SCHEMA_FOLDER);
     await screen.findByRole("tab", { name: /^Relationships/ });
     openTab(/^Relationships/);
+    openTab(/^Suggested/);
     const panel = within(await screen.findByRole("region", { name: "Relationships" }));
     const row = within((await panel.findAllByRole("row"))[1]!);
     expect(row.getByText("core.transactions.customer_ref")).toBeInTheDocument();
@@ -406,6 +407,18 @@ describe("Relationship review", () => {
     for (const chip of ["name", "type", "unique", "join: core.v_balances, core.sp_close", "overlap 97%"]) {
       expect(row.getByText(chip)).toBeInTheDocument();
     }
+  });
+
+  it("opens on Current when the Relationships tab is clicked", async () => {
+    renderApp(review(EDITOR).handler, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    expect(await screen.findByRole("tab", { name: /^Current/, selected: true })).toBeInTheDocument();
+  });
+
+  it("opens on Suggested from the ER diagram's review link", async () => {
+    renderApp(review(EDITOR).handler, `${SCHEMA_FOLDER}&tab=relationships`);
+    expect(await screen.findByRole("tab", { name: /^Suggested/, selected: true })).toBeInTheDocument();
   });
 
   it("Find relationships starts the job and the list refills when it finishes", async () => {
@@ -425,6 +438,7 @@ describe("Relationship review", () => {
     renderApp(review(EDITOR).handler, SCHEMA_FOLDER);
     await screen.findByRole("tab", { name: /^Relationships/ });
     openTab(/^Relationships/);
+    openTab(/^Suggested/);
     fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument(),
@@ -438,6 +452,7 @@ describe("Relationship review", () => {
     renderApp(review(EDITOR).handler, SCHEMA_FOLDER);
     await screen.findByRole("tab", { name: /^Relationships/ });
     openTab(/^Relationships/);
+    openTab(/^Suggested/);
     fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument(),
@@ -453,6 +468,7 @@ describe("Relationship review", () => {
     renderApp(review(EDITOR).handler, SCHEMA_FOLDER);
     await screen.findByRole("tab", { name: /^Relationships/ });
     openTab(/^Relationships/);
+    openTab(/^Suggested/);
     fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument(),
@@ -466,6 +482,7 @@ describe("Relationship review", () => {
     renderApp(review(WORKSPACE).handler, SCHEMA_FOLDER);
     await screen.findByRole("tab", { name: /^Relationships/ });
     openTab(/^Relationships/);
+    openTab(/^Suggested/);
     const panel = within(await screen.findByRole("region", { name: "Relationships" }));
     expect(await panel.findByText("core.transactions.customer_ref")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Find relationships" })).not.toBeInTheDocument();
@@ -477,6 +494,7 @@ describe("Relationship review", () => {
     renderApp(review({ ...EDITOR, status: "archived" }).handler, SCHEMA_FOLDER);
     await screen.findByRole("tab", { name: /^Relationships/ });
     openTab(/^Relationships/);
+    openTab(/^Suggested/);
     const panel = within(await screen.findByRole("region", { name: "Relationships" }));
     expect(await panel.findByText("core.transactions.customer_ref")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Find relationships" })).not.toBeInTheDocument();

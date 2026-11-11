@@ -205,11 +205,14 @@ function Decision({
 export function RelationshipReview({
   workspace,
   systemId,
+  initialView = "current",
 }: {
   workspace: Workspace;
   systemId: string;
+  /** The list it opens on: Current, or Suggested when the visit is to review. */
+  initialView?: "current" | "suggested";
 }) {
-  const [status, setStatus] = useState<View>("suggested");
+  const [status, setStatus] = useState<View>(initialView);
   const byStatus = {
     suggested: useRelationshipsByStatus(workspace.id, systemId, "suggested"),
     accepted: useRelationshipsByStatus(workspace.id, systemId, "accepted"),

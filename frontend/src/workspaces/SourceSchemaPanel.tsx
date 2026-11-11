@@ -122,6 +122,11 @@ export function SourceSchemaPanel({
   const [tab, setTab] = useState(
     searchParams.get("tab") === "relationships" ? "relationships" : "browse",
   );
+  // The review opens on Suggested when the visit is to review (the ER diagram's link, Find
+  // relationships), and on Current when the tab is simply opened.
+  const [relView, setRelView] = useState<"current" | "suggested">(
+    searchParams.get("tab") === "relationships" ? "suggested" : "current",
+  );
   const suggested = useRelationshipsByStatus(workspace.id, system.id, "suggested");
 
   const startedId = extract.data?.job_id;
@@ -277,7 +282,10 @@ export function SourceSchemaPanel({
             <FindRelationships
               workspace={workspace}
               systemId={system.id}
-              onStarted={() => setTab("relationships")}
+              onStarted={() => {
+                setRelView("suggested");
+                setTab("relationships");
+              }}
             />
           )}
           {canExtract && (
@@ -334,7 +342,14 @@ export function SourceSchemaPanel({
         </EmptyState>
       )}
       {hasSnapshot ? (
-        <Tabs value={tab} onValueChange={setTab} className="gap-5">
+        <Tabs
+          value={tab}
+          onValueChange={(value) => {
+            setRelView("current");
+            setTab(value);
+          }}
+          className="gap-5"
+        >
           <TabsList className="px-0" aria-label="Source schema">
             <TabsTrigger value="browse">Tables and routines</TabsTrigger>
             <TabsTrigger value="relationships">
@@ -370,7 +385,12 @@ export function SourceSchemaPanel({
             />
           </TabsContent>
           <TabsContent value="relationships">
-            <RelationshipReview workspace={workspace} systemId={system.id} />
+            <RelationshipReview
+              key={relView}
+              workspace={workspace}
+              systemId={system.id}
+              initialView={relView}
+            />
           </TabsContent>
         </Tabs>
       ) : (
