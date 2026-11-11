@@ -254,11 +254,12 @@ export function RelationshipReview({
             ))}
           </TabsList>
         </Tabs>
-        <Hint>
-          {status === "current"
-            ? "Declared foreign keys from the Snapshot, plus inferred relationships accepted here."
-            : "Joins the database doesn't declare, most confident first. Accepted ones show on the ER diagram as dashed lines."}
-        </Hint>
+        {status !== "current" && (
+          <Hint>
+            Joins the database doesn&apos;t declare, most confident first. Accepted ones
+            show on the ER diagram as dashed lines.
+          </Hint>
+        )}
       </div>
       {status === "current" &&
         (schema.isError || byStatus.accepted.isError ? (
