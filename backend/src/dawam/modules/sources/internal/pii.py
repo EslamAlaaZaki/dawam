@@ -46,11 +46,19 @@ def is_protected(*, is_sensitive: bool, finding_statuses: Iterable[str]) -> bool
     return is_sensitive or any(s in PROTECTING_STATUSES for s in finding_statuses)
 
 
-def protected_column_ids(db: Session, column_ids: Iterable[uuid.UUID]) -> set[uuid.UUID]:
-    """The Protected Columns among ``column_ids``, by the one policy of ``is_protected``."""
-    wanted = list(column_ids)
-    if not wanted:
-        return set()
+def protected_column_ids(
+    db: Session, column_ids: Iterable[uuid.UUID] | sa.Select[tuple[uuid.UUID]]
+) -> set[uuid.UUID]:
+    """The Protected Columns among ``column_ids``, by the one policy of ``is_protected``.
+    ``column_ids`` may be a SELECT of the ids, so a whole Snapshot's columns are matched by
+    a sub-select instead of one bind parameter each."""
+    wanted: list[uuid.UUID] | sa.Select[tuple[uuid.UUID]]
+    if isinstance(column_ids, sa.Select):
+        wanted = column_ids
+    else:
+        wanted = list(column_ids)
+        if not wanted:
+            return set()
     sensitive = sa.select(SrcColumnRecord.id).where(
         SrcColumnRecord.id.in_(wanted), SrcColumnRecord.is_sensitive
     )

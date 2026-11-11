@@ -152,6 +152,8 @@ def test_growth_follows_the_row_estimates_of_the_snapshots(
         ("open_orders", "view"),
     }
     assert body["total_per_month"] == orders["per_month"]
+    # The unchanged table counts in the totals, adding nothing per month.
+    assert (body["total_first"], body["total_latest"]) == (10 + 10, 40 + 10)
 
 
 def test_any_member_reads_the_page_but_only_in_their_workspace(roles: RoleClients):

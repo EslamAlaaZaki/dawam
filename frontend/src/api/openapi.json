@@ -27686,11 +27686,13 @@
           },
           "total_first": {
             "type": "integer",
-            "title": "Total First"
+            "title": "Total First",
+            "description": "The first estimates of every table with two or more, unchanged ones too."
           },
           "total_latest": {
             "type": "integer",
-            "title": "Total Latest"
+            "title": "Total Latest",
+            "description": "The latest estimates of the same tables."
           },
           "total_per_month": {
             "type": "number",

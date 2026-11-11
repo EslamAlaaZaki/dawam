@@ -208,8 +208,10 @@ class ProfilingGrowth(BaseModel):
         description="Fastest growing first; empty with fewer than two Snapshots."
     )
     left_out: list[LeftOutTable] = Field(description="Views, and tables with no growth to show.")
-    total_first: int
-    total_latest: int
+    total_first: int = Field(
+        description="The first estimates of every table with two or more, unchanged ones too."
+    )
+    total_latest: int = Field(description="The latest estimates of the same tables.")
     total_per_month: float
 
 

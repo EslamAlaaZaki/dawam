@@ -169,7 +169,13 @@ class ProfilingOverviewService:
                 .order_by(SnapshotColumnRecord.src_table_id, SnapshotColumnRecord.ordinal)
             ).all()
             keys = _single_column_keys(db, sid)
-            column_ids = [c.src_column_id for c in columns]
+            # The Snapshot's present columns as a sub-select: one bind parameter, not one
+            # per column.
+            column_ids = (
+                sa.select(SnapshotColumnRecord.src_column_id)
+                .join(SrcColumnRecord, SrcColumnRecord.id == SnapshotColumnRecord.src_column_id)
+                .where(SnapshotColumnRecord.snapshot_id == sid, SrcColumnRecord.status == "present")
+            )
             profiles = {
                 p.src_column_id: p
                 for p in db.scalars(
@@ -254,6 +260,7 @@ class ProfilingOverviewService:
         )
         tables: list[GrowthTable] = []
         left_out: list[LeftOutTable] = []
+        ends: list[tuple[int, int]] = []
         for t in current:
             series = [
                 GrowthPoint(s.taken_at, estimates.get((s.id, t.src_table_id))) for s in snapshots
@@ -261,6 +268,9 @@ class ProfilingOverviewService:
             points = [
                 Point(p.taken_at, p.row_estimate) for p in series if p.row_estimate is not None
             ]
+            if t.kind != "view" and len(points) >= 2:
+                # Unchanged tables count in the totals too; they add nothing per month.
+                ends.append((points[0].row_estimate, points[-1].row_estimate))
             growth = None if t.kind == "view" else growth_of(points)
             if growth is None:
                 reason: LeftOutReason = (
@@ -293,8 +303,8 @@ class ProfilingOverviewService:
             snapshots=[s.taken_at for s in snapshots],
             tables=tables,
             left_out=left_out,
-            total_first=sum(g.first for g in tables),
-            total_latest=sum(g.latest for g in tables),
+            total_first=sum(first for first, _ in ends),
+            total_latest=sum(latest for _, latest in ends),
             total_per_month=sum(g.per_month for g in tables),
         )
 

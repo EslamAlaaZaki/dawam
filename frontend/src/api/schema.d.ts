@@ -9351,9 +9351,15 @@ export interface components {
              * @description Views, and tables with no growth to show.
              */
             left_out: components["schemas"]["LeftOutTable"][];
-            /** Total First */
+            /**
+             * Total First
+             * @description The first estimates of every table with two or more, unchanged ones too.
+             */
             total_first: number;
-            /** Total Latest */
+            /**
+             * Total Latest
+             * @description The latest estimates of the same tables.
+             */
             total_latest: number;
             /** Total Per Month */
             total_per_month: number;
