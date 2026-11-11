@@ -2288,6 +2288,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profiling Overview
+         * @description Each table and view of the latest Snapshot with its profiling status and findings
+         *     (any member). A Protected Column gets only the null findings.
+         */
+        get: operations["getProfilingOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling/growth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profiling Growth
+         * @description How each table's row estimate grows across the Snapshots (any member).
+         */
+        get: operations["getProfilingGrowth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profile": {
         parameters: {
             query?: never;
@@ -6986,6 +7027,60 @@ export interface components {
             /** Email */
             email: string;
         };
+        /** GrowthPoint */
+        GrowthPoint: {
+            /**
+             * Taken At
+             * Format: date-time
+             */
+            taken_at: string;
+            /**
+             * Row Estimate
+             * @description Null where the Snapshot has no estimate.
+             */
+            row_estimate: number | null;
+        };
+        /** GrowthTable */
+        GrowthTable: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Points
+             * @description One per Snapshot, oldest first.
+             */
+            points: components["schemas"]["GrowthPoint"][];
+            /** First */
+            first: number;
+            /** Latest */
+            latest: number;
+            /**
+             * Change Pct
+             * @description Null when the first estimate is zero.
+             */
+            change_pct: number | null;
+            /**
+             * Per Month
+             * @description Rows per month; from `dropped_at` on after a drop.
+             */
+            per_month: number;
+            /**
+             * In 12 Months
+             * @description Linear projection, never below zero.
+             */
+            in_12_months: number;
+            /**
+             * Dropped At
+             * @description The Snapshot where the estimate last fell by more than a fifth.
+             */
+            dropped_at: string | null;
+        };
         /** ImpactOut */
         ImpactOut: {
             /**
@@ -7628,6 +7723,18 @@ export interface components {
             scored: boolean;
             /** Table Count */
             table_count: number;
+        };
+        /** LeftOutTable */
+        LeftOutTable: {
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "view" | "no_estimate" | "new" | "unchanged";
         };
         /** LightFeature */
         LightFeature: {
@@ -8775,6 +8882,84 @@ export interface components {
             /** Max */
             max: number;
         };
+        /** OverviewFinding */
+        OverviewFinding: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column */
+            column: string;
+            /** Data Type */
+            data_type: string;
+            /**
+             * Kind
+             * @description The first rule the column's latest profile matches.
+             * @enum {string}
+             */
+            kind: "all_null" | "mostly_null" | "constant" | "unique_not_key";
+            /** Null Pct */
+            null_pct: number;
+            /**
+             * Row Count
+             * @description Rows in the sample.
+             */
+            row_count: number;
+            /**
+             * Capped
+             * @description The sample hit its cap: a `unique_not_key` column is unique only in the sampled rows.
+             */
+            capped: boolean;
+            /**
+             * Value
+             * @description The one value of a `constant` column; never set for a Protected Column.
+             */
+            value: string | null;
+        };
+        /** OverviewTable */
+        OverviewTable: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "table" | "view";
+            /**
+             * Row Estimate
+             * @description From the latest Snapshot.
+             */
+            row_estimate: number | null;
+            /** Column Count */
+            column_count: number;
+            /**
+             * Profiled At
+             * @description Null until the table is profiled.
+             */
+            profiled_at: string | null;
+            /** Rows Sampled */
+            rows_sampled: number | null;
+            /**
+             * Capped
+             * @description The sample hit its cap: the table may be larger.
+             */
+            capped: boolean;
+            /**
+             * Out Of Date
+             * @description Profiled before the latest Snapshot.
+             */
+            out_of_date: boolean;
+            /** Findings */
+            findings: components["schemas"]["OverviewFinding"][];
+        };
         /** PageContextIn */
         PageContextIn: {
             /**
@@ -9148,6 +9333,43 @@ export interface components {
             branch_id: string | null;
             /** Branch Name */
             branch_name: string | null;
+        };
+        /** ProfilingGrowth */
+        ProfilingGrowth: {
+            /**
+             * Snapshots
+             * @description Every Snapshot's time, oldest first.
+             */
+            snapshots: string[];
+            /**
+             * Tables
+             * @description Fastest growing first; empty with fewer than two Snapshots.
+             */
+            tables: components["schemas"]["GrowthTable"][];
+            /**
+             * Left Out
+             * @description Views, and tables with no growth to show.
+             */
+            left_out: components["schemas"]["LeftOutTable"][];
+            /** Total First */
+            total_first: number;
+            /** Total Latest */
+            total_latest: number;
+            /** Total Per Month */
+            total_per_month: number;
+        };
+        /** ProfilingOverview */
+        ProfilingOverview: {
+            /**
+             * Latest Snapshot At
+             * @description Null before the first Snapshot.
+             */
+            latest_snapshot_at: string | null;
+            /**
+             * Tables
+             * @description The latest Snapshot's tables and views.
+             */
+            tables: components["schemas"]["OverviewTable"][];
         };
         /** ProfilingStarted */
         ProfilingStarted: {
@@ -17144,6 +17366,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfilingStarted"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getProfilingOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfilingOverview"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getProfilingGrowth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfilingGrowth"];
                 };
             };
             /** @description Validation error */

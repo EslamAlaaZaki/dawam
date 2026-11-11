@@ -8156,6 +8156,136 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling/overview": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Profiling Overview",
+        "description": "Each table and view of the latest Snapshot with its profiling status and findings\n(any member). A Protected Column gets only the null findings.",
+        "operationId": "getProfilingOverview",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilingOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling/growth": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Profiling Growth",
+        "description": "How each table's row estimate grows across the Snapshots (any member).",
+        "operationId": "getProfilingGrowth",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilingGrowth"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/tables/{table_id}/profile": {
       "get": {
         "tags": [
@@ -22411,6 +22541,115 @@
         ],
         "title": "ForgotPasswordRequest"
       },
+      "GrowthPoint": {
+        "properties": {
+          "taken_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Taken At"
+          },
+          "row_estimate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Estimate",
+            "description": "Null where the Snapshot has no estimate."
+          }
+        },
+        "type": "object",
+        "required": [
+          "taken_at",
+          "row_estimate"
+        ],
+        "title": "GrowthPoint"
+      },
+      "GrowthTable": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/GrowthPoint"
+            },
+            "type": "array",
+            "title": "Points",
+            "description": "One per Snapshot, oldest first."
+          },
+          "first": {
+            "type": "integer",
+            "title": "First"
+          },
+          "latest": {
+            "type": "integer",
+            "title": "Latest"
+          },
+          "change_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Pct",
+            "description": "Null when the first estimate is zero."
+          },
+          "per_month": {
+            "type": "number",
+            "title": "Per Month",
+            "description": "Rows per month; from `dropped_at` on after a drop."
+          },
+          "in_12_months": {
+            "type": "number",
+            "title": "In 12 Months",
+            "description": "Linear projection, never below zero."
+          },
+          "dropped_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropped At",
+            "description": "The Snapshot where the estimate last fell by more than a fifth."
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "db_schema",
+          "name",
+          "points",
+          "first",
+          "latest",
+          "change_pct",
+          "per_month",
+          "in_12_months",
+          "dropped_at"
+        ],
+        "title": "GrowthTable"
+      },
       "ImpactOut": {
         "properties": {
           "layer": {
@@ -23828,6 +24067,35 @@
           "table_count"
         ],
         "title": "LayerScore"
+      },
+      "LeftOutTable": {
+        "properties": {
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "view",
+              "no_estimate",
+              "new",
+              "unchanged"
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "db_schema",
+          "name",
+          "reason"
+        ],
+        "title": "LeftOutTable"
       },
       "LightFeature": {
         "properties": {
@@ -26354,6 +26622,169 @@
         ],
         "title": "NumberBounds"
       },
+      "OverviewFinding": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "data_type": {
+            "type": "string",
+            "title": "Data Type"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "all_null",
+              "mostly_null",
+              "constant",
+              "unique_not_key"
+            ],
+            "title": "Kind",
+            "description": "The first rule the column's latest profile matches."
+          },
+          "null_pct": {
+            "type": "number",
+            "title": "Null Pct"
+          },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count",
+            "description": "Rows in the sample."
+          },
+          "capped": {
+            "type": "boolean",
+            "title": "Capped",
+            "description": "The sample hit its cap: a `unique_not_key` column is unique only in the sampled rows."
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "The one value of a `constant` column; never set for a Protected Column."
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "column",
+          "data_type",
+          "kind",
+          "null_pct",
+          "row_count",
+          "capped",
+          "value"
+        ],
+        "title": "OverviewFinding"
+      },
+      "OverviewTable": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "table",
+              "view"
+            ],
+            "title": "Kind"
+          },
+          "row_estimate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Estimate",
+            "description": "From the latest Snapshot."
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "profiled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profiled At",
+            "description": "Null until the table is profiled."
+          },
+          "rows_sampled": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Sampled"
+          },
+          "capped": {
+            "type": "boolean",
+            "title": "Capped",
+            "description": "The sample hit its cap: the table may be larger."
+          },
+          "out_of_date": {
+            "type": "boolean",
+            "title": "Out Of Date",
+            "description": "Profiled before the latest Snapshot."
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewFinding"
+            },
+            "type": "array",
+            "title": "Findings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "db_schema",
+          "name",
+          "kind",
+          "row_estimate",
+          "column_count",
+          "profiled_at",
+          "rows_sampled",
+          "capped",
+          "out_of_date",
+          "findings"
+        ],
+        "title": "OverviewTable"
+      },
       "PageContextIn": {
         "properties": {
           "type": {
@@ -27225,6 +27656,88 @@
           "branch_name"
         ],
         "title": "ProblemOut"
+      },
+      "ProfilingGrowth": {
+        "properties": {
+          "snapshots": {
+            "items": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "type": "array",
+            "title": "Snapshots",
+            "description": "Every Snapshot's time, oldest first."
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/GrowthTable"
+            },
+            "type": "array",
+            "title": "Tables",
+            "description": "Fastest growing first; empty with fewer than two Snapshots."
+          },
+          "left_out": {
+            "items": {
+              "$ref": "#/components/schemas/LeftOutTable"
+            },
+            "type": "array",
+            "title": "Left Out",
+            "description": "Views, and tables with no growth to show."
+          },
+          "total_first": {
+            "type": "integer",
+            "title": "Total First"
+          },
+          "total_latest": {
+            "type": "integer",
+            "title": "Total Latest"
+          },
+          "total_per_month": {
+            "type": "number",
+            "title": "Total Per Month"
+          }
+        },
+        "type": "object",
+        "required": [
+          "snapshots",
+          "tables",
+          "left_out",
+          "total_first",
+          "total_latest",
+          "total_per_month"
+        ],
+        "title": "ProfilingGrowth"
+      },
+      "ProfilingOverview": {
+        "properties": {
+          "latest_snapshot_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Snapshot At",
+            "description": "Null before the first Snapshot."
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewTable"
+            },
+            "type": "array",
+            "title": "Tables",
+            "description": "The latest Snapshot's tables and views."
+          }
+        },
+        "type": "object",
+        "required": [
+          "latest_snapshot_at",
+          "tables"
+        ],
+        "title": "ProfilingOverview"
       },
       "ProfilingStarted": {
         "properties": {
