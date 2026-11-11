@@ -11,6 +11,11 @@ import { sourceSchemaKey } from "./snapshots";
 export type TableProfile = components["schemas"]["TableProfile"];
 export type ColumnProfileView = components["schemas"]["ColumnProfileView"];
 export type ImportStatus = components["schemas"]["ImportStatus"];
+export type ProfilingOverview = components["schemas"]["ProfilingOverview"];
+export type OverviewTable = components["schemas"]["OverviewTable"];
+export type OverviewFinding = components["schemas"]["OverviewFinding"];
+export type ProfilingGrowth = components["schemas"]["ProfilingGrowth"];
+export type GrowthTable = components["schemas"]["GrowthTable"];
 
 const DEFAULT_ROW_CAP = 100_000;
 const DEFAULT_TIMEOUT_SECONDS = 30;
@@ -46,6 +51,52 @@ export function useTableProfile(
               table_id: tableId,
             },
           },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+  });
+}
+
+/** The prefix of the Profiling page's overview and growth of a Source System. */
+export const profilingPageKey = (workspaceId: string, systemId: string) =>
+  ["workspace", workspaceId, "systems", systemId, "profiling"] as const;
+
+/** Every table and view of the latest Snapshot with its profiling status and findings. */
+export function useProfilingOverview(workspaceId: string, systemId: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...profilingPageKey(workspaceId, systemId), "overview"] as const,
+    retry: false,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling/overview",
+        {
+          params: { path: { workspace_id: workspaceId, system_id: systemId } },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+  });
+}
+
+/** How each table's row estimate grows across the Snapshots. */
+export function useProfilingGrowth(workspaceId: string, systemId: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...profilingPageKey(workspaceId, systemId), "growth"] as const,
+    retry: false,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling/growth",
+        {
+          params: { path: { workspace_id: workspaceId, system_id: systemId } },
         },
       );
       if (error) {
@@ -117,7 +168,8 @@ export type ProfilingRun = { jobId: string; tableIds: string[] };
 /**
  * The profiling jobs started from the page: which tables are being profiled now (a job
  * counts until the Workspace's jobs show it finished), and, as each job finishes, the
- * refreshed profiles of its tables and the Source Schema's profile dates.
+ * refreshed profiles of its tables, the Source Schema's profile dates and the Profiling
+ * page.
  */
 export function useProfilingRuns(workspaceId: string, systemId: string) {
   const [runs, setRuns] = useState<ProfilingRun[]>([]);
@@ -146,6 +198,9 @@ export function useProfilingRuns(workspaceId: string, systemId: string) {
     }
     void queryClient.invalidateQueries({
       queryKey: sourceSchemaKey(workspaceId, systemId),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: profilingPageKey(workspaceId, systemId),
     });
     // Only a newly finished job refreshes; `runs` changes with every start.
     // eslint-disable-next-line react-hooks/exhaustive-deps

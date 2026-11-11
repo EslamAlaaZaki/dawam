@@ -13,6 +13,7 @@ import {
   Table2,
   Workflow,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 import {
@@ -349,7 +350,8 @@ function RemovedLeaf({ table, level }: { table: RemovedTable; level: number }) {
  * Browses a Source System's Source Schema (spec story 54): a tree of Database Schemas with
  * their tables, views, functions and procedures, a page per table or routine, and a search
  * by name. Any member can browse. Objects that are not `present` carry their state; each
- * table and view shows whether it is profiled.
+ * table and view shows whether it is profiled. `?table=<id>` opens a table, and
+ * `&table_tab=profile` its Profile tab (the Profiling page links there).
  */
 export function SchemaBrowser({
   workspace,
@@ -365,7 +367,14 @@ export function SchemaBrowser({
 }) {
   const workspaceId = workspace.id;
   const schema = useSourceSchema(workspaceId, systemId, true);
-  const [selection, setSelection] = useState<Selection>(null);
+  const searchParams = useSearchParams();
+  const [selection, setSelection] = useState<Selection>(() => {
+    const id = searchParams.get("table");
+    return id ? { kind: "table", id } : null;
+  });
+  const [initialTab] = useState(() =>
+    searchParams.get("table_tab") === "profile" ? "profile" : "columns",
+  );
   const [search, setSearch] = useState("");
   const [closed, setClosed] = useState<Set<string>>(() => new Set());
   const query = useDebounced(search.trim(), 250);
@@ -597,6 +606,7 @@ export function SchemaBrowser({
             systemId={systemId}
             running={profiling.has(table.id)}
             onProfilingStarted={onProfilingStarted}
+            initialTab={initialTab}
             removedColumns={content.removed_columns.filter(
               (c) => c.table_id === table.id,
             )}
@@ -787,6 +797,7 @@ function TablePage({
   systemId,
   running,
   onProfilingStarted,
+  initialTab,
   removedColumns,
 }: {
   table: SchemaTable;
@@ -794,9 +805,10 @@ function TablePage({
   systemId: string;
   running: boolean;
   onProfilingStarted: (run: ProfilingRun) => void;
+  initialTab: string;
   removedColumns: RemovedColumn[];
 }) {
-  const [tab, setTab] = useState("columns");
+  const [tab, setTab] = useState(initialTab);
   const [error, setError] = useState<string | null>(null);
   // The Source Schema carries no protection flag; the table's profile (shared with the
   // Profile tab) does.
