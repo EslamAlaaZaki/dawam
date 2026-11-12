@@ -45,7 +45,12 @@ function workspace(
   };
 }
 
-const OWNER = workspace("owner", ["workspace.view", "pii.review", "source_system.profile"]);
+const OWNER = workspace("owner", [
+  "workspace.view",
+  "pii.review",
+  "pii.view_review",
+  "source_system.profile",
+]);
 const VIEWER = workspace("viewer", ["workspace.view"]);
 
 const CRM: SourceSystem = {
@@ -426,7 +431,7 @@ describe("the PII folder", () => {
   });
 
   it("keeps the review tabs for owners in an archived Workspace, with no changes", async () => {
-    const archived = workspace("owner", ["workspace.view"], "archived");
+    const archived = workspace("owner", ["workspace.view", "pii.view_review"], "archived");
     renderApp(backend(archived, fresh()), FOLDER);
 
     expect(await rowOf("national_id")).toBeInTheDocument();

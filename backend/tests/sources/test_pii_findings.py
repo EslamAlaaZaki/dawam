@@ -510,15 +510,16 @@ def test_editors_still_read_the_review_tabs_of_an_archived_workspace(
     roles: RoleClients, scratch_source
 ):
     system = people(roles, scratch_source)
-    roles.client("editor"), roles.client("viewer")  # members before the Workspace is archived
+    # Members join on their first request, which an archived Workspace would refuse.
+    roles.client("editor")
+    roles.client("viewer")
     archived = roles.client("owner").post(f"/api/v1/workspaces/{roles.workspace_id}/archive")
     assert archived.status_code == 204, archived.text
 
     suggested = roles.client("editor").get(f"{system}/pii-columns", params={"tab": "suggested"})
     viewer = roles.client("viewer").get(f"{system}/pii-columns", params={"tab": "suggested"})
-    email = suggested.json()["items"][0]["id"] if suggested.status_code == 200 else NO_SUCH
-    change = decide(roles, system, email, "reject")
-
     assert suggested.status_code == 200, suggested.text
+    change = decide(roles, system, suggested.json()["items"][0]["id"], "reject")
+
     assert viewer.status_code == 403
     assert change.status_code == 409  # archived: read-only

@@ -114,6 +114,9 @@ class Action(StrEnum):
     REVIEW_PII = "pii.review"
     """Review the PII folder: accept or reject columns, add and remove PII (owners and
     editors; spec §4.3 "Review PII findings", stories 133-135)."""
+    VIEW_PII_REVIEW = "pii.view_review"
+    """Read the PII folder's Suggested, Accepted and Rejected tabs (owners and editors,
+    archived Workspaces too, where they are read-only; spec §6.12)."""
     MANAGE_PII_RULES = "pii.manage_rules"
     """List, add, edit and delete the Workspace's custom PII rules and switch built-in rules
     on or off (owners only; spec §6.12, story 136)."""
@@ -250,6 +253,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.RUN_SOURCE_QUERY: _WorkspaceRule(min_role="editor"),
     Action.ENABLE_TOP_N: _WorkspaceRule(min_role="owner"),
     Action.REVIEW_PII: _WorkspaceRule(min_role="editor"),
+    Action.VIEW_PII_REVIEW: _WorkspaceRule(min_role="editor", state="any"),
     Action.MANAGE_PII_RULES: _WorkspaceRule(min_role="owner"),
     Action.REVIEW_CHANGE_SETS: _WorkspaceRule(min_role="editor"),
     Action.CANCEL_OWN_JOB: _WorkspaceRule(min_role="viewer"),

@@ -237,10 +237,9 @@ class PiiService:
         ``pii`` tab (names and ratios only); the review tabs are for owners and editors."""
         if tab not in PII_TABS:
             raise ApiError(422, "invalid_tab", f"The tab must be one of {', '.join(PII_TABS)}.")
-        scope = self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
-        if tab != "pii" and scope.role not in ("owner", "editor"):
-            # The review tabs are for owners and editors, read-only once archived.
-            raise ApiError(403, "forbidden", "Only owners and editors review PII.")
+        self._workspaces.authorize(
+            user, Action.VIEW_WORKSPACE if tab == "pii" else Action.VIEW_PII_REVIEW, workspace_id
+        )
         with Session(self._engine) as db:
             self._system(db, workspace_id, system_id)
             columns = self._columns(db, system_id)

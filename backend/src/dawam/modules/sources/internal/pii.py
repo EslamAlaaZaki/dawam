@@ -188,6 +188,7 @@ def scan_columns(
         return 0
     known: dict[tuple[uuid.UUID, str], PiiFindingRecord] = {}
     rejected: set[uuid.UUID] = set()
+    accepted: set[uuid.UUID] = set()
     ids = [cid for cid, _ in matches]
     for start in range(0, len(ids), 5000):
         for finding in db.scalars(
@@ -198,6 +199,17 @@ def scan_columns(
             known[(finding.src_column_id, finding.rule)] = finding
             if finding.status == "rejected":
                 rejected.add(finding.src_column_id)
+            elif finding.status == "accepted":
+                accepted.add(finding.src_column_id)
+        accepted.update(
+            db.scalars(
+                sa.select(SrcColumnRecord.id).where(
+                    SrcColumnRecord.id.in_(ids[start : start + 5000]), SrcColumnRecord.is_sensitive
+                )
+            )
+        )
+    # A column accepted as PII now is never reopened (``reopen_rejected``).
+    rejected -= accepted
     reopen: set[uuid.UUID] = set()
     for cid, m in matches:
         confidence = max(m.confidence, NAME_CONFIDENCE_FLOOR)

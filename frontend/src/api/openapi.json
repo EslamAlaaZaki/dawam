@@ -17842,6 +17842,7 @@
           "source_system.query",
           "source_table.top_n",
           "pii.review",
+          "pii.view_review",
           "pii.manage_rules",
           "change_set.review",
           "job.cancel_own",

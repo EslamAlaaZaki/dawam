@@ -2051,6 +2051,29 @@ ROWS: list[Row] = [
 ]
 
 
+PII_REVIEW_TABS = [
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns",
+        f"Review PII findings (read the {tab} tab)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=snapshot_id,
+        query={"tab": tab},
+    )
+    for tab in ("suggested", "accepted", "rejected")
+]
+"""The PII folder's review tabs: the same endpoint as its PII tab (one row in ``ROWS``),
+asked for another tab, so they are checked apart (``pii.view_review``)."""
+
+
+@pytest.mark.parametrize("role", ROLES)
+@pytest.mark.parametrize("row", PII_REVIEW_TABS, ids=lambda row: row.matrix)
+def test_the_pii_review_tabs_follow_the_matrix(row: Row, role: Role, roles: RoleClients):
+    response = send(row, role, roles)
+
+    assert outcome_of(response.status_code) == row.expect[role], response.text[:300]
+
+
 @pytest.mark.parametrize("role", ROLES)
 @pytest.mark.parametrize("row", ROWS, ids=str)
 def test_each_role_gets_what_the_matrix_says(row: Row, role: Role, roles: RoleClients):

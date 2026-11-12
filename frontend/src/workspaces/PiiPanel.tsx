@@ -283,9 +283,7 @@ export function PiiPanel({
 }) {
   const archived = workspace.status === "archived";
   // Owners and editors see every tab, archived too; they change PII only while active.
-  const canSee =
-    allows(workspace, "pii.review") ||
-    (archived && (workspace.role === "owner" || workspace.role === "editor"));
+  const canSee = allows(workspace, "pii.view_review");
   const canReview = !archived && allows(workspace, "pii.review");
   const canProfileRight =
     workspace.status !== "archived" &&
