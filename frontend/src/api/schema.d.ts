@@ -9116,10 +9116,34 @@ export interface components {
              */
             category: "direct_identifier" | "quasi_identifier" | "sensitive" | "financial";
         };
+        /** PiiColumn */
+        PiiColumn: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "src_column" | "dw_column" | "dw_table" | "kpi";
+            /** Label */
+            label: string;
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "source" | "staging" | "core" | "mart" | "kpi";
+            /** Pseudonymised */
+            pseudonymised: boolean;
+            /** Pii Note */
+            pii_note: string | null;
+        };
         /** PiiColumnPage */
         PiiColumnPage: {
             /** Items */
-            items: components["schemas"]["dawam__modules__sources__pii_api__PiiColumn"][];
+            items: components["schemas"]["PiiFolderColumn"][];
             counts: components["schemas"]["PiiTabCounts"];
             /**
              * Can Profile
@@ -9204,6 +9228,79 @@ export interface components {
              */
             items: components["schemas"]["PiiFinding"][];
         };
+        /** PiiFolderColumn */
+        PiiFolderColumn: {
+            /**
+             * Id
+             * Format: uuid
+             * @description The Source Column.
+             */
+            id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Table */
+            table: string;
+            /** Column */
+            column: string;
+            /** Data Type */
+            data_type: string | null;
+            /**
+             * Source Status
+             * @description Not `present`: the column is gone from the source; the decision stays.
+             * @enum {string}
+             */
+            source_status: "present" | "source_removed" | "out_of_scope";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "accepted" | "suggested" | "rejected";
+            /**
+             * Category
+             * @description The column's PII category once accepted; else its most confident rule's.
+             */
+            category: ("direct_identifier" | "quasi_identifier" | "sensitive" | "financial") | null;
+            /** Is Sensitive */
+            is_sensitive: boolean;
+            /**
+             * Rules
+             * @description Every rule that matched, most confident first.
+             */
+            rules: components["schemas"]["PiiRuleMatch"][];
+            /**
+             * Manual
+             * @description Added as PII by hand (a Manual line, no rule).
+             */
+            manual: boolean;
+            /**
+             * Decision
+             * @description The latest decision that put the column in its tab.
+             */
+            decision: ("accepted" | "added" | "rejected" | "removed") | null;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Rejected Before By
+             * @description A suggested column rejected before, back after a later scan.
+             */
+            rejected_before_by: string | null;
+            /** Rejected Before At */
+            rejected_before_at: string | null;
+            /**
+             * Hashed Mapping
+             * @description The staging mapping that hashes the column; PII cannot be removed then.
+             */
+            hashed_mapping: string | null;
+            /** Table Profiled At */
+            table_profiled_at: string | null;
+        };
         /** PiiKpi */
         PiiKpi: {
             /**
@@ -9232,7 +9329,7 @@ export interface components {
         /** PiiRemoved */
         PiiRemoved: {
             /** @description The column, now rejected; `null` for a column added by hand only. */
-            column: components["schemas"]["dawam__modules__sources__pii_api__PiiColumn"] | null;
+            column: components["schemas"]["PiiFolderColumn"] | null;
             /**
              * Profile Job Id
              * @description The profiling job started for the table, if asked and possible.
@@ -9374,7 +9471,7 @@ export interface components {
         /** PiiViewReport */
         PiiViewReport: {
             /** Columns */
-            columns: components["schemas"]["dawam__modules__lineage__api__PiiColumn"][];
+            columns: components["schemas"]["PiiColumn"][];
             /** Tables */
             tables: components["schemas"]["LineageNode"][];
             /** Source Columns */
@@ -12361,30 +12458,6 @@ export interface components {
              */
             next_cursor: string | null;
         };
-        /** PiiColumn */
-        dawam__modules__lineage__api__PiiColumn: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "src_column" | "dw_column" | "dw_table" | "kpi";
-            /** Label */
-            label: string;
-            /**
-             * Layer
-             * @enum {string}
-             */
-            layer: "source" | "staging" | "core" | "mart" | "kpi";
-            /** Pseudonymised */
-            pseudonymised: boolean;
-            /** Pii Note */
-            pii_note: string | null;
-        };
         /** ProposedChangeSet */
         dawam__modules__propagation__api__ProposedChangeSet: {
             /**
@@ -12403,79 +12476,6 @@ export interface components {
              * @description Stored SQL sqlglot could not translate, flagged "manual" (platform changes).
              */
             manual: string[];
-        };
-        /** PiiColumn */
-        dawam__modules__sources__pii_api__PiiColumn: {
-            /**
-             * Id
-             * Format: uuid
-             * @description The Source Column.
-             */
-            id: string;
-            /**
-             * Table Id
-             * Format: uuid
-             */
-            table_id: string;
-            /** Db Schema */
-            db_schema: string;
-            /** Table */
-            table: string;
-            /** Column */
-            column: string;
-            /** Data Type */
-            data_type: string | null;
-            /**
-             * Source Status
-             * @description Not `present`: the column is gone from the source; the decision stays.
-             * @enum {string}
-             */
-            source_status: "present" | "source_removed" | "out_of_scope";
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "accepted" | "suggested" | "rejected";
-            /**
-             * Category
-             * @description The column's PII category once accepted; else its most confident rule's.
-             */
-            category: ("direct_identifier" | "quasi_identifier" | "sensitive" | "financial") | null;
-            /** Is Sensitive */
-            is_sensitive: boolean;
-            /**
-             * Rules
-             * @description Every rule that matched, most confident first.
-             */
-            rules: components["schemas"]["PiiRuleMatch"][];
-            /**
-             * Manual
-             * @description Added as PII by hand (a Manual line, no rule).
-             */
-            manual: boolean;
-            /**
-             * Decision
-             * @description The latest decision that put the column in its tab.
-             */
-            decision: ("accepted" | "added" | "rejected" | "removed") | null;
-            /** Decided By */
-            decided_by: string | null;
-            /** Decided At */
-            decided_at: string | null;
-            /**
-             * Rejected Before By
-             * @description A suggested column rejected before, back after a later scan.
-             */
-            rejected_before_by: string | null;
-            /** Rejected Before At */
-            rejected_before_at: string | null;
-            /**
-             * Hashed Mapping
-             * @description The staging mapping that hashes the column; PII cannot be removed then.
-             */
-            hashed_mapping: string | null;
-            /** Table Profiled At */
-            table_profiled_at: string | null;
         };
         /** ProposedChangeSet */
         dawam__modules__warehouse__staging_api__ProposedChangeSet: {
@@ -16839,7 +16839,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dawam__modules__sources__pii_api__PiiColumn"];
+                    "application/json": components["schemas"]["PiiFolderColumn"];
                 };
             };
             /** @description Validation error */
@@ -16885,7 +16885,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dawam__modules__sources__pii_api__PiiColumn"];
+                    "application/json": components["schemas"]["PiiFolderColumn"];
                 };
             };
             /** @description Validation error */
@@ -16927,7 +16927,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dawam__modules__sources__pii_api__PiiColumn"];
+                    "application/json": components["schemas"]["PiiFolderColumn"];
                 };
             };
             /** @description Validation error */
@@ -16973,7 +16973,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dawam__modules__sources__pii_api__PiiColumn"];
+                    "application/json": components["schemas"]["PiiFolderColumn"];
                 };
             };
             /** @description Validation error */

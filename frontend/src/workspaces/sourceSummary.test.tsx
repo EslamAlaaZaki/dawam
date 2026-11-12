@@ -58,7 +58,7 @@ const SUMMARY: SourceSummary = {
   relationships_accepted: 5,
   relationships_to_review: 7,
   pii_found: 4,
-  pii_confirmed: 1,
+  pii_accepted: 1,
   pii_to_review: 3,
   status: "in_progress",
 };

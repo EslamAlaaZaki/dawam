@@ -150,7 +150,7 @@ function ColumnRef({ column }: { column: Relationship["from_column"] }) {
 }
 
 /** Confidence as a short bar and its percentage. */
-function Confidence({ ratio }: { ratio: number | null }) {
+export function Confidence({ ratio }: { ratio: number | null }) {
   if (ratio == null) {
     return <span className="text-subtle-foreground">—</span>;
   }
@@ -255,7 +255,7 @@ const KIND_FILTERS: { kind: KindFilter; label: string }[] = [
   { kind: "manual", label: "Manual" },
 ];
 
-const initials = (name: string) =>
+export const initials = (name: string) =>
   name
     .split(/\s+/)
     .filter(Boolean)

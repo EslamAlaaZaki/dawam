@@ -1,46 +1,66 @@
-// PII findings and value scans of a Source System (spec: PII review).
+// The PII folder of a Source System: columns by tab, their review, and value scans
+// (spec: PII review).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "./client";
 import { useApiClient } from "./context";
 import { jobsKey } from "./jobs";
 import type { components } from "./schema";
-import { sourceSummaryKey } from "./sourceSummary";
 
 const DEFAULT_SAMPLE_SIZE = 1000;
 
-export type PiiFinding = components["schemas"]["PiiFinding"];
-export type PiiStatus = PiiFinding["status"];
+export type PiiColumn = components["schemas"]["PiiFolderColumn"];
+export type PiiColumnPage = components["schemas"]["PiiColumnPage"];
+export type PiiRuleMatch = components["schemas"]["PiiRuleMatch"];
+export type PiiCategory = PiiRuleMatch["category"];
+export type PiiTab = "pii" | "suggested" | "accepted" | "rejected";
 
-export const piiFindingsKey = (workspaceId: string, systemId: string) =>
-  ["workspace", workspaceId, "systems", systemId, "pii-findings"] as const;
+export const PII_CATEGORIES: readonly PiiCategory[] = [
+  "direct_identifier",
+  "quasi_identifier",
+  "sensitive",
+  "financial",
+];
 
-/** The system's findings in one state, most confident first. */
-export function usePiiFindings(
+export const CATEGORY_LABELS: Record<PiiCategory, string> = {
+  direct_identifier: "Direct identifier",
+  quasi_identifier: "Quasi-identifier",
+  sensitive: "Sensitive",
+  financial: "Financial",
+};
+
+const systemKey = (workspaceId: string, systemId: string) =>
+  ["workspace", workspaceId, "systems", systemId] as const;
+
+export const piiColumnsKey = (workspaceId: string, systemId: string) =>
+  [...systemKey(workspaceId, systemId), "pii-columns"] as const;
+
+/** One tab of the PII folder, with every tab's count. */
+export function usePiiColumns(
   workspaceId: string,
   systemId: string,
-  status: PiiStatus,
+  tab: PiiTab,
   enabled = true,
 ) {
   const client = useApiClient();
   return useQuery({
-    queryKey: [...piiFindingsKey(workspaceId, systemId), status] as const,
+    queryKey: [...piiColumnsKey(workspaceId, systemId), tab] as const,
     retry: false,
     enabled,
     queryFn: async () => {
       const { data, error, response } = await client.GET(
-        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns",
         {
           params: {
             path: { workspace_id: workspaceId, system_id: systemId },
-            query: { status },
+            query: { tab },
           },
         },
       );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
-      return data.items;
+      return data;
     },
   });
 }
@@ -68,33 +88,103 @@ export function useStartPiiScan(workspaceId: string, systemId: string) {
   });
 }
 
-/** Confirm or dismiss a finding; the lists and the Source summary's count refresh. */
-export function useDecidePiiFinding(workspaceId: string, systemId: string) {
-  const client = useApiClient();
+/**
+ * A PII decision changes the folder, the Source schema's flags, the Source summary's
+ * counts and the stored profile values: everything of the system is read again.
+ */
+function useRefreshSystem(workspaceId: string, systemId: string) {
   const queryClient = useQueryClient();
+  return () =>
+    queryClient.invalidateQueries({ queryKey: systemKey(workspaceId, systemId) });
+}
+
+export type PiiDecision =
+  | { columnId: string; action: "accept" | "accept-rejected"; category: PiiCategory }
+  | { columnId: string; action: "reject" };
+
+/** Accept or reject a suggested column, or accept a rejected one, with all its rules. */
+export function useDecidePiiColumn(workspaceId: string, systemId: string) {
+  const client = useApiClient();
+  const refresh = useRefreshSystem(workspaceId, systemId);
   return useMutation({
-    mutationFn: async ({
-      id,
-      decision,
-    }: {
-      id: string;
-      decision: "confirm" | "dismiss";
-    }) => {
+    mutationFn: async (decision: PiiDecision) => {
       const path = {
         workspace_id: workspaceId,
         system_id: systemId,
-        finding_id: id,
+        column_id: decision.columnId,
       };
       const { data, error, response } =
-        decision === "confirm"
+        decision.action === "reject"
           ? await client.POST(
-              "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/confirm",
+              "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/reject",
               { params: { path } },
             )
-          : await client.POST(
-              "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/dismiss",
-              { params: { path } },
-            );
+          : decision.action === "accept"
+            ? await client.POST(
+                "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/accept",
+                { params: { path }, body: { category: decision.category } },
+              )
+            : await client.POST(
+                "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/accept-rejected",
+                { params: { path }, body: { category: decision.category } },
+              );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSuccess: refresh,
+  });
+}
+
+/** Add a column as PII by hand, with a category. */
+export function useAddPiiColumn(workspaceId: string, systemId: string) {
+  const client = useApiClient();
+  const refresh = useRefreshSystem(workspaceId, systemId);
+  return useMutation({
+    mutationFn: async (body: { column_id: string; category: PiiCategory }) => {
+      const { data, error, response } = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns",
+        {
+          params: { path: { workspace_id: workspaceId, system_id: systemId } },
+          body,
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSuccess: refresh,
+  });
+}
+
+/** Remove a column's PII; optionally profile its table again (a background job). */
+export function useRemovePiiColumn(workspaceId: string, systemId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const refresh = useRefreshSystem(workspaceId, systemId);
+  return useMutation({
+    mutationFn: async ({
+      columnId,
+      profileAgain,
+    }: {
+      columnId: string;
+      profileAgain: boolean;
+    }) => {
+      const { data, error, response } = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/remove",
+        {
+          params: {
+            path: {
+              workspace_id: workspaceId,
+              system_id: systemId,
+              column_id: columnId,
+            },
+          },
+          body: { profile_again: profileAgain },
+        },
+      );
       if (error) {
         throw new ApiError(response.status, error.error);
       }
@@ -102,12 +192,8 @@ export function useDecidePiiFinding(workspaceId: string, systemId: string) {
     },
     onSuccess: () =>
       Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: piiFindingsKey(workspaceId, systemId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: sourceSummaryKey(workspaceId, systemId),
-        }),
+        refresh(),
+        queryClient.invalidateQueries({ queryKey: jobsKey(workspaceId) }),
       ]),
   });
 }

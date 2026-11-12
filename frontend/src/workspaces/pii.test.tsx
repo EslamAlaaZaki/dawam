@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Me } from "../api/queries";
-import type { PiiFinding } from "../api/pii";
+import type { PiiColumn } from "../api/pii";
 import type { SourceSchema } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
@@ -45,7 +45,7 @@ function workspace(
   };
 }
 
-const OWNER = workspace("owner", ["workspace.view", "pii.review"]);
+const OWNER = workspace("owner", ["workspace.view", "pii.review", "source_system.profile"]);
 const VIEWER = workspace("viewer", ["workspace.view"]);
 
 const CRM: SourceSystem = {
@@ -101,43 +101,102 @@ const SCHEMA = {
   removed_tables: [],
 } as unknown as SourceSchema;
 
-function finding(
-  id: string,
-  column: string,
-  status: PiiFinding["status"],
-  extra: Partial<PiiFinding> = {},
-): PiiFinding {
+const EDITOR_ID = "9e7f2d2f-2a54-4d2c-8c6f-6b2f3c4d5e6f";
+
+type Rule = PiiColumn["rules"][number];
+
+function rule(id: string, name: string, extra: Partial<Rule> = {}): Rule {
   return {
     id,
-    column_id: `c-${id}`,
-    table_id: "t1",
-    db_schema: "crm",
-    table: "contacts",
-    column,
-    rule: "national_id",
+    source: "name",
+    rule: name,
     category: "direct_identifier",
     confidence: 0.92,
-    evidence: "94% of sampled values look like a national ID",
-    status,
-    is_sensitive: false,
-    is_protected: status !== "dismissed",
-    detected_at: "2026-01-06T10:00:00Z",
-    decided_by: null,
-    decided_at: null,
+    evidence: `The column name matches the name rule ${name}.`,
+    status: "suggested",
     ...extra,
   };
 }
 
-interface Requests {
-  scans: unknown[];
-  decisions: string[];
+function column(id: string, name: string, extra: Partial<PiiColumn> = {}): PiiColumn {
+  return {
+    id,
+    table_id: "t1",
+    db_schema: "crm",
+    table: "contacts",
+    column: name,
+    data_type: "varchar(20)",
+    source_status: "present",
+    state: "accepted",
+    category: "direct_identifier",
+    is_sensitive: true,
+    rules: [],
+    manual: false,
+    decision: "accepted",
+    decided_by: EDITOR_ID,
+    decided_at: "2026-01-06T10:00:00Z",
+    rejected_before_by: null,
+    rejected_before_at: null,
+    hashed_mapping: null,
+    table_profiled_at: "2026-01-04T10:00:00Z",
+    ...extra,
+  };
 }
 
+const ACCEPTED = column("c1", "national_id", {
+  rules: [
+    rule("f1", "national_id", { status: "accepted" }),
+    rule("f2", "saudi_national_id", {
+      source: "value",
+      confidence: 0.81,
+      status: "accepted",
+      evidence: "81 of 100 sampled values pass the checksum",
+    }),
+  ],
+});
+const HAND = column("c2", "notes", { manual: true, decision: "added", category: "sensitive" });
+const HASHED = column("c3", "iban", {
+  category: "financial",
+  rules: [rule("f3", "iban", { status: "accepted", category: "financial" })],
+  hashed_mapping: "stg_crm_contacts.iban",
+});
+const SUGGESTED = column("c4", "email", {
+  state: "suggested",
+  is_sensitive: false,
+  category: "quasi_identifier",
+  decision: null,
+  decided_by: null,
+  decided_at: null,
+  rejected_before_by: EDITOR_ID,
+  rejected_before_at: "2026-01-02T10:00:00Z",
+  rules: [
+    rule("f4", "email", { category: "quasi_identifier", confidence: 0.9 }),
+    rule("f5", "custom:mail", { category: "sensitive", confidence: 0.6, source: "value" }),
+  ],
+});
+const REJECTED = column("c5", "phone", {
+  state: "rejected",
+  is_sensitive: false,
+  category: "quasi_identifier",
+  decision: "removed",
+  rules: [rule("f6", "phone", { status: "rejected", category: "quasi_identifier" })],
+});
+
+const TAB_ITEMS: Record<string, PiiColumn[]> = {
+  pii: [ACCEPTED, HAND, HASHED],
+  suggested: [SUGGESTED],
+  accepted: [ACCEPTED, HASHED],
+  rejected: [REJECTED],
+};
+
+interface Requests {
+  scans: unknown[];
+  decisions: { path: string; body: unknown }[];
+}
+
+const fresh = (): Requests => ({ scans: [], decisions: [] });
+
 function backend(ws: Workspace, requests: Requests) {
-  const findings = [
-    finding("f1", "id_number", "suggested"),
-    finding("f2", "email", "confirmed", { rule: "email", category: "quasi_identifier" }),
-  ];
   return (r: ApiRequest) => {
     const key = `${r.method} ${r.path}`;
     switch (key) {
@@ -145,6 +204,8 @@ function backend(ws: Workspace, requests: Requests) {
         return json(ADA);
       case `GET ${API}`:
         return json(ws);
+      case `GET ${API}/members`:
+        return json({ items: [{ user_id: EDITOR_ID, display_name: "Grace Hopper" }] });
       case `GET ${API}/systems`:
         return json({ items: [CRM], next_cursor: null });
       case `GET ${API}/progress`:
@@ -157,20 +218,23 @@ function backend(ws: Workspace, requests: Requests) {
         return json({ items: [], next_cursor: null });
       case `GET ${SYSTEM}/schema`:
         return json(SCHEMA);
-      case `GET ${SYSTEM}/pii-findings`: {
-        const status = r.query.status;
-        return json({ items: findings.filter((f) => f.status === status) });
-      }
+      case `GET ${SYSTEM}/pii-columns`:
+        return json({
+          items: TAB_ITEMS[r.query.tab ?? "pii"],
+          counts: { pii: 3, suggested: 1, accepted: 2, rejected: 1 },
+          can_profile: true,
+        });
       case `POST ${SYSTEM}/pii-scans`:
         requests.scans.push(r.body);
         return json({ job_id: "j1", status: "queued" }, 202);
     }
-    const decision = key.match(/^POST .*\/pii-findings\/(f\d)\/(confirm|dismiss)$/);
+    const decision = key.match(/^POST .*\/pii-columns\/(c\d)\/([a-z-]+)$/);
     if (decision) {
-      requests.decisions.push(`${decision[1]} ${decision[2]}`);
-      const found = findings.find((f) => f.id === decision[1])!;
-      found.status = decision[2] === "confirm" ? "confirmed" : "dismissed";
-      return json(found);
+      requests.decisions.push({ path: `${decision[1]} ${decision[2]}`, body: r.body });
+      if (decision[2] === "remove") {
+        return json({ column: null, profile_job_id: null });
+      }
+      return json(SUGGESTED);
     }
     return undefined;
   };
@@ -182,73 +246,160 @@ beforeEach(() => {
 });
 afterEach(() => clearCookie());
 
-function openTab(name: string) {
+function openTab(name: RegExp) {
   fireEvent.mouseDown(screen.getByRole("tab", { name }), { button: 0 });
 }
 
+/** The row of a column (its name comes before any rule of the same name). */
+const rowOf = async (name: string) => (await screen.findAllByText(name))[0]!.closest("tr")!;
+
 describe("the PII folder", () => {
-  it("lists the review queue with the column in full, the evidence and a Protected badge", async () => {
-    renderApp(backend(OWNER, { scans: [], decisions: [] }), FOLDER);
+  it("lists the PII columns with their rules, category, type and who decided", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
 
-    const row = (await screen.findByText("crm.contacts.id_number")).closest("tr")!;
-    expect(row).toHaveTextContent("national_id");
-    expect(row).toHaveTextContent("92%");
-    expect(row).toHaveTextContent("94% of sampled values");
-    expect(within(row).getByText("Protected")).toBeInTheDocument();
-    expect(screen.queryByText("crm.contacts.email")).toBeNull();
+    const row = await rowOf("national_id");
+    expect(row).toHaveTextContent("crm.contacts");
+    expect(row).toHaveTextContent("varchar(20)");
+    expect(row).toHaveTextContent("Direct identifier");
+    expect(row).toHaveTextContent("saudi_national_id");
+    expect(row).toHaveTextContent("81%");
+    expect(row).not.toHaveTextContent("sampled values"); // no evidence in the compact list
+    expect(await within(row).findByText(/Accepted by Grace Hopper/)).toBeInTheDocument();
+    expect(await rowOf("notes")).toHaveTextContent("Added by hand");
+    expect(within(await rowOf("iban")).getByText("Hashed in staging")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Suggested/ })).toHaveTextContent("1");
   });
 
-  it("moves a finding to the Confirmed tab when it is confirmed", async () => {
-    const requests: Requests = { scans: [], decisions: [] };
+  it("filters the PII tab by where the rules come from", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
+
+    await rowOf("national_id");
+    const filters = screen.getByRole("group", { name: "Filter by source" });
+    expect(within(filters).getByRole("button", { name: /Value scan/ })).toHaveTextContent("1");
+    fireEvent.click(within(filters).getByRole("button", { name: /Manual/ }));
+
+    expect(screen.queryByText("national_id")).toBeNull();
+    expect(screen.getByText("notes")).toBeInTheDocument();
+  });
+
+  it("says suggested columns are protected too and links to them", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
+
+    expect(await screen.findByText(/1 suggested column is also protected/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review suggested" }));
+
+    expect(await rowOf("email")).toHaveTextContent("Rejected before by Grace Hopper");
+  });
+
+  it("accepts a suggested column with the most confident rule's category", async () => {
+    const requests = fresh();
     renderApp(backend(OWNER, requests), FOLDER);
+    await rowOf("national_id");
+    openTab(/Suggested/);
 
-    const row = (await screen.findByText("crm.contacts.id_number")).closest("tr")!;
-    fireEvent.click(within(row).getByRole("button", { name: "Confirm" }));
+    const row = await rowOf("email");
+    expect(within(row).getByText("Rules disagree")).toBeInTheDocument();
+    expect(within(row).getByRole("combobox", { name: "Category of email" })).toHaveTextContent(
+      "Quasi-identifier",
+    );
+    fireEvent.click(within(row).getByRole("button", { name: "Accept" }));
 
-    await waitFor(() => expect(requests.decisions).toEqual(["f1 confirm"]));
     await waitFor(() =>
-      expect(screen.queryByText("crm.contacts.id_number")).toBeNull(),
+      expect(requests.decisions).toEqual([
+        { path: "c4 accept", body: { category: "quasi_identifier" } },
+      ]),
     );
-    openTab("Confirmed");
-    expect(await screen.findByText("crm.contacts.id_number")).toBeInTheDocument();
-    expect(screen.getByText("crm.contacts.email")).toBeInTheDocument();
   });
 
-  it("moves a finding to the Dismissed tab when it is dismissed", async () => {
-    const requests: Requests = { scans: [], decisions: [] };
+  it("rejects a suggested column in one click", async () => {
+    const requests = fresh();
+    renderApp(backend(OWNER, requests), FOLDER);
+    await rowOf("national_id");
+    openTab(/Suggested/);
+
+    fireEvent.click(within(await rowOf("email")).getByRole("button", { name: "Reject" }));
+
+    await waitFor(() => expect(requests.decisions.map((d) => d.path)).toEqual(["c4 reject"]));
+  });
+
+  it("accepts a rejected column after all through a dialog with a category", async () => {
+    const requests = fresh();
+    renderApp(backend(OWNER, requests), FOLDER);
+    await rowOf("national_id");
+    openTab(/Rejected/);
+
+    const row = await rowOf("phone");
+    expect(await within(row).findByText(/Removed by Grace Hopper/)).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "Accept" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Accept as PII" }));
+
+    await waitFor(() =>
+      expect(requests.decisions).toEqual([
+        { path: "c5 accept-rejected", body: { category: "quasi_identifier" } },
+      ]),
+    );
+  });
+
+  it("removes PII and profiles the table again when ticked", async () => {
+    const requests = fresh();
     renderApp(backend(OWNER, requests), FOLDER);
 
-    const row = (await screen.findByText("crm.contacts.id_number")).closest("tr")!;
-    fireEvent.click(within(row).getByRole("button", { name: "Dismiss" }));
+    fireEvent.click(
+      within(await rowOf("national_id")).getByRole("button", {
+        name: "Remove PII from national_id",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Moves to Rejected");
+    expect(within(dialog).getByRole("checkbox")).toBeChecked();
+    expect(dialog).toHaveTextContent("Profile contacts again");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove PII" }));
 
-    await waitFor(() => expect(requests.decisions).toEqual(["f1 dismiss"]));
-    openTab("Dismissed");
-    expect(await screen.findByText("crm.contacts.id_number")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(requests.decisions).toEqual([{ path: "c1 remove", body: { profile_again: true } }]),
+    );
   });
 
-  it("tells a member without the review right so, calmly, with no buttons", async () => {
-    const forbidden = json(
-      { error: { code: "forbidden", message: "Not allowed", details: {} } },
-      403,
-    );
-    const ok = backend(VIEWER, { scans: [], decisions: [] });
-    renderApp(
-      (r) => (r.path === `${SYSTEM}/pii-findings` ? forbidden : ok(r)),
-      FOLDER,
-    );
+  it("blocks removing PII while the staging mapping hashes the column", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
 
+    fireEvent.click(
+      within(await rowOf("iban")).getByRole("button", { name: "Remove PII from iban" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+
+    expect(dialog).toHaveTextContent("stg_crm_contacts.iban");
+    expect(dialog).toHaveTextContent("Switch it back to direct in Mappings first");
+    expect(within(dialog).queryByRole("button", { name: "Remove PII" })).toBeNull();
+  });
+
+  it("shows a viewer the PII tab only, read only", async () => {
+    renderApp(backend(VIEWER, fresh()), FOLDER);
+
+    expect(await rowOf("national_id")).toBeInTheDocument();
     expect(
-      await screen.findByText("Only members who can review PII see the findings."),
+      screen.getByText("Read only. Owners and Editors review and change PII."),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Could not load/)).toBeNull();
     expect(screen.queryByRole("tab")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Scan values" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add PII column" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Remove PII/ })).toBeNull();
+  });
+
+  it("offers Add PII column on the PII tab only", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
+
+    expect(await screen.findByRole("button", { name: "Add PII column" })).toBeInTheDocument();
+    openTab(/Suggested/);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Add PII column" })).toBeNull(),
+    );
   });
 
   it("scans every table (not views) by default, and starts the job", async () => {
-    const requests: Requests = { scans: [], decisions: [] };
+    const requests = fresh();
     renderApp(backend(OWNER, requests), FOLDER);
 
     fireEvent.click(await screen.findByRole("button", { name: "Scan values" }));
@@ -263,7 +414,7 @@ describe("the PII folder", () => {
   });
 
   it("narrows the scan to the tables ticked", async () => {
-    const requests: Requests = { scans: [], decisions: [] };
+    const requests = fresh();
     renderApp(backend(OWNER, requests), FOLDER);
 
     fireEvent.click(await screen.findByRole("button", { name: "Scan values" }));
@@ -274,13 +425,12 @@ describe("the PII folder", () => {
     await waitFor(() => expect(requests.scans).toEqual([{ table_ids: ["t1"], sample_size: 1000 }]));
   });
 
-  it("offers no scan or decisions in an archived Workspace", async () => {
-    const archived = workspace("owner", ["workspace.view"], "archived");
-    renderApp(backend(archived, { scans: [], decisions: [] }), FOLDER);
+  it("offers no scan or changes in an archived Workspace", async () => {
+    const archived = workspace("owner", ["workspace.view", "pii.review"], "archived");
+    renderApp(backend(archived, fresh()), FOLDER);
 
-    expect(
-      await screen.findByText("Only members who can review PII see the findings."),
-    ).toBeInTheDocument();
+    expect(await rowOf("national_id")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Scan values" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Remove PII/ })).toBeNull();
   });
 });

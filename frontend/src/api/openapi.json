@@ -6795,7 +6795,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dawam__modules__sources__pii_api__PiiColumn"
+                  "$ref": "#/components/schemas/PiiFolderColumn"
                 }
               }
             }
@@ -6880,7 +6880,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dawam__modules__sources__pii_api__PiiColumn"
+                  "$ref": "#/components/schemas/PiiFolderColumn"
                 }
               }
             }
@@ -6955,7 +6955,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dawam__modules__sources__pii_api__PiiColumn"
+                  "$ref": "#/components/schemas/PiiFolderColumn"
                 }
               }
             }
@@ -7040,7 +7040,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dawam__modules__sources__pii_api__PiiColumn"
+                  "$ref": "#/components/schemas/PiiFolderColumn"
                 }
               }
             }
@@ -27321,11 +27321,70 @@
         ],
         "title": "PiiCategoryRequest"
       },
+      "PiiColumn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "src_column",
+              "dw_column",
+              "dw_table",
+              "kpi"
+            ],
+            "title": "Type"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "source",
+              "staging",
+              "core",
+              "mart",
+              "kpi"
+            ],
+            "title": "Layer"
+          },
+          "pseudonymised": {
+            "type": "boolean",
+            "title": "Pseudonymised"
+          },
+          "pii_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pii Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "label",
+          "layer",
+          "pseudonymised",
+          "pii_note"
+        ],
+        "title": "PiiColumn"
+      },
       "PiiColumnPage": {
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/dawam__modules__sources__pii_api__PiiColumn"
+              "$ref": "#/components/schemas/PiiFolderColumn"
             },
             "type": "array",
             "title": "Items"
@@ -27489,6 +27548,212 @@
         ],
         "title": "PiiFindingPage"
       },
+      "PiiFolderColumn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Column."
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "table": {
+            "type": "string",
+            "title": "Table"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "data_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Type"
+          },
+          "source_status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "source_removed",
+              "out_of_scope"
+            ],
+            "title": "Source Status",
+            "description": "Not `present`: the column is gone from the source; the decision stays."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "suggested",
+              "rejected"
+            ],
+            "title": "State"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "direct_identifier",
+                  "quasi_identifier",
+                  "sensitive",
+                  "financial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "description": "The column's PII category once accepted; else its most confident rule's."
+          },
+          "is_sensitive": {
+            "type": "boolean",
+            "title": "Is Sensitive"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/PiiRuleMatch"
+            },
+            "type": "array",
+            "title": "Rules",
+            "description": "Every rule that matched, most confident first."
+          },
+          "manual": {
+            "type": "boolean",
+            "title": "Manual",
+            "description": "Added as PII by hand (a Manual line, no rule)."
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "added",
+                  "rejected",
+                  "removed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision",
+            "description": "The latest decision that put the column in its tab."
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "rejected_before_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected Before By",
+            "description": "A suggested column rejected before, back after a later scan."
+          },
+          "rejected_before_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected Before At"
+          },
+          "hashed_mapping": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hashed Mapping",
+            "description": "The staging mapping that hashes the column; PII cannot be removed then."
+          },
+          "table_profiled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Profiled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "table_id",
+          "db_schema",
+          "table",
+          "column",
+          "data_type",
+          "source_status",
+          "state",
+          "category",
+          "is_sensitive",
+          "rules",
+          "manual",
+          "decision",
+          "decided_by",
+          "decided_at",
+          "rejected_before_by",
+          "rejected_before_at",
+          "hashed_mapping",
+          "table_profiled_at"
+        ],
+        "title": "PiiFolderColumn"
+      },
       "PiiKpi": {
         "properties": {
           "id": {
@@ -27545,7 +27810,7 @@
           "column": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/dawam__modules__sources__pii_api__PiiColumn"
+                "$ref": "#/components/schemas/PiiFolderColumn"
               },
               {
                 "type": "null"
@@ -27878,7 +28143,7 @@
         "properties": {
           "columns": {
             "items": {
-              "$ref": "#/components/schemas/dawam__modules__lineage__api__PiiColumn"
+              "$ref": "#/components/schemas/PiiColumn"
             },
             "type": "array",
             "title": "Columns"
@@ -34916,65 +35181,6 @@
         ],
         "title": "WorkspacePage"
       },
-      "dawam__modules__lineage__api__PiiColumn": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "src_column",
-              "dw_column",
-              "dw_table",
-              "kpi"
-            ],
-            "title": "Type"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "layer": {
-            "type": "string",
-            "enum": [
-              "source",
-              "staging",
-              "core",
-              "mart",
-              "kpi"
-            ],
-            "title": "Layer"
-          },
-          "pseudonymised": {
-            "type": "boolean",
-            "title": "Pseudonymised"
-          },
-          "pii_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pii Note"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "type",
-          "label",
-          "layer",
-          "pseudonymised",
-          "pii_note"
-        ],
-        "title": "PiiColumn"
-      },
       "dawam__modules__propagation__api__ProposedChangeSet": {
         "properties": {
           "change_set_id": {
@@ -35004,212 +35210,6 @@
           "manual"
         ],
         "title": "ProposedChangeSet"
-      },
-      "dawam__modules__sources__pii_api__PiiColumn": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id",
-            "description": "The Source Column."
-          },
-          "table_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Table Id"
-          },
-          "db_schema": {
-            "type": "string",
-            "title": "Db Schema"
-          },
-          "table": {
-            "type": "string",
-            "title": "Table"
-          },
-          "column": {
-            "type": "string",
-            "title": "Column"
-          },
-          "data_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data Type"
-          },
-          "source_status": {
-            "type": "string",
-            "enum": [
-              "present",
-              "source_removed",
-              "out_of_scope"
-            ],
-            "title": "Source Status",
-            "description": "Not `present`: the column is gone from the source; the decision stays."
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "accepted",
-              "suggested",
-              "rejected"
-            ],
-            "title": "State"
-          },
-          "category": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "direct_identifier",
-                  "quasi_identifier",
-                  "sensitive",
-                  "financial"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category",
-            "description": "The column's PII category once accepted; else its most confident rule's."
-          },
-          "is_sensitive": {
-            "type": "boolean",
-            "title": "Is Sensitive"
-          },
-          "rules": {
-            "items": {
-              "$ref": "#/components/schemas/PiiRuleMatch"
-            },
-            "type": "array",
-            "title": "Rules",
-            "description": "Every rule that matched, most confident first."
-          },
-          "manual": {
-            "type": "boolean",
-            "title": "Manual",
-            "description": "Added as PII by hand (a Manual line, no rule)."
-          },
-          "decision": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "accepted",
-                  "added",
-                  "rejected",
-                  "removed"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decision",
-            "description": "The latest decision that put the column in its tab."
-          },
-          "decided_by": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decided By"
-          },
-          "decided_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decided At"
-          },
-          "rejected_before_by": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rejected Before By",
-            "description": "A suggested column rejected before, back after a later scan."
-          },
-          "rejected_before_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rejected Before At"
-          },
-          "hashed_mapping": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hashed Mapping",
-            "description": "The staging mapping that hashes the column; PII cannot be removed then."
-          },
-          "table_profiled_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Table Profiled At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "table_id",
-          "db_schema",
-          "table",
-          "column",
-          "data_type",
-          "source_status",
-          "state",
-          "category",
-          "is_sensitive",
-          "rules",
-          "manual",
-          "decision",
-          "decided_by",
-          "decided_at",
-          "rejected_before_by",
-          "rejected_before_at",
-          "hashed_mapping",
-          "table_profiled_at"
-        ],
-        "title": "PiiColumn"
       },
       "dawam__modules__warehouse__staging_api__ProposedChangeSet": {
         "properties": {
