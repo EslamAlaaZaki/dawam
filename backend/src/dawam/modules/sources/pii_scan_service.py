@@ -5,7 +5,8 @@ An owner or editor picks tables of a Source System that has a live Connection
 N rows per table (default 1 000) and tests each column's values in memory against the
 validators (``internal.pii_scan``). Only the match ratio is recorded, as the evidence of a
 ``suggested`` finding at or above 0.5 confidence; a column that already has a finding for
-the rule keeps its status and gains confidence. The values are discarded as soon as the
+the rule keeps its status and gains confidence, unless the scan sends a rejected column
+back to review (``internal.pii.reopens``). The values are discarded as soon as the
 table is scored and are never logged: the job log holds table names and counts only.
 
 The source is read outside any app-database transaction; each table's findings are written
@@ -31,7 +32,7 @@ from dawam.platform.errors import ApiError
 
 from .connection_service import PASSWORD_CONTEXT
 from .internal.connector import ConnectionParams, Connector, ConnectorError, connector_for
-from .internal.pii import load_rule_set
+from .internal.pii import load_rule_set, reopen_rejected, reopens
 from .internal.pii_rules import RuleSet
 from .internal.pii_scan import DEFAULT_SAMPLE_SIZE, MAX_SAMPLE_SIZE, ValueFinding, score_column
 from .tables import (
@@ -231,6 +232,18 @@ class PiiScanService:
             )
             .with_for_update()
         ).first()
+        rejected = db.scalar(
+            sa.select(sa.func.count())
+            .select_from(PiiFindingRecord)
+            .where(
+                PiiFindingRecord.src_column_id == column_id,
+                PiiFindingRecord.status == "rejected",
+            )
+        )
+        if rejected and reopens(existing, finding.confidence):
+            reopen_rejected(db, [column_id])
+            if existing is not None:
+                db.refresh(existing)
         if existing is None:
             db.add(
                 PiiFindingRecord(
@@ -241,14 +254,17 @@ class PiiScanService:
                     confidence=finding.confidence,
                     evidence=finding.evidence[:500],
                     status="suggested",
+                    source="value",
                     snapshot_id=None,
                     detected_at=now,
                 )
             )
             return 1
-        # A decision is never undone: only the confidence and the evidence move.
+        # A decision stays unless the scan reopened it: only the confidence and the
+        # evidence move.
         existing.confidence = max(existing.confidence, finding.confidence)
         existing.evidence = finding.evidence[:500]
+        existing.source = "value"
         return 1
 
     def _password(self, connection: ConnectionRecord) -> str | None:

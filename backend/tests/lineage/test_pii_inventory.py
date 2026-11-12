@@ -25,13 +25,13 @@ def export_url(roles: RoleClients) -> str:
 
 
 def confirm(roles: RoleClients, column_id: str) -> None:
-    """A confirmed finding decided by the editor."""
+    """An accepted finding decided by the editor."""
     with roles.app.state.engine.begin() as connection:
         connection.execute(
             sa.text(
                 "insert into pii_findings (id, src_column_id, rule, category, confidence,"
                 " evidence, status, detected_at, decided_by, decided_at) values (:id, :c,"
-                " 'national_id', 'direct_identifier', 0.9, 'name', 'confirmed', :now, :by, :now)"
+                " 'national_id', 'direct_identifier', 0.9, 'name', 'accepted', :now, :by, :now)"
             ),
             {
                 "id": uuid.uuid4(),

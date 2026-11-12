@@ -57,7 +57,7 @@ def download_pii_inventory(
     inventories: PiiInventoryServiceDep,
     format: InventoryFormatParam = "xlsx",
 ) -> Response:
-    """The PII inventory (any member): the confirmed PII source columns and the DW columns
+    """The PII inventory (any member): the accepted PII source columns and the DW columns
     they feed, with category, hashing (`pseudonymised` or `not hashed`), handling note and
     reviewer, never values. PII-influenced tables are listed on their own sheet or section.
     To keep a copy, save it to the file area with

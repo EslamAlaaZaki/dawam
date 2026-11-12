@@ -161,7 +161,9 @@ def test_only_the_selected_tables_are_scanned(roles: RoleClients, scratch_source
     assert findings(roles, system) == []
 
 
-def test_a_name_finding_gains_confidence_and_keeps_its_decision(roles: RoleClients, scratch_source):
+def test_a_value_scan_that_raises_a_rejected_rules_confidence_sends_it_back_to_review(
+    roles: RoleClients, scratch_source
+):
     scratch_source["run"]("CREATE TABLE staff (id integer PRIMARY KEY, email text);")
     for i in range(4):
         scratch_source["run"](f"INSERT INTO staff VALUES ({i}, '{EMAILS[i]}');")
@@ -169,13 +171,13 @@ def test_a_name_finding_gains_confidence_and_keeps_its_decision(roles: RoleClien
     connect(roles, system, scratch_source["body"]())
     extract(roles, system)
     [before] = findings(roles, system)
-    roles.client("editor").post(f"{system}/pii-findings/{before['id']}/dismiss")
+    roles.client("editor").post(f"{system}/pii-columns/{before['column_id']}/reject")
     table = {t["name"]: t["id"] for t in schema(roles, system)["tables"]}["staff"]
 
     scan(roles, system, [table])
 
     [after] = findings(roles, system)
-    assert after["id"] == before["id"] and after["status"] == "dismissed"
+    assert after["id"] == before["id"] and after["status"] == "suggested"
     assert after["confidence"] > before["confidence"]
     assert "sampled values" in after["evidence"]
 

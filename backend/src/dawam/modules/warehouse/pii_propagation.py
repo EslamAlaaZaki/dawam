@@ -1,6 +1,6 @@
 """PII propagation over the stored lineage edges (spec §6.12, story 137).
 
-A DW column is PII-derived only through ``value`` edges from a confirmed PII source column.
+A DW column is PII-derived only through ``value`` edges from an accepted PII source column.
 A table is PII-influenced when a PII source column or a PII-derived column only steers it:
 a ``uses`` edge (join, filter, GROUP BY, a lookup's natural-key input) or a ``lookup``
 edge. A lookup's surrogate key has no ``value`` edge, so it is never PII-derived. A
@@ -32,7 +32,7 @@ from .tables import (
 @dataclass(frozen=True)
 class PiiPropagation:
     derived_columns: frozenset[uuid.UUID]
-    """DW columns fed by a confirmed PII column through value edges."""
+    """DW columns fed by an accepted PII column through value edges."""
     influenced_tables: frozenset[uuid.UUID]
     """DW tables steered by PII but not necessarily holding PII-derived columns."""
     pseudonymised_columns: frozenset[uuid.UUID] = frozenset()
@@ -40,7 +40,7 @@ class PiiPropagation:
 
 
 def propagate_pii(db: Session, pii_column_ids: Iterable[uuid.UUID]) -> PiiPropagation:
-    """Follow value edges down from the confirmed PII source columns, then collect the
+    """Follow value edges down from the accepted PII source columns, then collect the
     tables that PII (source or derived) steers."""
     seeds = set(pii_column_ids)
     derived = _downstream(db, seeds)

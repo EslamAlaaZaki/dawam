@@ -68,7 +68,7 @@ class DbSchemaChange:
 
 @dataclass(frozen=True)
 class SuspectedPiiColumn:
-    """A column new in the newer Snapshot that has a ``suggested`` or ``confirmed`` PII
+    """A column new in the newer Snapshot that has a ``suggested`` or ``accepted`` PII
     finding (spec story 139). Never holds a value."""
 
     column_id: uuid.UUID

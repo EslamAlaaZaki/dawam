@@ -1,4 +1,4 @@
-"""Hashing a confirmed PII column and PII handling notes (spec §6.12, story 138).
+"""Hashing an accepted PII column and PII handling notes (spec §6.12, story 138).
 
 Uses the lineage suite's Workspace: source ``crm.dbo.orders`` (amount, status) is staged,
 Core ``fact_orders.amount_c`` reads the staged amount and Mart ``mart_orders.amount_m``
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from dawam.modules.warehouse.pii_hashing import SALT_PLACEHOLDER, hashed_sql, unhashed_sql
 from dawam.modules.warehouse.platforms import TARGET_PLATFORMS
 from tests.lineage import test_lineage
-from tests.lineage.test_lineage import confirm_pii, dw, ok, pii_view
+from tests.lineage.test_lineage import accept_pii, dw, ok, pii_view
 from tests.roles import RoleClients
 from tests.warehouse.test_staging_generation import columns_of, query
 
@@ -59,8 +59,8 @@ def test_unhashing_refuses_an_expression_it_did_not_make():
         unhashed_sql("postgresql", "dbo.orders.amount")
 
 
-def test_a_confirmed_pii_column_is_hashed_and_stays_pii_derived(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+def test_an_accepted_pii_column_is_hashed_and_stays_pii_derived(graph, roles):
+    accept_pii(roles, graph["src_amount"])
 
     body = hash_column(roles, graph["stg_amount"])
 
@@ -79,8 +79,8 @@ def test_a_confirmed_pii_column_is_hashed_and_stays_pii_derived(graph, roles):
 
 
 def test_only_the_hashed_column_and_what_it_feeds_are_pseudonymised(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
-    confirm_pii(roles, graph["src_status"])
+    accept_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_status"])
     hash_column(roles, graph["stg_status"])
 
     columns = {c["label"]: c["pseudonymised"] for c in pii_view(roles)["columns"]}
@@ -93,7 +93,7 @@ def test_only_the_hashed_column_and_what_it_feeds_are_pseudonymised(graph, roles
     }
 
 
-def test_a_column_that_is_not_confirmed_pii_cannot_be_hashed(graph, roles):
+def test_a_column_that_is_not_accepted_pii_cannot_be_hashed(graph, roles):
     response = set_mapping(roles, graph["stg_amount"], "hashed", 1)
 
     assert response.status_code == 422, response.text
@@ -101,7 +101,7 @@ def test_a_column_that_is_not_confirmed_pii_cannot_be_hashed(graph, roles):
 
 
 def test_mapping_it_direct_again_restores_the_source_column(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
     hash_column(roles, graph["stg_amount"])
 
     body = ok(set_mapping(roles, graph["stg_amount"], "direct", 2))
@@ -112,7 +112,7 @@ def test_mapping_it_direct_again_restores_the_source_column(graph, roles):
 
 
 def test_a_stale_version_is_a_conflict(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
     hash_column(roles, graph["stg_amount"])
 
     response = set_mapping(roles, graph["stg_amount"], "direct", 1)
@@ -136,8 +136,8 @@ def test_a_core_column_cannot_be_mapped_as_hashed(graph, roles):
 
 
 def test_hashed_mappings_never_contain_a_literal_salt(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
-    confirm_pii(roles, graph["src_status"])
+    accept_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_status"])
 
     # A salt sent along is not a field of the request: it is never read, let alone stored.
     hash_column(roles, graph["stg_amount"])
@@ -159,7 +159,7 @@ def test_hashed_mappings_never_contain_a_literal_salt(graph, roles):
 
 
 def test_hashing_is_audited(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
     hash_column(roles, graph["stg_amount"])
 
     [(old, new)] = query(
@@ -192,7 +192,7 @@ def set_note(roles: RoleClients, table_id: str, column_id: str, note: str | None
 
 
 def test_a_pii_derived_column_takes_a_handling_note(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
 
     body = ok(set_note(roles, graph["mart"], graph["amount_m"], "Aggregate before sharing."))
 
@@ -203,7 +203,7 @@ def test_a_pii_derived_column_takes_a_handling_note(graph, roles):
 
 
 def test_a_staging_column_takes_a_handling_note_too(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
 
     body = ok(set_note(roles, graph["stg"]["id"], graph["stg_amount"], "Hash before loading."))
 
@@ -218,7 +218,7 @@ def test_a_column_that_is_not_pii_derived_takes_no_note(graph, roles):
 
 
 def test_a_note_is_cleared_with_null(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
     ok(set_note(roles, graph["mart"], graph["amount_m"], "Aggregate before sharing."))
 
     body = ok(set_note(roles, graph["mart"], graph["amount_m"], None))
@@ -227,7 +227,7 @@ def test_a_note_is_cleared_with_null(graph, roles):
 
 
 def test_a_hashed_expression_of_another_platform_is_refused_not_a_crash(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
     hash_column(roles, graph["stg_amount"])
     with roles.app.state.engine.begin() as connection:
         connection.execute(sa.text("update data_warehouses set target_platform = 'sqlserver'"))
@@ -235,3 +235,35 @@ def test_a_hashed_expression_of_another_platform_is_refused_not_a_crash(graph, r
     response = set_mapping(roles, graph["stg_amount"], "direct", 2)
 
     assert response.status_code == 422, response.text
+
+
+def pii_columns(roles: RoleClients, graph: dict) -> str:
+    return f"/api/v1/workspaces/{roles.workspace_id}/systems/{graph['system']}/pii-columns"
+
+
+def test_a_column_added_as_pii_by_hand_can_be_hashed(graph, roles):
+    added = roles.client("editor").post(
+        pii_columns(roles, graph),
+        json={"column_id": graph["src_amount"], "category": "financial"},
+    )
+    assert added.status_code == 200, added.text
+
+    hash_column(roles, graph["stg_amount"])
+
+    assert [c["label"] for c in pii_view(roles)["source_columns"]] == ["crm.dbo.orders.amount"]
+
+
+def test_pii_cannot_be_removed_while_the_staging_mapping_hashes_the_column(graph, roles):
+    accept_pii(roles, graph["src_amount"])
+    hash_column(roles, graph["stg_amount"])
+    remove = f"{pii_columns(roles, graph)}/{graph['src_amount']}/remove"
+
+    refused = roles.client("editor").post(remove, json={})
+    listed = roles.client("viewer").get(pii_columns(roles, graph)).json()["items"]
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"]["code"] == "pii_column_hashed"
+    [row] = listed
+    assert row["hashed_mapping"] == f"{graph['stg']['name']}.amount"
+    ok(set_mapping(roles, graph["stg_amount"], "direct", 2))
+    assert roles.client("editor").post(remove, json={}).status_code == 200

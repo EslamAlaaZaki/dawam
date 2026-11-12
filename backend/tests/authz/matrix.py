@@ -582,13 +582,43 @@ def pii_finding_id(roles: RoleClients) -> str:
     return roles.client("owner").get(f"{system}/pii-findings").json()["items"][0]["id"]
 
 
-def pii_staging_column_id(roles: RoleClients) -> str:
-    """The staging column of the stand-in table's ``national_id``, its finding confirmed (the
-    owner confirms it and generates the Staging Layer through the API)."""
+def pii_column_id(roles: RoleClients, state: str = "suggested") -> str:
+    """The stand-in table's ``national_id`` column, its PII review reset to ``state``:
+    ``suggested`` or ``rejected`` (its findings), or ``accepted`` (flagged sensitive too),
+    so every allowed role's decision succeeds."""
     finding = pii_finding_id(roles)
+    sensitive = state == "accepted"
+    with roles.app.state.engine.begin() as connection:
+        column = connection.execute(
+            sa.text("select src_column_id from pii_findings where id = :f"), {"f": finding}
+        ).scalar_one()
+        connection.execute(
+            sa.text(
+                "update pii_findings set status = :s, confidence_at_rejection = null"
+                " where src_column_id = :c"
+            ),
+            {"s": state, "c": column},
+        )
+        connection.execute(
+            sa.text(
+                "update src_columns set is_sensitive = :on,"
+                " pii_category = case when :on then 'direct_identifier' end,"
+                " pii_added_by = null, pii_added_at = null where id = :c"
+            ),
+            {"on": sensitive, "c": column},
+        )
+    return str(column)
+
+
+def pii_staging_column_id(roles: RoleClients) -> str:
+    """The staging column of the stand-in table's ``national_id``, accepted as PII (the
+    owner accepts it and generates the Staging Layer through the API)."""
+    column = pii_column_id(roles)
     owner = roles.client("owner")
     system = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}"
-    response = owner.post(f"{system}/pii-findings/{finding}/confirm")
+    response = owner.post(
+        f"{system}/pii-columns/{column}/accept", json={"category": "direct_identifier"}
+    )
     assert response.status_code == 200, response.text
     ensure_data_warehouse(roles)
     staging = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse/staging"
@@ -597,11 +627,8 @@ def pii_staging_column_id(roles: RoleClients) -> str:
     with roles.app.state.engine.connect() as connection:
         return str(
             connection.execute(
-                sa.text(
-                    "select c.id from dw_columns c join pii_findings f"
-                    " on f.src_column_id = c.source_column_id where f.id = :f"
-                ),
-                {"f": finding},
+                sa.text("select c.id from dw_columns c where c.source_column_id = :c"),
+                {"c": column},
             ).scalar_one()
         )
 
@@ -752,7 +779,6 @@ PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "dw_table_id": dw_table_id,
     "dw_column_id": dw_column_id,
     "branch_id": branch_id,
-    "finding_id": pii_finding_id,
     "relationship_id": relationship_id,
     "rule_id": pii_rule_id,
     "provider_id": provider_id,

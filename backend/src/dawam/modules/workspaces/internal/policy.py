@@ -112,7 +112,7 @@ class Action(StrEnum):
     ENABLE_TOP_N = "source_table.top_n"
     """Switch top-N value capture on or off for one table (owners only; spec §6.5)."""
     REVIEW_PII = "pii.review"
-    """List PII findings and confirm or dismiss them in the review queue (owners and
+    """Review the PII folder: accept or reject columns, add and remove PII (owners and
     editors; spec §4.3 "Review PII findings", stories 133-135)."""
     MANAGE_PII_RULES = "pii.manage_rules"
     """List, add, edit and delete the Workspace's custom PII rules and switch built-in rules

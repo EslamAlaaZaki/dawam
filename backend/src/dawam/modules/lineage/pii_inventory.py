@@ -1,4 +1,4 @@
-"""The PII inventory of a Workspace (spec §6.12, story 140): the confirmed PII source
+"""The PII inventory of a Workspace (spec §6.12, story 140): the accepted PII source
 columns and the DW columns they feed, with category, hashing, handling note and reviewer, as
 XLSX or Markdown for PDPL records of processing and audits.
 
@@ -21,7 +21,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import AuthService, User
-from dawam.modules.sources import ConfirmedPiiColumn, confirmed_pii_columns
+from dawam.modules.sources import AcceptedPiiColumn, accepted_pii_columns
 from dawam.modules.warehouse import pii_origins
 from dawam.platform.clock import Clock
 
@@ -137,7 +137,7 @@ class PiiInventoryService:
         PII-influenced DW tables."""
         view = self._lineage.pii_view(user, workspace_id)  # authorizes
         with Session(self._engine) as db:
-            sources = confirmed_pii_columns(db, workspace_id)
+            sources = accepted_pii_columns(db, workspace_id)
             origins = pii_origins(db, [s.id for s in sources])
         reviewers = {s.reviewer_id for s in sources if s.reviewer_id}
         names = {i: u.display_name for i, u in self._auth.users_by_id(reviewers).items()}
@@ -153,7 +153,7 @@ class PiiInventoryService:
 
     @staticmethod
     def _source_rows(
-        sources: list[ConfirmedPiiColumn], names: dict[uuid.UUID, str]
+        sources: list[AcceptedPiiColumn], names: dict[uuid.UUID, str]
     ) -> list[list[str]]:
         return [
             [
@@ -172,7 +172,7 @@ class PiiInventoryService:
     @staticmethod
     def _dw_rows(
         view: PiiView,
-        sources: list[ConfirmedPiiColumn],
+        sources: list[AcceptedPiiColumn],
         origins: dict[uuid.UUID, set[uuid.UUID]],
         names: dict[uuid.UUID, str],
     ) -> list[list[str]]:

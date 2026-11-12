@@ -93,9 +93,10 @@ def edge(roles: RoleClients, kind: str, from_type, from_id, to_type, to_id) -> N
 def graph(roles: RoleClients) -> dict:
     response = roles.client("editor").post(dw(roles), json={"target_platform": "postgresql"})
     assert response.status_code == 201, response.text
+    system = add_system(roles)
     source = seed(
         roles,
-        add_system(roles),
+        system,
         "dbo",
         {"orders": [("amount", "numeric(12,2)"), ("status", "varchar(8)")]},
     )
@@ -112,6 +113,7 @@ def graph(roles: RoleClients) -> dict:
     kpi = created(roles, name="Revenue")
     assert put_links(roles, kpi, [amount_m["id"]]).status_code == 200
     return {
+        "system": system,
         "src_amount": str(source["orders"]["columns"]["amount"]),
         "src_status": str(source["orders"]["columns"]["status"]),
         "stg": stg,
@@ -281,13 +283,13 @@ def test_the_assistant_reads_a_kpis_lineage(graph, roles, model, fake_llm):
     assert result["nodes_left_out"] == 0
 
 
-def confirm_pii(roles: RoleClients, column_id: str) -> None:
+def accept_pii(roles: RoleClients, column_id: str) -> None:
     with roles.app.state.engine.begin() as connection:
         connection.execute(
             sa.text(
                 "insert into pii_findings (id, src_column_id, rule, category, confidence,"
                 " evidence, status, detected_at) values (:id, :c, 'national_id',"
-                " 'direct_identifier', 0.9, 'name', 'confirmed', :now)"
+                " 'direct_identifier', 0.9, 'name', 'accepted', :now)"
             ),
             {"id": uuid.uuid4(), "c": column_id, "now": datetime.now(UTC)},
         )
@@ -298,7 +300,7 @@ def pii_view(roles: RoleClients, role="viewer") -> dict:
 
 
 def test_pii_flows_through_value_edges_to_columns(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
 
     body = pii_view(roles)
 
@@ -311,7 +313,7 @@ def test_pii_flows_through_value_edges_to_columns(graph, roles):
 
 
 def test_join_only_use_marks_the_table_not_its_columns(graph, roles):
-    confirm_pii(roles, graph["src_status"])
+    accept_pii(roles, graph["src_status"])
 
     body = pii_view(roles)
 
@@ -321,9 +323,9 @@ def test_join_only_use_marks_the_table_not_its_columns(graph, roles):
     assert [t["label"] for t in body["tables"]] == ["fact_orders"]
 
 
-def test_the_view_follows_mapping_changes_and_ignores_unconfirmed_findings(graph, roles):
+def test_the_view_follows_mapping_changes_and_ignores_unaccepted_findings(graph, roles):
     assert pii_view(roles) == {"columns": [], "tables": [], "source_columns": [], "kpis": []}
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
     map_direct(roles, graph["core"], graph["amount_c"], f"{graph['stg']['name']}.status", version=1)
 
     labels_now = [c["label"] for c in pii_view(roles)["columns"]]
@@ -335,10 +337,10 @@ def test_the_view_follows_mapping_changes_and_ignores_unconfirmed_findings(graph
 def test_the_view_names_protected_sources_and_the_kpis_that_depend_on_pii(graph, roles):
     assert pii_view(roles)["source_columns"] == []
 
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
     body = pii_view(roles)
 
-    # The confirmed source column feeds the model; the KPI links a PII-derived Mart column.
+    # The accepted source column feeds the model; the KPI links a PII-derived Mart column.
     assert [c["label"] for c in body["source_columns"]] == ["crm.dbo.orders.amount"]
     assert [k["label"] for k in body["kpis"]] == ["Revenue"]
     assert body["kpis"][0]["id"] == graph["kpi"]
@@ -361,7 +363,7 @@ def test_a_flagged_sensitive_source_is_protected_but_derives_no_kpi_pii(graph, r
 def test_a_kpi_reached_only_through_a_join_or_filter_is_pii_influenced(graph, roles):
     # The staged status is PII and only filters fact_orders (a `uses` edge); the KPI links
     # the Mart amount, which reads fact_orders.amount_c.
-    confirm_pii(roles, graph["src_status"])
+    accept_pii(roles, graph["src_status"])
 
     [kpi] = pii_view(roles)["kpis"]
 
@@ -372,7 +374,7 @@ def test_a_kpi_reached_only_through_a_lookup_is_pii_influenced(graph, roles):
     with roles.app.state.engine.begin() as connection:
         connection.execute(sa.text("delete from lineage_edges where kind = 'uses'"))
     edge(roles, "lookup", "dw_column", graph["stg_status"], "dw_table", graph["mart"])
-    confirm_pii(roles, graph["src_status"])
+    accept_pii(roles, graph["src_status"])
 
     [kpi] = pii_view(roles)["kpis"]
 
@@ -380,8 +382,8 @@ def test_a_kpi_reached_only_through_a_lookup_is_pii_influenced(graph, roles):
 
 
 def test_derived_wins_over_influenced_for_a_kpi(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
-    confirm_pii(roles, graph["src_status"])
+    accept_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_status"])
 
     [kpi] = pii_view(roles)["kpis"]
 
@@ -391,7 +393,7 @@ def test_derived_wins_over_influenced_for_a_kpi(graph, roles):
 def test_a_kpi_without_a_link_to_pii_is_not_marked(graph, roles):
     with roles.app.state.engine.begin() as connection:
         connection.execute(sa.text("delete from lineage_edges where kind = 'kpi'"))
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
 
     body = pii_view(roles)
 
@@ -399,13 +401,13 @@ def test_a_kpi_without_a_link_to_pii_is_not_marked(graph, roles):
     assert body["kpis"] == []
 
 
-def test_a_dismissed_finding_does_not_protect_a_source_column(graph, roles):
+def test_a_rejected_finding_does_not_protect_a_source_column(graph, roles):
     with roles.app.state.engine.begin() as connection:
         connection.execute(
             sa.text(
                 "insert into pii_findings (id, src_column_id, rule, category, confidence,"
                 " evidence, status, detected_at) values (:id, :c, 'national_id',"
-                " 'direct_identifier', 0.9, 'name', 'dismissed', :now)"
+                " 'direct_identifier', 0.9, 'name', 'rejected', :now)"
             ),
             {"id": uuid.uuid4(), "c": graph["src_amount"], "now": datetime.now(UTC)},
         )
@@ -414,7 +416,7 @@ def test_a_dismissed_finding_does_not_protect_a_source_column(graph, roles):
 
 
 def test_another_workspaces_pii_never_marks_this_one(graph, roles):
-    confirm_pii(roles, graph["src_amount"])
+    accept_pii(roles, graph["src_amount"])
     other = roles.client("owner").post(
         "/api/v1/workspaces", json={"name": "Other", "description": "", "domain": "Testing"}
     )

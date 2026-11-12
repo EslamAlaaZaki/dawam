@@ -271,7 +271,7 @@ class _GetSnapshotDiff(BaseModel):
 
 class _GetPiiFindings(BaseModel):
     system_id: uuid.UUID = Field(description=SYSTEM_ID)
-    status: Literal["suggested", "confirmed", "dismissed"] | None = None
+    status: Literal["suggested", "accepted", "rejected"] | None = None
 
 
 class _GetLineage(BaseModel):

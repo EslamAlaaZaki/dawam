@@ -112,16 +112,21 @@ def test_decisions_move_the_pii_and_relationship_counts(roles: RoleClients, anal
     ]
     relationship = relationships(roles, analysed)[0]
 
-    assert editor.post(f"{analysed}/pii-findings/{finding['id']}/confirm").status_code == 200
+    accept = editor.post(
+        f"{analysed}/pii-columns/{finding['column_id']}/accept",
+        json={"category": finding["category"]},
+    )
+    assert accept.status_code == 200, accept.text
     assert editor.post(f"{analysed}/relationships/{relationship['id']}/accept").status_code == 200
     after = summary(roles, analysed)
-    assert after["pii_found"] == before["pii_found"] and after["pii_confirmed"] == 1
+    assert after["pii_found"] == before["pii_found"] and after["pii_accepted"] == 1
     assert after["relationships_accepted"] == 1
 
-    assert editor.post(f"{analysed}/pii-findings/{finding['id']}/dismiss").status_code == 200
+    remove = editor.post(f"{analysed}/pii-columns/{finding['column_id']}/remove", json={})
+    assert remove.status_code == 200, remove.text
     assert editor.post(f"{analysed}/relationships/{relationship['id']}/reject").status_code == 200
     final = summary(roles, analysed)
-    assert final["pii_found"] == before["pii_found"] - 1 and final["pii_confirmed"] == 0
+    assert final["pii_found"] == before["pii_found"] - 1 and final["pii_accepted"] == 0
     assert final["relationships_found"] == before["relationships_found"] - 1
 
 
@@ -136,7 +141,7 @@ def test_source_analysis_is_complete_once_everything_is_documented_profiled_and_
     assert profile_tables(roles, analysed, [t["id"] for t in tables]).status_code == 202
     queue = editor.get(f"{analysed}/pii-findings", params={"status": "suggested"})
     for f in queue.json()["items"]:
-        editor.post(f"{analysed}/pii-findings/{f['id']}/dismiss")
+        editor.post(f"{analysed}/pii-columns/{f['column_id']}/reject")
     for r in relationships(roles, analysed, status="suggested"):
         editor.post(f"{analysed}/relationships/{r['id']}/reject")
 

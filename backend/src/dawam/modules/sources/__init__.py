@@ -22,10 +22,12 @@ Public interface. Other modules import only what is re-exported here:
 - ``SourceEnhancementHandler(object_type)``: the ``changesets`` engine's handler for
   ``source_table`` and ``source_column`` items (enhancement updates); the composition root
   registers one of each.
-- ``PiiService``: owners and editors review PII findings (``PiiFinding``): list the queue,
-  ``confirm`` (sets ``is_sensitive`` and the PII category) or ``dismiss``; decisions are
+- ``PiiService``: the PII folder (``PiiColumn``, one row per column with every
+  ``PiiFinding`` on it): any member reads the PII tab; owners and editors ``accept`` (sets
+  ``is_sensitive`` and the PII category), ``reject`` or ``accept_rejected`` a column with
+  all its findings, ``add`` a column as PII by hand and ``remove`` PII; decisions are
   audited. Name rules run on every new Snapshot. ``is_protected`` is the one Protected
-  Column policy: ``is_sensitive`` or a ``suggested``/``confirmed`` finding.
+  Column policy: ``is_sensitive`` or a ``suggested``/``accepted`` finding.
 - ``DataDictionaryService``: any member exports the latest Snapshot with its enhancements as
   an XLSX data dictionary (``DataDictionary``, never values); ``files`` saves it to the file
   area. ``GET .../systems/{system_id}/data-dictionary`` downloads it.
@@ -90,7 +92,8 @@ Public interface. Other modules import only what is re-exported here:
   ``POST .../import/upload``, ``POST .../import/connection-requests``,
   ``PATCH .../systems/{system_id}/tables/{table_id}[/columns/{column_id}]``,
   ``GET .../systems/{system_id}/pii-findings``,
-  ``POST .../systems/{system_id}/pii-findings/{finding_id}/confirm|dismiss``,
+  ``GET|POST .../systems/{system_id}/pii-columns``,
+  ``POST .../systems/{system_id}/pii-columns/{column_id}/accept|reject|accept-rejected|remove``,
   ``POST .../systems/{system_id}/pii-scans``,
   ``POST .../systems/{system_id}/relationship-inference``,
   ``GET .../systems/{system_id}/relationships``,
@@ -143,11 +146,11 @@ from .pii_rule_api import router as _pii_rules_router
 from .pii_rule_service import PiiRuleService
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
 from .pii_service import (
-    ConfirmedPiiColumn,
+    AcceptedPiiColumn,
     PiiFinding,
     PiiService,
-    confirmed_pii_column_ids,
-    confirmed_pii_columns,
+    accepted_pii_column_ids,
+    accepted_pii_columns,
 )
 from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
 from .relationship_changes import SourceRelationshipHandler
@@ -192,7 +195,7 @@ __all__ = [
     "MASK",
     "PII_SCAN_JOB",
     "PROFILE_JOB",
-    "ConfirmedPiiColumn",
+    "AcceptedPiiColumn",
     "Connection",
     "ConnectionService",
     "ConnectionStatus",
@@ -243,9 +246,9 @@ __all__ = [
     "SystemStagedCheck",
     "TableProfile",
     "UntraceableView",
+    "accepted_pii_column_ids",
+    "accepted_pii_columns",
     "check_query",
-    "confirmed_pii_column_ids",
-    "confirmed_pii_columns",
     "custom_rules_in_text",
     "deleted_source_system",
     "deleted_source_systems",

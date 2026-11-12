@@ -54,8 +54,8 @@ class SourceSummary:
     relationships_accepted: int
     relationships_to_review: int
     pii_found: int
-    """Columns of the latest Snapshot with a suggested or confirmed finding."""
-    pii_confirmed: int
+    """Columns of the latest Snapshot with a suggested or accepted finding."""
+    pii_accepted: int
     pii_to_review: int
     status: AnalysisStatus
 
@@ -146,12 +146,12 @@ class SourceSummaryService:
             tables[system_of[snapshot_id]] = (total, docs, profs)
 
         pii: dict[uuid.UUID, tuple[int, int, int]] = {}
-        for snapshot_id, found, confirmed, waiting in db.execute(
+        for snapshot_id, found, accepted, waiting in db.execute(
             sa.select(
                 SnapshotColumnRecord.snapshot_id,
                 sa.func.count(sa.distinct(SnapshotColumnRecord.src_column_id)),
                 sa.func.count(sa.distinct(SnapshotColumnRecord.src_column_id)).filter(
-                    PiiFindingRecord.status == "confirmed"
+                    PiiFindingRecord.status == "accepted"
                 ),
                 sa.func.count(sa.distinct(SnapshotColumnRecord.src_column_id)).filter(
                     PiiFindingRecord.status == "suggested"
@@ -163,11 +163,11 @@ class SourceSummaryService:
             )
             .where(
                 SnapshotColumnRecord.snapshot_id.in_(snapshots),
-                PiiFindingRecord.status.in_(("suggested", "confirmed")),
+                PiiFindingRecord.status.in_(("suggested", "accepted")),
             )
             .group_by(SnapshotColumnRecord.snapshot_id)
         ):
-            pii[system_of[snapshot_id]] = (found, confirmed, waiting)
+            pii[system_of[snapshot_id]] = (found, accepted, waiting)
 
         links: dict[uuid.UUID, tuple[int, int, int]] = {}
         for snapshot_id, found, accepted, waiting in db.execute(
@@ -192,7 +192,7 @@ class SourceSummaryService:
         result: dict[uuid.UUID, SourceSummary] = {}
         for system_id in ids:
             total, docs, profs = tables.get(system_id, (0, 0, 0))
-            pii_found, pii_confirmed, pii_waiting = pii.get(system_id, (0, 0, 0))
+            pii_found, pii_accepted, pii_waiting = pii.get(system_id, (0, 0, 0))
             found, accepted, waiting = links.get(system_id, (0, 0, 0))
             draft = SourceSummary(
                 system_id=system_id,
@@ -206,7 +206,7 @@ class SourceSummaryService:
                 relationships_accepted=accepted,
                 relationships_to_review=waiting,
                 pii_found=pii_found,
-                pii_confirmed=pii_confirmed,
+                pii_accepted=pii_accepted,
                 pii_to_review=pii_waiting,
                 status="not_started",
             )

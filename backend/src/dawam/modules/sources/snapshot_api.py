@@ -110,11 +110,11 @@ class SnapshotColumn(BaseModel):
     )
     pii_category: PiiCategory | None = Field(
         default=None,
-        description="Set when a PII finding was confirmed; set only in the Source Schema.",
+        description="Set when a column is accepted as PII; set only in the Source Schema.",
     )
     is_protected: bool | None = Field(
         default=None,
-        description="`is_sensitive` or a `suggested`/`confirmed` PII finding; set only in the "
+        description="`is_sensitive` or a `suggested`/`accepted` PII finding; set only in the "
         "Source Schema.",
     )
 
@@ -312,7 +312,7 @@ class SuspectedPiiColumn(BaseModel):
     column: str
     category: PiiCategory
     confidence: float
-    status: Literal["suggested", "confirmed"]
+    status: Literal["suggested", "accepted"]
 
 
 class SnapshotDiff(BaseModel):

@@ -215,7 +215,7 @@ MAPPING_TYPES = (
     "not_in_branch",
     "unmapped",
 )
-"""``hashed``: a confirmed PII column's staging mapping, salted SHA-256 (§6.12)."""
+"""``hashed``: an accepted PII column's staging mapping, salted SHA-256 (§6.12)."""
 BRANCH_NAME_MAX_LENGTH = 128
 EDGE_KINDS = ("value", "uses", "lookup", "kpi")
 EDGE_NODE_TYPES = ("src_column", "dw_column", "dw_table", "branch", "kpi")

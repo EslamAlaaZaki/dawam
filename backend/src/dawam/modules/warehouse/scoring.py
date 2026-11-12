@@ -109,7 +109,7 @@ class DesignColumn:
     edited_fields: tuple[str, ...] = ()
     """The fields a user overrode (a staging column)."""
     pii_derived: bool = False
-    """Fed by a confirmed PII source column through value edges (spec §6.12)."""
+    """Fed by an accepted PII source column through value edges (spec §6.12)."""
 
 
 @dataclass(frozen=True)

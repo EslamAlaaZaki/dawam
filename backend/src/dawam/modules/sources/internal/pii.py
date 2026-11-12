@@ -5,8 +5,12 @@ it applies the name rules to the Snapshot's columns and records a ``suggested`` 
 for each column and rule that has none yet. It reads and writes only app-database rows,
 so it puts no load on the source.
 
+``reopen_rejected`` is the one rule that sends a rejected column back to review: a scan
+found a rule that never matched it, or raised a rule's confidence above the confidence it
+had when rejected (spec §6.12). Every scan (name, value, a query's values) asks here.
+
 ``is_protected`` is the only definition of a Protected Column: flagged ``is_sensitive``
-**or** holding a finding that is ``suggested`` or ``confirmed``. Dismissing a finding
+**or** holding a finding that is ``suggested`` or ``accepted``. Rejecting a finding
 removes protection only when the column is not flagged. Profiling, AI masking, lineage and
 exports all ask here, never re-derive it.
 """
@@ -37,11 +41,11 @@ from .pii_rules import (
 
 logger = logging.getLogger(__name__)
 
-PROTECTING_STATUSES = ("suggested", "confirmed")
+PROTECTING_STATUSES = ("suggested", "accepted")
 
 
 def is_protected(*, is_sensitive: bool, finding_statuses: Iterable[str]) -> bool:
-    """Whether a column is protected: ``is_sensitive`` or a ``suggested``/``confirmed``
+    """Whether a column is protected: ``is_sensitive`` or a ``suggested``/``accepted``
     finding."""
     return is_sensitive or any(s in PROTECTING_STATUSES for s in finding_statuses)
 
@@ -120,6 +124,36 @@ def custom_rules_in_text(db: Session, workspace_id: uuid.UUID, text: str) -> lis
     return hits
 
 
+def reopens(finding: PiiFindingRecord | None, confidence: float) -> bool:
+    """Whether a scan that scored a rule at ``confidence`` sends the column back to review:
+    the rule never matched it (``finding`` is ``None``), or the rejected finding's
+    confidence rises above the one it had when rejected."""
+    if finding is None:
+        return True
+    return (
+        finding.status == "rejected"
+        and finding.confidence_at_rejection is not None
+        and confidence > finding.confidence_at_rejection
+    )
+
+
+def reopen_rejected(db: Session, column_ids: Iterable[uuid.UUID]) -> None:
+    """Send the rejected findings of ``column_ids`` back to the review queue, together: a
+    column is reviewed as a whole. Who rejected them and when stay, so the queue can say
+    the column was rejected before."""
+    wanted = list(set(column_ids))
+    for start in range(0, len(wanted), 5000):
+        db.execute(
+            sa.update(PiiFindingRecord)
+            .where(
+                PiiFindingRecord.src_column_id.in_(wanted[start : start + 5000]),
+                PiiFindingRecord.status == "rejected",
+            )
+            .values(status="suggested", removed=False)
+            .execution_options(synchronize_session=False)
+        )
+
+
 def scan_columns(
     db: Session,
     *,
@@ -129,23 +163,37 @@ def scan_columns(
     rules: RuleSet = DEFAULT_RULES,
 ) -> int:
     """Name-scan ``columns`` (id and name pairs) of a new Snapshot; return how many new
-    findings were recorded. A column that already has a finding for a rule keeps it,
-    whatever its status, so a decision is never undone by a later Snapshot. ``rules`` are
-    the Workspace's (``load_rule_set``)."""
+    findings were recorded. A column that already has a finding for a rule keeps its
+    status, so a decision survives a later Snapshot, unless the scan finds a new rule on a
+    rejected column or raises a rejected rule's confidence (``reopens``). ``rules`` are the
+    Workspace's (``load_rule_set``)."""
     matches = [(cid, m) for cid, name in columns if (m := match_name(name, rules)) is not None]
     if not matches:
         return 0
-    known: set[tuple[uuid.UUID, str]] = set()
+    known: dict[tuple[uuid.UUID, str], PiiFindingRecord] = {}
+    rejected: set[uuid.UUID] = set()
     ids = [cid for cid, _ in matches]
     for start in range(0, len(ids), 5000):
-        known.update(
-            tuple(row)
-            for row in db.execute(
-                sa.select(PiiFindingRecord.src_column_id, PiiFindingRecord.rule).where(
-                    PiiFindingRecord.src_column_id.in_(ids[start : start + 5000])
-                )
+        for finding in db.scalars(
+            sa.select(PiiFindingRecord).where(
+                PiiFindingRecord.src_column_id.in_(ids[start : start + 5000])
             )
-        )
+        ):
+            known[(finding.src_column_id, finding.rule)] = finding
+            if finding.status == "rejected":
+                rejected.add(finding.src_column_id)
+    reopen: set[uuid.UUID] = set()
+    for cid, m in matches:
+        confidence = max(m.confidence, NAME_CONFIDENCE_FLOOR)
+        existing = known.get((cid, m.rule))
+        if cid in rejected and reopens(existing, confidence):
+            reopen.add(cid)
+        if existing is not None and confidence > existing.confidence:
+            existing.confidence = confidence
+            existing.evidence = m.evidence[:500]
+            existing.source = "name"
+    db.flush()
+    reopen_rejected(db, reopen)
     rows = [
         {
             "id": uuid.uuid4(),
@@ -155,6 +203,7 @@ def scan_columns(
             "confidence": max(m.confidence, NAME_CONFIDENCE_FLOOR),
             "evidence": m.evidence[:500],
             "status": "suggested",
+            "source": "name",
             "snapshot_id": snapshot_id,
             "detected_at": at,
         }

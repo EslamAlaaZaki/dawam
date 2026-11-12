@@ -64,13 +64,16 @@ Public interface. Other modules import only what is re-exported here:
   ``value`` edges between Core and Mart columns and which columns a mapping fills, for the
   rule-based KPI suggestions; ``ident`` spells an identifier for a platform (bare when safe).
 - ``propagate_pii`` (in the caller's session, no permission check): the DW columns a set of
-  confirmed PII source columns reaches through ``value`` edges and the tables it only steers
+  accepted PII source columns reaches through ``value`` edges and the tables it only steers
   (``PiiPropagation``), and which of those columns are pseudonymised (hashed, or fed by a
   hashed column); ``pii_notes`` reads their handling notes. The ``lineage`` module serves
   them as the PII view.
-- ``PiiHashingService``: owners and editors switch a confirmed PII column's staging mapping to
+- ``PiiHashingService``: owners and editors switch an accepted PII column's staging mapping to
   ``hashed`` (salted SHA-256 with a ``:pii_salt`` placeholder; the salt is never stored) and
   back (spec §6.12, story 138). ``PUT .../data-warehouse/staging/columns/{id}/mapping``.
+  ``hashed_staging_mappings`` (in the caller's session, no permission check): which source
+  columns a hashed staging mapping reads; the composition root hands it to the sources
+  module, which refuses to remove PII from such a column.
 - ``lineage_edges`` / ``lineage_nodes`` (in the caller's session, no permission check): the
   stored lineage edges within ``depth`` of a node, walked with recursive CTEs and a cycle
   guard, and the DW columns and tables among a set of node ids (``LineageEdge``,
@@ -213,7 +216,7 @@ from .mapping_export_api import MappingExportServiceDep, SheetFormat, SheetLayer
 from .mapping_import import MappingImportReport, MappingImportResult, MappingImportService
 from .mapping_service import MappingService
 from .model_service import ModelService
-from .pii_hashing import PiiHashingService
+from .pii_hashing import PiiHashingService, hashed_staging_mappings
 from .pii_propagation import (
     PiiPropagation,
     pii_dependent_kpis,
@@ -372,6 +375,7 @@ __all__ = [
     "deleted_dw_tables",
     "describe_columns",
     "dw_table_deletion",
+    "hashed_staging_mappings",
     "ident",
     "install_approval_clock",
     "install_score_recalculation",

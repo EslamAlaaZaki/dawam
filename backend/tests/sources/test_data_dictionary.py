@@ -42,7 +42,11 @@ def enhanced(roles: RoleClients, sample_source: SampleSource) -> str:
     )
     assert response.status_code == 200, response.text
     finding = by_column(findings(roles, system))[("customers", "national_id")]
-    assert editor.post(f"{system}/pii-findings/{finding['id']}/confirm").status_code == 200
+    accepted = editor.post(
+        f"{system}/pii-columns/{finding['column_id']}/accept",
+        json={"category": finding["category"]},
+    )
+    assert accepted.status_code == 200, accepted.text
     return system
 
 

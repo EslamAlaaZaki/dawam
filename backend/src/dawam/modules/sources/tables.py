@@ -158,11 +158,17 @@ class SrcTableRecord(Base):
     on every edit of the enhancements (optimistic concurrency, spec §8.3)."""
 
 
+_PII_CATEGORY_CHECK = "IN ('direct_identifier', 'quasi_identifier', 'sensitive', 'financial')"
+
+
 class SrcColumnRecord(Base):
     __tablename__ = "src_columns"
     __table_args__ = (
         sa.UniqueConstraint("table_id", "name"),
         sa.CheckConstraint(_STATUS_CHECK, name="status"),
+        sa.CheckConstraint(
+            f"pii_category IS NULL OR pii_category {_PII_CATEGORY_CHECK}", name="pii_category"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -176,16 +182,25 @@ class SrcColumnRecord(Base):
     )
     is_sensitive: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     pii_category: Mapped[str | None] = mapped_column(sa.String(32))
-    """Set when an Editor confirms a PII finding (spec story 135)."""
+    """The column's one PII category, set when an Editor accepts its PII findings or adds it
+    as PII by hand, cleared when PII is removed (spec story 135)."""
+    pii_added_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    """Who added the column as PII by hand (no finding); cleared when PII is removed."""
+    pii_added_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    """When the column was added as PII by hand; set means a Manual line in the PII folder,
+    and the column counts as accepted PII like one with an accepted finding."""
     placeholder_no: Mapped[int | None] = mapped_column()
     """Stands in for a non-Latin name in staging (``col_017``); assigned once per table."""
     status: Mapped[str] = mapped_column(sa.String(16))
     version: Mapped[int] = mapped_column()
 
 
-PII_STATUSES = ("suggested", "confirmed", "dismissed")
+PII_STATUSES = ("suggested", "accepted", "rejected")
 PII_CATEGORIES = ("direct_identifier", "quasi_identifier", "sensitive", "financial")
-_PII_STATUS_CHECK = "status IN ('suggested', 'confirmed', 'dismissed')"
+PII_SOURCES = ("name", "value")
+_PII_STATUS_CHECK = "status IN ('suggested', 'accepted', 'rejected')"
 
 
 class PiiFindingRecord(Base):
@@ -196,10 +211,8 @@ class PiiFindingRecord(Base):
     __table_args__ = (
         sa.UniqueConstraint("src_column_id", "rule"),
         sa.CheckConstraint(_PII_STATUS_CHECK, name="status"),
-        sa.CheckConstraint(
-            "category IN ('direct_identifier', 'quasi_identifier', 'sensitive', 'financial')",
-            name="category",
-        ),
+        sa.CheckConstraint(f"category {_PII_CATEGORY_CHECK}", name="category"),
+        sa.CheckConstraint("source IN ('name', 'value')", name="source"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -207,12 +220,22 @@ class PiiFindingRecord(Base):
         sa.ForeignKey("src_columns.id", ondelete="CASCADE"), index=True
     )
     rule: Mapped[str] = mapped_column(sa.String(48))
-    """The name rule that fired (``national_id``, ...; ``value-at-query`` later)."""
+    """The rule that fired (``national_id``, ``saudi_national_id``, ``custom:<name>``,
+    ``value-at-query``)."""
     category: Mapped[str] = mapped_column(sa.String(32))
     confidence: Mapped[float] = mapped_column()
     evidence: Mapped[str] = mapped_column(sa.String(500))
     status: Mapped[str] = mapped_column(sa.String(16))
-    """``suggested`` (in the review queue), ``confirmed`` or ``dismissed``."""
+    """``suggested`` (in the review queue), ``accepted`` or ``rejected``. A column's findings
+    are accepted and rejected together."""
+    source: Mapped[str] = mapped_column(sa.String(8), server_default="name")
+    """``name`` (a name scan) or ``value`` (a value scan or a query's values): what the
+    confidence and evidence come from."""
+    confidence_at_rejection: Mapped[float | None] = mapped_column()
+    """The confidence when the finding was last rejected: a later scan that raises it above
+    this sends the column back to the review queue (spec §6.12)."""
+    removed: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    """Rejected because someone removed the column's PII (it was accepted), not on review."""
     snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("snapshots.id", ondelete="SET NULL")
     )

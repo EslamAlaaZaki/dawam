@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from dawam.modules.auth import User
 from dawam.modules.kpis import kpi_names
 from dawam.modules.sources import (
-    confirmed_pii_column_ids,
+    accepted_pii_column_ids,
     protected_column_ids,
     source_column_labels,
 )
@@ -100,11 +100,11 @@ class PiiKpi(Node):
 @dataclass(frozen=True)
 class PiiView:
     columns: list[PiiColumn]
-    """PII-derived DW columns: fed by a confirmed PII column through value edges."""
+    """PII-derived DW columns: fed by an accepted PII column through value edges."""
     tables: list[Node]
     """PII-influenced DW tables: PII only steers them (join, filter, lookup)."""
     source_columns: list[Node] = field(default_factory=list)
-    """Protected Columns (flagged sensitive, or with a suggested or confirmed finding) that
+    """Protected Columns (flagged sensitive, or with a suggested or accepted finding) that
     feed the model; marks for the lineage graph, not exported as PII columns."""
     kpis: list[PiiKpi] = field(default_factory=list)
     """KPIs that depend on PII, derived or only influenced; marks for the lineage graph."""
@@ -166,7 +166,7 @@ class LineageService:
         ``lookup`` edge); neither is exported as a PII column."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
-            result = propagate_pii(db, confirmed_pii_column_ids(db, workspace_id))
+            result = propagate_pii(db, accepted_pii_column_ids(db, workspace_id))
             nodes = lineage_nodes(
                 db, workspace_id, result.derived_columns | result.influenced_tables
             )
