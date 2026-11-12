@@ -21,7 +21,7 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 def enhanced(roles: RoleClients, sample_source: SampleSource) -> str:
     """A Source System with a Snapshot, a described, tagged, classified table and a column
-    confirmed as PII."""
+    accepted as PII."""
     system = add_system(roles)
     connect(roles, system, sample_source.connection_body())
     extract(roles, system)

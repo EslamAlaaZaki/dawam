@@ -237,9 +237,10 @@ class PiiService:
         ``pii`` tab (names and ratios only); the review tabs are for owners and editors."""
         if tab not in PII_TABS:
             raise ApiError(422, "invalid_tab", f"The tab must be one of {', '.join(PII_TABS)}.")
-        self._workspaces.authorize(
-            user, Action.VIEW_WORKSPACE if tab == "pii" else Action.REVIEW_PII, workspace_id
-        )
+        scope = self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        if tab != "pii" and scope.role not in ("owner", "editor"):
+            # The review tabs are for owners and editors, read-only once archived.
+            raise ApiError(403, "forbidden", "Only owners and editors review PII.")
         with Session(self._engine) as db:
             self._system(db, workspace_id, system_id)
             columns = self._columns(db, system_id)
@@ -368,6 +369,12 @@ class PiiService:
         with Session(self._engine) as db, db.begin():
             system = self._system(db, workspace_id, system_id)
             column, table = self._load_column(db, system_id, column_id)
+            if column.status != "present":
+                raise ApiError(
+                    409,
+                    "column_not_present",
+                    "The column is gone from the source: its PII decision stays.",
+                )
             findings = self._findings(db, column.id)
             if self._state(column, findings) != "accepted":
                 raise _stale()

@@ -55,7 +55,7 @@ def table_of(roles: RoleClients, system: str, name: str = "customers") -> dict:
 
 @pytest.fixture
 def source(roles: RoleClients, sample_source: SampleSource) -> str:
-    """An extracted Source System with ``national_id`` confirmed as direct-identifier PII."""
+    """An extracted Source System with ``national_id`` accepted as direct-identifier PII."""
     system = add_system(roles)
     connect(roles, system, sample_source.connection_body())
     extract(roles, system)

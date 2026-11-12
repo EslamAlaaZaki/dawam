@@ -260,11 +260,11 @@ class PiiScanService:
                 )
             )
             return 1
-        # A decision stays unless the scan reopened it: only the confidence and the
-        # evidence move.
+        # A decision stays unless the scan reopened it: the confidence moves, and the
+        # evidence only on a finding waiting for review. ``source`` stays as created.
         existing.confidence = max(existing.confidence, finding.confidence)
-        existing.evidence = finding.evidence[:500]
-        existing.source = "value"
+        if existing.status == "suggested":
+            existing.evidence = finding.evidence[:500]
         return 1
 
     def _password(self, connection: ConnectionRecord) -> str | None:

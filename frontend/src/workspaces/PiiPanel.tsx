@@ -32,7 +32,11 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
 import {
@@ -44,7 +48,13 @@ import {
 } from "./PiiDialogs";
 import { ScanDialog } from "./PiiScanDialog";
 import { Confidence, initials } from "./RelationshipReview";
-import { EmptyState, ErrorText, TableCard, linkButtonClasses, monoClasses } from "./parts";
+import {
+  EmptyState,
+  ErrorText,
+  TableCard,
+  linkButtonClasses,
+  monoClasses,
+} from "./parts";
 
 const TABS: readonly { tab: PiiTab; label: string; empty: string }[] = [
   { tab: "pii", label: "PII", empty: "No PII columns yet." },
@@ -69,7 +79,9 @@ const SOURCE_FILTERS: { source: SourceFilter; label: string }[] = [
 
 const matchesSource = (column: PiiColumn, source: SourceFilter) =>
   source === "all" ||
-  (source === "manual" ? column.manual : column.rules.some((r) => r.source === source));
+  (source === "manual"
+    ? column.manual
+    : column.rules.some((r) => r.source === source));
 
 const SOURCE_LABELS: Record<PiiRuleMatch["source"], string> = {
   name: "Name",
@@ -95,13 +107,17 @@ function ColumnCell({ column, note }: { column: PiiColumn; note?: ReactNode }) {
       <span className={cn(monoClasses, "text-xs text-subtle-foreground")}>
         {column.db_schema}.{column.table}
       </span>
-      <span className={cn(monoClasses, "break-all", gone(column) && "line-through")}>
+      <span
+        className={cn(monoClasses, "break-all", gone(column) && "line-through")}
+      >
         {column.column}
       </span>
       {(gone(column) || column.hashed_mapping) && (
         <span className="flex flex-wrap gap-1">
           {gone(column) && <Badge>Removed from source</Badge>}
-          {column.hashed_mapping && <Badge variant="info">Hashed in staging</Badge>}
+          {column.hashed_mapping && (
+            <Badge variant="info">Hashed in staging</Badge>
+          )}
         </span>
       )}
       {note}
@@ -113,7 +129,13 @@ function ColumnCell({ column, note }: { column: PiiColumn; note?: ReactNode }) {
  * Every rule that matched the column, most confident first: where it comes from, the rule
  * (mono tag), its confidence and, unless `compact`, its evidence (full text in a tooltip).
  */
-function MatchedRules({ column, compact = false }: { column: PiiColumn; compact?: boolean }) {
+function MatchedRules({
+  column,
+  compact = false,
+}: {
+  column: PiiColumn;
+  compact?: boolean;
+}) {
   return (
     <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
       {column.rules.map((rule) => (
@@ -130,7 +152,10 @@ function MatchedRules({ column, compact = false }: { column: PiiColumn; compact?
           {!compact && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span tabIndex={0} className="max-w-80 truncate text-xs text-muted-foreground">
+                <span
+                  tabIndex={0}
+                  className="max-w-80 truncate text-xs text-muted-foreground"
+                >
                   {rule.evidence}
                 </span>
               </TooltipTrigger>
@@ -178,7 +203,13 @@ function DecidedBy({
   );
 }
 
-function Decided({ column, names }: { column: PiiColumn; names: ReadonlyMap<string, string> }) {
+function Decided({
+  column,
+  names,
+}: {
+  column: PiiColumn;
+  names: ReadonlyMap<string, string>;
+}) {
   if (!column.decision) {
     return <span className="text-subtle-foreground">—</span>;
   }
@@ -206,20 +237,30 @@ function SuggestedCategory({
   onChange: (category: PiiCategory) => void;
 }) {
   const top = column.rules[0]?.category;
-  const others = [...new Set(column.rules.map((r) => r.category))].filter((c) => c !== top);
+  const others = [...new Set(column.rules.map((r) => r.category))].filter(
+    (c) => c !== top,
+  );
   return (
     <div className="flex flex-col gap-1">
-      <CategorySelect value={value} onChange={onChange} label={`Category of ${column.column}`} />
+      <CategorySelect
+        value={value}
+        onChange={onChange}
+        label={`Category of ${column.column}`}
+      />
       {others.length > 0 && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span tabIndex={0} className="inline-flex items-center gap-1 text-xs text-warning-strong">
+            <span
+              tabIndex={0}
+              className="inline-flex items-center gap-1 text-xs text-warning-strong"
+            >
               <TriangleAlert aria-hidden className="size-3" />
               Rules disagree
             </span>
           </TooltipTrigger>
           <TooltipContent>
-            Other rules suggest {others.map((c) => CATEGORY_LABELS[c]).join(", ")}
+            Other rules suggest{" "}
+            {others.map((c) => CATEGORY_LABELS[c]).join(", ")}
           </TooltipContent>
         </Tooltip>
       )}
@@ -233,12 +274,24 @@ function SuggestedCategory({
  * it. Accept and Reject move a whole column; owners and editors add PII by hand and remove
  * it. Viewers read the PII tab only. Changes are hidden in an archived Workspace.
  */
-export function PiiPanel({ workspace, system }: { workspace: Workspace; system: SourceSystem }) {
-  const canReview = workspace.status !== "archived" && allows(workspace, "pii.review");
+export function PiiPanel({
+  workspace,
+  system,
+}: {
+  workspace: Workspace;
+  system: SourceSystem;
+}) {
+  const archived = workspace.status === "archived";
+  // Owners and editors see every tab, archived too; they change PII only while active.
+  const canSee =
+    allows(workspace, "pii.review") ||
+    (archived && (workspace.role === "owner" || workspace.role === "editor"));
+  const canReview = !archived && allows(workspace, "pii.review");
   const canProfileRight =
-    workspace.status !== "archived" && allows(workspace, "source_system.profile");
+    workspace.status !== "archived" &&
+    allows(workspace, "source_system.profile");
   const [tab, setTab] = useState<PiiTab>("pii");
-  const shownTab: PiiTab = canReview ? tab : "pii";
+  const shownTab: PiiTab = canSee ? tab : "pii";
   const [source, setSource] = useState<SourceFilter>("all");
   const [scanOpen, setScanOpen] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -246,7 +299,12 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
   const [accepting, setAccepting] = useState<PiiColumn | null>(null);
   const [categories, setCategories] = useState<Record<string, PiiCategory>>({});
   const list = usePiiColumns(workspace.id, system.id, shownTab);
-  const piiTab = usePiiColumns(workspace.id, system.id, "pii", canReview && adding);
+  const piiTab = usePiiColumns(
+    workspace.id,
+    system.id,
+    "pii",
+    canReview && adding,
+  );
   const schema = useSourceSchema(workspace.id, system.id, canReview && adding);
   const scan = useStartPiiScan(workspace.id, system.id);
   const decide = useDecidePiiColumn(workspace.id, system.id);
@@ -312,7 +370,7 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
         PII
       </h3>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {canReview && (
+        {canSee && (
           <Tabs value={tab} onValueChange={(value) => setTab(value as PiiTab)}>
             <TabsList className="px-0">
               {TABS.map((t) => (
@@ -324,7 +382,10 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
                     </span>
                   )}
                   {t.tab === "suggested" && (counts?.suggested ?? 0) > 0 && (
-                    <span aria-hidden className="ms-1 size-1.5 rounded-full bg-warning" />
+                    <span
+                      aria-hidden
+                      className="ms-1 size-1.5 rounded-full bg-warning"
+                    />
                   )}
                 </TabsTrigger>
               ))}
@@ -342,7 +403,11 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
               Scan values
             </Button>
             {tab === "pii" && (
-              <Button type="button" variant="primary" onClick={() => setAdding(true)}>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => setAdding(true)}
+              >
                 <Plus aria-hidden />
                 Add PII column
               </Button>
@@ -352,7 +417,9 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
       </div>
       {!canReview && (
         <p className="m-0 text-sm text-muted-foreground">
-          Read only. Owners and Editors review and change PII.
+          {canSee
+            ? "Read only. This Workspace is archived."
+            : "Read only. Owners and Editors review and change PII."}
         </p>
       )}
       {canReview && scanOpen && (
@@ -404,19 +471,27 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
           />
         </>
       )}
-      {canReview && shownTab === "pii" && (counts?.suggested ?? 0) > 0 && (
+      {canSee && shownTab === "pii" && (counts?.suggested ?? 0) > 0 && (
         <p className="m-0 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-warning-subtle px-3 py-2 text-sm text-warning-strong">
           <TriangleAlert aria-hidden className="size-4" />
           {counts!.suggested} suggested{" "}
-          {counts!.suggested === 1 ? "column is" : "columns are"} also protected until
-          someone reviews them.
-          <button type="button" className={linkButtonClasses} onClick={() => setTab("suggested")}>
+          {counts!.suggested === 1 ? "column is" : "columns are"} also protected
+          until someone reviews them.
+          <button
+            type="button"
+            className={linkButtonClasses}
+            onClick={() => setTab("suggested")}
+          >
             Review suggested
           </button>
         </p>
       )}
       {shownTab === "pii" && page && page.items.length > 0 && (
-        <div role="group" aria-label="Filter by source" className="flex flex-wrap gap-2">
+        <div
+          role="group"
+          aria-label="Filter by source"
+          className="flex flex-wrap gap-2"
+        >
           {SOURCE_FILTERS.map((f) => (
             <Button
               key={f.source}
@@ -424,7 +499,9 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
               size="sm"
               variant="secondary"
               className={
-                source === f.source ? "border-primary bg-primary-subtle text-foreground" : undefined
+                source === f.source
+                  ? "border-primary bg-primary-subtle text-foreground"
+                  : undefined
               }
               aria-pressed={source === f.source}
               onClick={() => setSource(f.source)}
@@ -436,9 +513,17 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
         </div>
       )}
       {decide.isError && <ErrorText>{decide.error.message}</ErrorText>}
-      {list.isPending && <Loading label="Loading PII columns…" className="p-0" />}
-      {list.isError && <ErrorText>Could not load the PII columns: {list.error.message}</ErrorText>}
-      {list.isSuccess && items.length === 0 && <EmptyState>{current.empty}</EmptyState>}
+      {list.isPending && (
+        <Loading label="Loading PII columns…" className="p-0" />
+      )}
+      {list.isError && (
+        <ErrorText>
+          Could not load the PII columns: {list.error.message}
+        </ErrorText>
+      )}
+      {list.isSuccess && items.length === 0 && (
+        <EmptyState>{current.empty}</EmptyState>
+      )}
       {list.isSuccess && items.length > 0 && (
         <TableCard>
           <Table aria-label={`${current.label} columns`}>
@@ -460,7 +545,11 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
               {items.map((column) => (
                 <TableRow
                   key={column.id}
-                  className={shownTab === "rejected" ? "text-muted-foreground" : undefined}
+                  className={
+                    shownTab === "rejected"
+                      ? "text-muted-foreground"
+                      : undefined
+                  }
                 >
                   <TableCell className="whitespace-normal">
                     <ColumnCell
@@ -469,7 +558,8 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
                         shownTab === "suggested" &&
                         column.rejected_before_by !== null && (
                           <span className="text-xs text-muted-foreground">
-                            Rejected before by {nameOf(names, column.rejected_before_by)}
+                            Rejected before by{" "}
+                            {nameOf(names, column.rejected_before_by)}
                             {column.rejected_before_at &&
                               ` · ${new Date(column.rejected_before_at).toLocaleDateString()}`}
                           </span>
@@ -478,17 +568,26 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
                     />
                   </TableCell>
                   {shownTab === "pii" && (
-                    <TableCell className={cn(monoClasses, "text-muted-foreground")}>
+                    <TableCell
+                      className={cn(monoClasses, "text-muted-foreground")}
+                    >
                       {column.data_type ?? "—"}
                     </TableCell>
                   )}
                   <TableCell className="whitespace-normal">
-                    {shownTab === "suggested" ? (
+                    {shownTab === "suggested" && canReview ? (
                       <SuggestedCategory
                         column={column}
-                        value={categories[column.id] ?? column.category ?? "sensitive"}
+                        value={
+                          categories[column.id] ??
+                          column.category ??
+                          "sensitive"
+                        }
                         onChange={(category) =>
-                          setCategories((last) => ({ ...last, [column.id]: category }))
+                          setCategories((last) => ({
+                            ...last,
+                            [column.id]: category,
+                          }))
                         }
                       />
                     ) : (
@@ -496,7 +595,10 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
                     )}
                   </TableCell>
                   <TableCell className="whitespace-normal">
-                    <MatchedRules column={column} compact={shownTab === "pii"} />
+                    <MatchedRules
+                      column={column}
+                      compact={shownTab === "pii"}
+                    />
                   </TableCell>
                   {shownTab !== "suggested" && (
                     <TableCell className="whitespace-normal">
@@ -508,15 +610,24 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
                       <RowActions
                         tab={shownTab}
                         column={column}
+                        canChange={canReview}
                         pending={decide.isPending}
                         onAccept={() =>
                           decide.mutate(
                             {
                               columnId: column.id,
                               action: "accept",
-                              category: categories[column.id] ?? column.category ?? "sensitive",
+                              category:
+                                categories[column.id] ??
+                                column.category ??
+                                "sensitive",
                             },
-                            { onSuccess: () => toast.success(`Accepted ${column.column} as PII.`) },
+                            {
+                              onSuccess: () =>
+                                toast.success(
+                                  `Accepted ${column.column} as PII.`,
+                                ),
+                            },
                           )
                         }
                         onReject={() => reject(column)}
@@ -539,6 +650,7 @@ export function PiiPanel({ workspace, system }: { workspace: Workspace; system: 
 function RowActions({
   tab,
   column,
+  canChange,
   pending,
   onAccept,
   onReject,
@@ -547,13 +659,14 @@ function RowActions({
 }: {
   tab: PiiTab;
   column: PiiColumn;
+  canChange: boolean;
   pending: boolean;
   onAccept: () => void;
   onReject: () => void;
   onRemove: () => void;
   onAcceptRejected: () => void;
 }) {
-  const removeButton = !gone(column) && (
+  const removeButton = canChange && !gone(column) && (
     <Button
       type="button"
       variant="ghost"
@@ -565,6 +678,7 @@ function RowActions({
     </Button>
   );
   if (tab === "suggested") {
+    if (!canChange) return null;
     return (
       <div className="flex gap-2">
         <Button
@@ -577,7 +691,13 @@ function RowActions({
         >
           Accept
         </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={onReject}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={pending}
+          onClick={onReject}
+        >
           Reject
         </Button>
       </div>
@@ -587,15 +707,17 @@ function RowActions({
     return (
       <div className="flex items-center gap-2">
         <Badge>Rejected</Badge>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="text-success-strong"
-          onClick={onAcceptRejected}
-        >
-          Accept
-        </Button>
+        {canChange && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="text-success-strong"
+            onClick={onAcceptRejected}
+          >
+            Accept
+          </Button>
+        )}
       </div>
     );
   }

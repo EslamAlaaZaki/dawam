@@ -462,3 +462,63 @@ def test_the_protected_column_policy_is_one_rule():
     assert not is_protected(is_sensitive=False, finding_statuses=["rejected"])
     assert not is_protected(is_sensitive=False, finding_statuses=[])
     assert is_protected(is_sensitive=True, finding_statuses=["rejected"])
+
+
+def test_a_column_gone_from_the_source_keeps_its_pii(roles: RoleClients, scratch_source):
+    system = people(roles, scratch_source)
+    email = columns(roles, system, "people")["email"]
+    decide(roles, system, email["id"], "accept", category="direct_identifier")
+    scratch_source["run"]("ALTER TABLE people DROP COLUMN email;")
+    extract(roles, system)
+
+    response = decide(roles, system, email["id"], "remove")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "column_not_present"
+    row = tab(roles, system, "pii")["email"]
+    assert row["source_status"] == "source_removed" and row["state"] == "accepted"
+
+
+def test_a_scan_never_reopens_or_relabels_an_accepted_column(
+    roles: RoleClients, scratch_source, app: FastAPI
+):
+    system = people(roles, scratch_source)
+    email = columns(roles, system, "people")["email"]
+    add_finding(app, email["id"], "custom:mail", "sensitive", 0.6)
+    decide(roles, system, email["id"], "accept", category="direct_identifier")
+    with app.state.engine.begin() as connection:  # as if one rule had been rejected before
+        connection.execute(
+            sa.text(
+                "update pii_findings set status = 'rejected', confidence = 0.3,"
+                " confidence_at_rejection = 0.3, removed = true"
+                " where src_column_id = :c and rule = 'email'"
+            ),
+            {"c": email["id"]},
+        )
+    scratch_source["run"]("ALTER TABLE people ADD COLUMN remark text;")  # a new Snapshot
+
+    extract(roles, system)
+
+    row = tab(roles, system, "pii")["email"]
+    assert {(r["rule"], r["source"], r["status"]) for r in row["rules"]} == {
+        ("custom:mail", "value", "accepted"),
+        ("email", "name", "rejected"),
+    }
+
+
+def test_editors_still_read_the_review_tabs_of_an_archived_workspace(
+    roles: RoleClients, scratch_source
+):
+    system = people(roles, scratch_source)
+    roles.client("editor"), roles.client("viewer")  # members before the Workspace is archived
+    archived = roles.client("owner").post(f"/api/v1/workspaces/{roles.workspace_id}/archive")
+    assert archived.status_code == 204, archived.text
+
+    suggested = roles.client("editor").get(f"{system}/pii-columns", params={"tab": "suggested"})
+    viewer = roles.client("viewer").get(f"{system}/pii-columns", params={"tab": "suggested"})
+    email = suggested.json()["items"][0]["id"] if suggested.status_code == 200 else NO_SUCH
+    change = decide(roles, system, email, "reject")
+
+    assert suggested.status_code == 200, suggested.text
+    assert viewer.status_code == 403
+    assert change.status_code == 409  # archived: read-only

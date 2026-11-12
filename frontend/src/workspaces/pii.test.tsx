@@ -425,12 +425,20 @@ describe("the PII folder", () => {
     await waitFor(() => expect(requests.scans).toEqual([{ table_ids: ["t1"], sample_size: 1000 }]));
   });
 
-  it("offers no scan or changes in an archived Workspace", async () => {
-    const archived = workspace("owner", ["workspace.view", "pii.review"], "archived");
+  it("keeps the review tabs for owners in an archived Workspace, with no changes", async () => {
+    const archived = workspace("owner", ["workspace.view"], "archived");
     renderApp(backend(archived, fresh()), FOLDER);
 
     expect(await rowOf("national_id")).toBeInTheDocument();
+    expect(screen.getByText("Read only. This Workspace is archived.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Scan values" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add PII column" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Remove PII/ })).toBeNull();
+    openTab(/Suggested/);
+    const row = await rowOf("email");
+    expect(within(row).queryByRole("button", { name: "Accept" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: "Reject" })).toBeNull();
+    openTab(/Rejected/);
+    expect(within(await rowOf("phone")).queryByRole("button", { name: "Accept" })).toBeNull();
   });
 });

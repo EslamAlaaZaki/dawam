@@ -140,8 +140,24 @@ def reopens(finding: PiiFindingRecord | None, confidence: float) -> bool:
 def reopen_rejected(db: Session, column_ids: Iterable[uuid.UUID]) -> None:
     """Send the rejected findings of ``column_ids`` back to the review queue, together: a
     column is reviewed as a whole. Who rejected them and when stay, so the queue can say
-    the column was rejected before."""
-    wanted = list(set(column_ids))
+    the column was rejected before. A column that is accepted PII now is left alone."""
+    ids = list(set(column_ids))
+    if not ids:
+        return
+    accepted = set(
+        db.scalars(
+            sa.select(SrcColumnRecord.id).where(
+                SrcColumnRecord.id.in_(ids), SrcColumnRecord.is_sensitive
+            )
+        )
+    ) | set(
+        db.scalars(
+            sa.select(PiiFindingRecord.src_column_id).where(
+                PiiFindingRecord.src_column_id.in_(ids), PiiFindingRecord.status == "accepted"
+            )
+        )
+    )
+    wanted = [i for i in ids if i not in accepted]
     for start in range(0, len(wanted), 5000):
         db.execute(
             sa.update(PiiFindingRecord)
@@ -190,8 +206,8 @@ def scan_columns(
             reopen.add(cid)
         if existing is not None and confidence > existing.confidence:
             existing.confidence = confidence
-            existing.evidence = m.evidence[:500]
-            existing.source = "name"
+            if existing.status == "suggested" or cid in reopen:
+                existing.evidence = m.evidence[:500]
     db.flush()
     reopen_rejected(db, reopen)
     rows = [
