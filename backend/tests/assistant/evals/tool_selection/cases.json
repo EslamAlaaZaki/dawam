@@ -219,9 +219,9 @@
   }
  },
  {
-  "id": "pii-confirmed",
+  "id": "pii-accepted",
   "language": "en",
-  "question": "List the confirmed PII findings",
+  "question": "List the accepted PII findings",
   "page_context": {
    "type": "source_system",
    "id": "11111111-1111-4111-8111-111111111111",
@@ -231,14 +231,14 @@
    "tool": "get_pii_findings",
    "arguments": {
     "system_id": "11111111-1111-4111-8111-111111111111",
-    "status": "confirmed"
+    "status": "accepted"
    }
   },
   "recorded": {
    "tool": "get_pii_findings",
    "arguments": {
     "system_id": "11111111-1111-4111-8111-111111111111",
-    "status": "confirmed"
+    "status": "accepted"
    }
   }
  },
