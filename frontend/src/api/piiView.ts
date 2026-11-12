@@ -1,4 +1,4 @@
-// The PII view (spec §6.13): the DW columns derived from confirmed PII. The star diagram
+// The PII view (spec §6.13): the DW columns derived from accepted PII. The star diagram
 // marks them.
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -29,7 +29,7 @@ export function usePiiView(workspaceId: string) {
   });
 }
 
-/** What the PII view says of a node: derived from confirmed PII (value edges) or only
+/** What the PII view says of a node: derived from accepted PII (value edges) or only
  * influenced by it (join, filter, lookup); `pseudonymised` is hashed or fed by hashed data. */
 export type PiiMark = {
   /** `protected`: a source Protected Column; `dependent`: a KPI linking PII-derived columns

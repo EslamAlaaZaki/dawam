@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "e4b7a1c9d352"
+  "a7c3e9d1f520"
  ],
  "modules": [
   {
@@ -12165,7 +12165,7 @@ a.tlink:hover { text-decoration: underline; }
      "in_orm": true,
      "attribute": "rule",
      "app_default": null,
-     "description": "The name rule that fired (``national_id``, ...; ``value-at-query`` later).",
+     "description": "The rule that fired (``national_id``, ``saudi_national_id``, ``custom:\u003cname>``,\n``value-at-query``).",
      "pk": false,
      "fk": []
     },
@@ -12233,14 +12233,14 @@ a.tlink:hover { text-decoration: underline; }
       "source": "CHECK ck_pii_findings_status",
       "values": [
        "suggested",
-       "confirmed",
-       "dismissed"
+       "accepted",
+       "rejected"
       ]
      },
      "in_orm": true,
      "attribute": "status",
      "app_default": null,
-     "description": "``suggested`` (in the review queue), ``confirmed`` or ``dismissed``.",
+     "description": "``suggested`` (in the review queue), ``accepted`` or ``rejected``. A column's findings\nare accepted and rejected together.",
      "pk": false,
      "fk": []
     },
@@ -12313,6 +12313,57 @@ a.tlink:hover { text-decoration: underline; }
      "description": null,
      "pk": false,
      "fk": []
+    },
+    {
+     "name": "source",
+     "type": "character varying(8)",
+     "nullable": false,
+     "default": "'name'::character varying",
+     "identity": null,
+     "generated": null,
+     "enum": {
+      "source": "CHECK ck_pii_findings_source",
+      "values": [
+       "name",
+       "value"
+      ]
+     },
+     "in_orm": true,
+     "attribute": "source",
+     "app_default": null,
+     "description": "``name`` (a name scan) or ``value`` (a value scan or a query's values): what the\nconfidence and evidence come from.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "confidence_at_rejection",
+     "type": "double precision",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "confidence_at_rejection",
+     "app_default": null,
+     "description": "The confidence when the finding was last rejected: a later scan that raises it above\nthis sends the column back to the review queue (spec §6.12).",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "removed",
+     "type": "boolean",
+     "nullable": false,
+     "default": "false",
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "removed",
+     "app_default": "False",
+     "description": "Rejected because someone removed the column's PII (it was accepted), not on review.",
+     "pk": false,
+     "fk": []
     }
    ],
    "primary_key": [
@@ -12366,12 +12417,20 @@ a.tlink:hover { text-decoration: underline; }
      "definition": "CHECK (((category)::text = ANY ((ARRAY['direct_identifier'::character varying, 'quasi_identifier'::character varying, 'sensitive'::character varying, 'financial'::character varying])::text[])))"
     },
     {
+     "name": "ck_pii_findings_source",
+     "kind": "CHECK",
+     "columns": [
+      "source"
+     ],
+     "definition": "CHECK (((source)::text = ANY ((ARRAY['name'::character varying, 'value'::character varying])::text[])))"
+    },
+    {
      "name": "ck_pii_findings_status",
      "kind": "CHECK",
      "columns": [
       "status"
      ],
-     "definition": "CHECK (((status)::text = ANY ((ARRAY['suggested'::character varying, 'confirmed'::character varying, 'dismissed'::character varying])::text[])))"
+     "definition": "CHECK (((status)::text = ANY ((ARRAY['suggested'::character varying, 'accepted'::character varying, 'rejected'::character varying])::text[])))"
     },
     {
      "name": "fk_pii_findings_decided_by_users",
@@ -16740,11 +16799,19 @@ a.tlink:hover { text-decoration: underline; }
      "default": null,
      "identity": null,
      "generated": null,
-     "enum": null,
+     "enum": {
+      "source": "CHECK ck_src_columns_pii_category",
+      "values": [
+       "direct_identifier",
+       "quasi_identifier",
+       "sensitive",
+       "financial"
+      ]
+     },
      "in_orm": true,
      "attribute": "pii_category",
      "app_default": null,
-     "description": "Set when an Editor confirms a PII finding (spec story 135).",
+     "description": "The column's one PII category, set when an Editor accepts its PII findings or adds it\nas PII by hand, cleared when PII is removed (spec story 135).",
      "pk": false,
      "fk": []
     },
@@ -16762,12 +16829,59 @@ a.tlink:hover { text-decoration: underline; }
      "description": "Stands in for a non-Latin name in staging (``col_017``); assigned once per table.",
      "pk": false,
      "fk": []
+    },
+    {
+     "name": "pii_added_by",
+     "type": "uuid",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "pii_added_by",
+     "app_default": null,
+     "description": "Who added the column as PII by hand (no finding); cleared when PII is removed.",
+     "pk": false,
+     "fk": [
+      {
+       "table": "users",
+       "column": "id"
+      }
+     ]
+    },
+    {
+     "name": "pii_added_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "pii_added_at",
+     "app_default": null,
+     "description": "When the column was added as PII by hand; set means a Manual line in the PII folder,\nand the column counts as accepted PII like one with an accepted finding.",
+     "pk": false,
+     "fk": []
     }
    ],
    "primary_key": [
     "id"
    ],
    "foreign_keys": [
+    {
+     "name": "fk_src_columns_pii_added_by_users",
+     "columns": [
+      "pii_added_by"
+     ],
+     "ref_table": "users",
+     "ref_columns": [
+      "id"
+     ],
+     "on_update": "NO ACTION",
+     "on_delete": "SET NULL"
+    },
     {
      "name": "fk_src_columns_table_id_src_tables",
      "columns": [
@@ -16783,12 +16897,28 @@ a.tlink:hover { text-decoration: underline; }
    ],
    "constraints": [
     {
+     "name": "ck_src_columns_pii_category",
+     "kind": "CHECK",
+     "columns": [
+      "pii_category"
+     ],
+     "definition": "CHECK (((pii_category IS NULL) OR ((pii_category)::text = ANY ((ARRAY['direct_identifier'::character varying, 'quasi_identifier'::character varying, 'sensitive'::character varying, 'financial'::character varying])::text[]))))"
+    },
+    {
      "name": "ck_src_columns_status",
      "kind": "CHECK",
      "columns": [
       "status"
      ],
      "definition": "CHECK (((status)::text = ANY ((ARRAY['present'::character varying, 'source_removed'::character varying, 'out_of_scope'::character varying, 'deleted'::character varying])::text[])))"
+    },
+    {
+     "name": "fk_src_columns_pii_added_by_users",
+     "kind": "FOREIGN KEY",
+     "columns": [
+      "pii_added_by"
+     ],
+     "definition": "FOREIGN KEY (pii_added_by) REFERENCES users(id) ON DELETE SET NULL"
     },
     {
      "name": "fk_src_columns_table_id_src_tables",
@@ -21390,6 +21520,21 @@ a.tlink:hover { text-decoration: underline; }
    "cardinality": "N:1",
    "optional": false,
    "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "name": "fk_src_columns_pii_added_by_users",
+   "from_table": "src_columns",
+   "from_columns": [
+    "pii_added_by"
+   ],
+   "to_table": "users",
+   "to_columns": [
+    "id"
+   ],
+   "cardinality": "N:1",
+   "optional": true,
+   "on_delete": "SET NULL",
    "on_update": "NO ACTION"
   },
   {

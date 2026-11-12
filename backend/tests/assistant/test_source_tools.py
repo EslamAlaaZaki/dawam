@@ -55,14 +55,17 @@ def table_of(roles: RoleClients, system: str, name: str = "customers") -> dict:
 
 @pytest.fixture
 def source(roles: RoleClients, sample_source: SampleSource) -> str:
-    """An extracted Source System with ``national_id`` confirmed as direct-identifier PII."""
+    """An extracted Source System with ``national_id`` accepted as direct-identifier PII."""
     system = add_system(roles)
     connect(roles, system, sample_source.connection_body())
     extract(roles, system)
     queue = roles.client("editor").get(f"{system}/pii-findings").json()["items"]
     [national] = [f for f in queue if f["column"] == "national_id"]
-    confirmed = roles.client("editor").post(f"{system}/pii-findings/{national['id']}/confirm")
-    assert confirmed.status_code == 200, confirmed.text
+    accepted = roles.client("editor").post(
+        f"{system}/pii-columns/{national['column_id']}/accept",
+        json={"category": national["category"]},
+    )
+    assert accepted.status_code == 200, accepted.text
     return system
 
 
@@ -424,7 +427,7 @@ def test_get_pii_findings_lists_columns_never_values_for_editors_and_owners(
     assert status == "ok"
     found = {(f["table"], f["column"]): f for f in payload(seen)}
     assert found[("customers", "national_id")]["category"] == "direct_identifier"
-    assert found[("customers", "national_id")]["status"] == "confirmed"
+    assert found[("customers", "national_id")]["status"] == "accepted"
     assert NATIONAL_ID not in everything_the_model_saw(fake_llm)
 
 

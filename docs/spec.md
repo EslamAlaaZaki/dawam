@@ -360,10 +360,10 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 131. As an editor, I want to run a value-based PII scan on selected tables that checks sampled values in memory against regex patterns and validators (Saudi national ID and Iqama with checksum, Saudi mobile numbers, Saudi IBANs, emails, card numbers, commercial registration numbers, dates of birth), so that PII hidden behind vague column names is found.
 132. As an owner, I want sampled values used for PII scanning to be discarded after the scan and never stored or shown, so that the scan itself doesn't leak personal data.
 133. As a member, I want each finding to show its category (direct identifier, quasi-identifier, sensitive/special category, financial), its confidence and its evidence (which rule matched and on what share of sampled rows), so that I can judge it quickly.
-134. As an editor, I want a PII review queue where I confirm or dismiss findings, so that the sensitive flags are trustworthy.
-135. As an editor, I want a confirmed finding to set the column's sensitive flag and PII category, exclude it from top-N profiling and mask it in anything sent to the AI, so that protection is automatic.
+134. As an editor, I want a PII folder with PII, Suggested, Accepted and Rejected tabs, one row per column, where I accept or reject a suggested column with all its rules, accept a rejected one after all, add PII by hand and remove it, so that the sensitive flags are trustworthy.
+135. As an editor, I want accepting a column as PII to set its sensitive flag and the PII category I choose, delete its stored profile values, exclude it from top-N profiling and mask it in anything sent to the AI, so that protection is automatic.
 136. As an owner, I want to add custom PII rules (name keywords, regex and category), so that organisation-specific identifiers such as employee or customer numbers are caught.
-137. As a member, I want PII to propagate through lineage, including columns used only in joins and filters, so that any DW column fed by a confirmed PII column is flagged as PII-derived and listed in the PII view.
+137. As a member, I want PII to propagate through lineage, including columns used only in joins and filters, so that any DW column fed by an accepted PII column is flagged as PII-derived and listed in the PII view.
 138. As an editor, I want to optionally enable hashing for a PII column in its staging mapping (salted, with the salt supplied at load time), and optionally record a handling note on PII-derived columns, so that privacy can be designed in where the team chooses. Hashed columns stay PII-derived and are marked "pseudonymised", because pseudonymised data is still personal data under PDPL.
 139. As a member, I want new suspected PII columns from a new Snapshot highlighted in the Snapshot diff, so that new personal data isn't missed.
 140. As a member, I want to export a PII inventory (source and DW columns, category, hashing, handling note, reviewer) as XLSX or Markdown, so that I can support PDPL records of processing and audits.
@@ -450,7 +450,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 
 ### 6.5 Profiling & privacy
 
-**Protected column** — one definition used everywhere (profiling, AI masking, lineage, exports): a source column is protected if it is flagged `is_sensitive` **or** has a PII finding with status `suggested` or `confirmed`. Dismissing a finding removes protection only if `is_sensitive` is also false.
+**Protected column** — one definition used everywhere (profiling, AI masking, lineage, exports): a source column is protected if it is flagged `is_sensitive` **or** has a PII finding with status `suggested` or `accepted`. Rejecting a finding removes protection only if `is_sensitive` is also false.
 
 - Stores aggregates only: counts, null %, distinct count, min/max (except for protected columns), and length statistics.
 - Top-N values are **off by default**. They can be enabled per table by an owner and are never captured for protected columns.
@@ -642,9 +642,16 @@ Disabled checks are excluded from the formula and listed separately with their r
   - IPv4/IPv6 address
 - Detection is regex and validator based only; no AI or NER.
 - **Confidence** combines the name match and the value match ratio. A name-keyword match alone has a confidence floor of 0.5, so on a freshly extracted system every name match is at least `suggested` and therefore protected (§6.5). Findings at or above 0.5 enter the review queue. Findings created by the query-time value check (§6.8) use rule `value-at-query`.
-- **Categories:** direct identifier, quasi-identifier, sensitive/special category (health, religion and similar), financial.
-- **Propagation:** a DW column is **PII-derived** only through value edges (direct, derived, hashed or expression inputs) from a confirmed PII column. Join, filter and lookup usage of a PII column marks the **table** (or branch) **PII-influenced** instead, shown in a separate list and not exported as PII columns. Surrogate keys produced by a lookup are never PII-derived. This is recomputed whenever mappings change, and PII-derived columns are listed in the PII view.
-- **Hashing (optional):** a confirmed PII column's staging mapping can be switched to `hashed`, which generates a salted SHA-256 expression with a `:pii_salt` placeholder. The salt is supplied at load time and is never stored in DAWAM. Hashed columns and everything downstream stay PII-derived, marked `pseudonymised`.
+- **Categories:** direct identifier, quasi-identifier, sensitive/special category (health, religion and similar), financial. A column has exactly one category.
+- **Review by column (the PII folder).** A finding is one rule that matched one column (a **name scan**, a **value scan** or a query's values); a column can hold several. The folder has four tabs: **PII** (columns accepted as PII: flagged `is_sensitive` or with an accepted finding), **Suggested** (findings waiting for review; the tab shows an amber dot), **Accepted** (PII through accepted findings) and **Rejected**. Each row is one column with every rule that matched it, most confident first, and who decided and when.
+  - **Accept and Reject act on the whole column:** every finding on it moves together. Accepting takes a category, preset to the most confident rule's (a note says when the rules disagree), sets `is_sensitive` and the category. A rejected column can be accepted after all, with a category.
+  - **Add PII by hand:** any present column not already PII or suggested, with a category; no finding is recorded and the row shows a Manual line. Adding a rejected column brings it back accepted with its findings.
+  - **Remove PII:** rejects every finding on the column and clears `is_sensitive` and the category, however they were set; the column moves to Rejected ("Removed by"), or leaves the folder if it was PII by hand only. Removing is blocked while the column's staging mapping is `hashed`: switch it back to direct first. When the table has been profiled and the system has a live Connection, the removal can profile the table again; rejecting a suggested column offers the same from its notice.
+  - **Coming back:** a rejected column returns to Suggested ("Rejected before by …") when a later name scan, value scan or Snapshot finds a rule that never matched it, or raises any of its rules' confidence above the confidence it had when rejected. Otherwise it stays rejected.
+  - A column that becomes PII (accepted, accepted after all, added by hand) loses its stored profile `min`, `max` and top values; row count, null % and distinct count stay. A column gone from the source keeps its decision and is shown struck through.
+  - Owners and editors review and change PII; viewers read the PII tab only (names and ratios, never values). Every decision is audited.
+- **Propagation:** a DW column is **PII-derived** only through value edges (direct, derived, hashed or expression inputs) from an accepted PII column (an accepted finding, or added by hand). Join, filter and lookup usage of a PII column marks the **table** (or branch) **PII-influenced** instead, shown in a separate list and not exported as PII columns. Surrogate keys produced by a lookup are never PII-derived. This is recomputed whenever mappings change, and PII-derived columns are listed in the PII view.
+- **Hashing (optional):** an accepted PII column's staging mapping can be switched to `hashed`, which generates a salted SHA-256 expression with a `:pii_salt` placeholder. The salt is supplied at load time and is never stored in DAWAM. Hashed columns and everything downstream stay PII-derived, marked `pseudonymised`.
 - **Handling note (optional)** can be recorded on any PII-derived column. No handling decision is required.
 
 ### 6.13 KPIs
@@ -805,7 +812,7 @@ SrcTable(id, db_schema_id, name, kind[table|view], current_definition JSON,
          classification?[master|transactional|reference|log|landing], scd_hint?, description?, tags[],
          is_sensitive, include_view_in_staging, placeholder_no?, status, version)
 SrcColumn(id, table_id, name, current_definition JSON, description?, tags[], is_sensitive,
-          pii_category?, placeholder_no?, status, version)
+          pii_category?, pii_added_by?, pii_added_at?, placeholder_no?, status, version)
 SrcRoutine(id, db_schema_id, name, kind[procedure|function], status)
 
 -- Immutable Snapshot contents: one frozen row per object per Snapshot.
@@ -876,8 +883,9 @@ AiEvaluation(id, data_warehouse_id, layer, findings JSON, created_by, created_at
 PiiRule(id, workspace_id?, name, category, name_keywords[], value_regex?, validator?, enabled)
                                                   -- workspace_id null = built-in rule
 PiiFinding(id, src_column_id, rule_id, category, confidence, evidence JSON,
-           status[suggested|confirmed|dismissed], reviewed_by?, reviewed_at?)
-                                                  -- protected column = is_sensitive OR finding in {suggested, confirmed}
+           source[name|value], status[suggested|accepted|rejected],
+           confidence_at_rejection?, removed, reviewed_by?, reviewed_at?)
+                                                  -- protected column = is_sensitive OR finding in {suggested, accepted}
 
 WorkspaceFile(id, workspace_id, owner_kind[source_system|data_warehouse], owner_id, path,
               kind[generated|uploaded], mime, storage_key, size, extracted_text?,
@@ -1027,7 +1035,7 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel   POST /jobs/{id}/answer
 | Install | `docker compose up` with a documented `.env.example`. Works offline after image pull. With a self-hosted LLM (vLLM, SGLang or Ollama), the whole tool, AI included, runs fully offline and air-gapped. Cloud models need outbound access to the chosen provider only. |
 | Assistant | First streamed token in < 3 s for simple questions. |
 | Scoring | Recalculation in < 2 s for a 200-table DW Schema. |
-| AI data exposure | Only what the Workspace shares with the AI (AI privacy) is sent to the provider. Credentials are never sent; confirmed PII is always masked. New Workspaces are internal-only by default. |
+| AI data exposure | Only what the Workspace shares with the AI (AI privacy) is sent to the provider. Credentials are never sent; accepted PII is always masked. New Workspaces are internal-only by default. |
 | LLM portability | Full agent mode works with any model that has native tool calling and a context window of at least 32k tokens. Other models run in limited mode. |
 
 ---
@@ -1041,7 +1049,7 @@ GET    /jobs/{id}              POST /jobs/{id}/cancel   POST /jobs/{id}/answer
 - **Schema Import:** for each engine, run the helper queries against the seeded container, fill the template, import it, and assert the Snapshot equals the one from live extraction (apart from profile-dependent data). A malformed workbook produces a validation report and writes nothing.
 - **Snapshot diff & drift:** re-extract after `ALTER TABLE` changes. Assert that identities are preserved across type changes and letter-case differences, older Snapshots stay unchanged and diffable, rename candidates are proposed and keep identity when confirmed, removed columns are flagged, and the staging sync Change Set and impacted Assets are reported.
 - **Staging generation:** naming, sanitising, stable placeholder names, collisions, truncation with hash per target platform limit, type translation fallbacks, views opt-in, sync Change Sets, tombstones (deleted objects never return), overrides shown as conflicts, "drop removed".
-- **AI query guard:** non-`SELECT` statements, multiple statements, writes hidden in CTEs or functions, non-allow-listed functions, unresolved/synonym/cross-database names and queries outside allowed Database Schemas are all rejected; output columns derived from confirmed or suggested PII (through `CONCAT`, `CAST`, aggregates) are masked; slicing them (`SUBSTR`, `LEFT`, `INSTR`...) and `LIKE`/regex on them are rejected in every dialect, with no read budget; filters on PII columns are rejected; saved transcripts contain no sample values; the per-run query-seconds budget is enforced.
+- **AI query guard:** non-`SELECT` statements, multiple statements, writes hidden in CTEs or functions, non-allow-listed functions, unresolved/synonym/cross-database names and queries outside allowed Database Schemas are all rejected; output columns derived from accepted or suggested PII (through `CONCAT`, `CAST`, aggregates) are masked; slicing them (`SUBSTR`, `LEFT`, `INSTR`...) and `LIKE`/regex on them are rejected in every dialect, with no read budget; filters on PII columns are rejected; saved transcripts contain no sample values; the per-run query-seconds budget is enforced.
 - **Change propagation:** fixture DW Schemas where each row of the propagation table (rename, type change, nullability, delete) produces the expected transitive impact list and Change Set; deletes never cascade; partial acceptance leaves the expected validation errors; approval is revoked only by structural or mapping changes; Mart approval follows Core.
 - **Change Sets:** staleness is per changed field (an unrelated edit doesn't make an item stale); stale items and their dependents are skipped and reported before an all-or-nothing apply; dependency closure on accept and reject; owner-only items stay `needs_owner` when an Editor accepts (table-driven over the permission matrix); a newer sync supersedes a pending one; remaining items expire and "Fix impacts" recomputes them; creates are one item per table; mapping import produces a Change Set.
 - **Deletes and states:** soft delete marks only the target `deleted` and dependents show errors; `source_removed` objects stay scored; narrowing allowed schemas yields `out_of_scope`, never removal; deleting a Source System re-homes DW-linked KPIs and keeps other systems' branches.

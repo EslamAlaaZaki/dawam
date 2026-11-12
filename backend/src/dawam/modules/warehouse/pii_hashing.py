@@ -1,4 +1,4 @@
-"""Hashing a confirmed PII column in its staging mapping (spec §6.12, story 138).
+"""Hashing an accepted PII column in its staging mapping (spec §6.12, story 138).
 
 An Editor switches a staging column's ``direct`` mapping to ``hashed`` and back. The hashed
 expression is a salted SHA-256 of the source column, as lower-case hex, in the target
@@ -6,7 +6,8 @@ platform's dialect. The salt is the ``:pii_salt`` bind placeholder, supplied at 
 DAWAM never asks for it, never stores it and never writes a literal salt into a mapping.
 NULL stays NULL, so a missing value does not become the hash of the salt alone.
 
-Only a staging column whose source column has a ``confirmed`` PII finding can be hashed.
+Only a staging column whose source column is accepted PII (an accepted finding, or added
+by hand) can be hashed.
 The ``value`` lineage edge from the source column is kept, so the column and everything
 downstream stay PII-derived; ``propagate_pii`` marks them pseudonymised.
 """
@@ -14,6 +15,7 @@ downstream stay PII-derived; ``propagate_pii`` marks them pseudonymised.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Literal
 
@@ -23,7 +25,7 @@ from sqlalchemy.orm import Session
 from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
-from dawam.modules.sources import confirmed_pii_column_ids
+from dawam.modules.sources import accepted_pii_column_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -139,7 +141,7 @@ class PiiHashingService:
         """Make a staging column's mapping ``hashed`` or ``direct`` again (owners and
         editors). 404 ``not_found`` for anything but a source-fed staging column of the
         Workspace; 422 ``invalid_mapping`` for another type, or to hash a column whose
-        source column is not confirmed PII; 409 ``version_conflict`` for a stale
+        source column is not accepted PII; 409 ``version_conflict`` for a stale
         ``version`` (the mapping's)."""
         self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
         if mapping_type not in ("direct", "hashed"):
@@ -153,8 +155,8 @@ class PiiHashingService:
                 raise _invalid("Only a direct or hashed staging mapping can be switched.")
             if record.mapping_type != mapping_type:
                 if mapping_type == "hashed":
-                    if column.source_column_id not in confirmed_pii_column_ids(db, workspace_id):
-                        raise _invalid("Only a confirmed PII column can be hashed.")
+                    if column.source_column_id not in accepted_pii_column_ids(db, workspace_id):
+                        raise _invalid("Only an accepted PII column can be hashed.")
                     sql = hashed_sql(platform, record.sql_expression)
                 else:
                     try:
@@ -218,6 +220,34 @@ class PiiHashingService:
             raise ApiError(404, "not_found", "Staging column not found.")
         column, table, warehouse = found
         return column, table, warehouse, record
+
+
+def hashed_staging_mappings(
+    db: Session, source_column_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """Which of these source columns a ``hashed`` staging mapping reads, with that staging
+    column's name (``table.column``); in the caller's session, no permission check. The
+    sources module asks before PII is removed from a column (the composition root passes
+    this in)."""
+    if not source_column_ids:
+        return {}
+    rows = db.execute(
+        sa.select(DwColumnRecord.source_column_id, DwTableRecord.name, DwColumnRecord.name)
+        .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+        .join(ColumnMappingRecord, ColumnMappingRecord.dw_column_id == DwColumnRecord.id)
+        .where(
+            DwColumnRecord.source_column_id.in_(list(source_column_ids)),
+            DwTableRecord.layer == "staging",
+            DwTableRecord.status != DELETED,
+            ColumnMappingRecord.branch_id.is_(None),
+            ColumnMappingRecord.mapping_type == "hashed",
+        )
+        .order_by(DwTableRecord.name, DwColumnRecord.name)
+    ).all()
+    found: dict[uuid.UUID, str] = {}
+    for source_column_id, table, column in rows:
+        found.setdefault(source_column_id, f"{table}.{column}")
+    return found
 
 
 def _view(column: DwColumnRecord, record: ColumnMappingRecord) -> StagingColumnMapping:

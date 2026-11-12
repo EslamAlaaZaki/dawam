@@ -43,8 +43,8 @@ class SourceSummary(BaseModel):
     relationships_found: int = Field(description="Suggested and accepted relationships.")
     relationships_accepted: int
     relationships_to_review: int = Field(description="Suggested ones waiting for a decision.")
-    pii_found: int = Field(description="Columns with a suggested or confirmed PII finding.")
-    pii_confirmed: int
+    pii_found: int = Field(description="Columns with a suggested or accepted PII finding.")
+    pii_accepted: int
     pii_to_review: int = Field(description="Columns whose finding is still suggested.")
     status: Literal["not_started", "in_progress", "complete"] = Field(
         description="Source Analysis: `complete` once every table is documented and profiled "

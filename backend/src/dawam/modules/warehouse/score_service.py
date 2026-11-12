@@ -18,7 +18,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
-from dawam.modules.sources import confirmed_pii_column_ids
+from dawam.modules.sources import accepted_pii_column_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -456,7 +456,7 @@ class ScoreService:
                 )
             )
         pii_derived = (
-            propagate_pii(db, confirmed_pii_column_ids(db, warehouse.workspace_id)).derived_columns
+            propagate_pii(db, accepted_pii_column_ids(db, warehouse.workspace_id)).derived_columns
             if with_pii
             else frozenset()
         )

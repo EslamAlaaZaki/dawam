@@ -761,7 +761,7 @@ class MappingService:
         mapping_type = fields.get("mapping_type")
         if mapping_type == "hashed":
             raise _invalid(
-                "mapping_type", "Only a confirmed PII column's staging mapping is hashed."
+                "mapping_type", "Only an accepted PII column's staging mapping is hashed."
             )
         if mapping_type not in MAPPING_TYPES or (mapping_type == "not_in_branch" and not in_branch):
             allowed = [

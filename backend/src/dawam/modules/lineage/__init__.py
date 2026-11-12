@@ -8,10 +8,10 @@ Public interface. Other modules import only what is re-exported here:
   (``Graph``, ``Node``, ``Edge``); ``impact`` lists the DW columns, DW tables and KPIs
   downstream of a node (``Impact``). Every call authorizes through the workspaces policy.
 - ``LineageService.pii_view``: the PII-derived DW columns and, separately, the PII-influenced
-  DW tables (``PiiView``, spec §6.12) from the confirmed findings and the lineage edges;
+  DW tables (``PiiView``, spec §6.12) from the accepted PII and the lineage edges;
   each column says whether it is pseudonymised and carries its handling note (``PiiColumn``).
 - ``PiiInventoryService``: the PII inventory export (story 140) as XLSX or Markdown: the
-  confirmed PII source columns and the PII-derived DW columns with category, hashing,
+  accepted PII source columns and the PII-derived DW columns with category, hashing,
   handling note and reviewer, and the PII-influenced tables listed separately
   (``PiiInventory``). The ``files`` module saves it to the Data Warehouse's file area.
 - ``router``: ``GET /workspaces/{workspace_id}/data-warehouse/lineage?node=&direction=&depth=``

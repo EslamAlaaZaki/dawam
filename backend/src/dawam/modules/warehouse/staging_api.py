@@ -1,5 +1,5 @@
 """``/api/v1/workspaces/{id}/data-warehouse/staging``: generate the Staging Layer (spec §6.7),
-and hash a confirmed PII column in its staging mapping (spec §6.12, story 138).
+and hash an accepted PII column in its staging mapping (spec §6.12, story 138).
 
 Handlers only translate HTTP to ``StagingService`` and ``PiiHashingService`` calls; the
 services authorize every call through the workspaces policy, so no handler looks at roles.
@@ -146,7 +146,7 @@ def drop_removed_staging(
 
 class StagingColumnMappingRequest(BaseModel):
     mapping_type: Literal["direct", "hashed"] = Field(
-        description="`hashed` for a column whose source column is confirmed PII; `direct` "
+        description="`hashed` for a column whose source column is accepted PII; `direct` "
         "undoes it. There is no salt field: the salt is supplied at load time."
     )
     version: int = Field(description="The mapping's `version` you last saw.")
@@ -172,7 +172,7 @@ def get_staging_column_mapping(
     hashing: PiiHashingServiceDep,
 ) -> StagingColumnMapping:
     """A staging column's mapping from its source column (any member): `direct`, or `hashed`
-    for a confirmed PII column. 404 `not_found` for anything but a source-fed staging column."""
+    for an accepted PII column. 404 `not_found` for anything but a source-fed staging column."""
     return StagingColumnMapping.model_validate(
         hashing.get_staging_mapping(user, workspace_id, dw_column_id)
     )
@@ -186,12 +186,12 @@ def set_staging_column_mapping(
     user: CurrentUser,
     hashing: PiiHashingServiceDep,
 ) -> StagingColumnMapping:
-    """Hash a confirmed PII column in its staging mapping, or map it `direct` again (owners
+    """Hash an accepted PII column in its staging mapping, or map it `direct` again (owners
     and editors). A hashed mapping is a salted SHA-256 of the source column with a
     `:pii_salt` placeholder; the salt is never stored. The column and everything downstream
     stay PII-derived and are marked pseudonymised in the PII view. 404 `not_found` for
     anything but a staging column fed by a source column; 422 `invalid_mapping` to hash a
-    column that is not confirmed PII; 409 `version_conflict`."""
+    column that is not accepted PII; 409 `version_conflict`."""
     return StagingColumnMapping.model_validate(
         hashing.set_staging_mapping(
             user,

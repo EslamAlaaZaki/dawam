@@ -106,7 +106,7 @@ class SnapshotColumn:
     is_sensitive: bool | None = None
     version: int | None = None
     pii_category: str | None = None
-    """Set when a PII finding was confirmed; only in the Source Schema."""
+    """Set when a column is accepted as PII; only in the Source Schema."""
     is_protected: bool | None = None
     """By the one Protected Column policy; only in the Source Schema."""
 
@@ -645,7 +645,7 @@ class SnapshotService:
     def _new_pii(
         self, db: Session, old: SnapshotContent, new: SnapshotContent
     ) -> list[SuspectedPiiColumn]:
-        """The columns in ``new`` and not in ``old`` with a suggested or confirmed finding
+        """The columns in ``new`` and not in ``old`` with a suggested or accepted finding
         (a column of a brand-new table counts too)."""
         before = {c.id for t in old.tables for c in t.columns}
         added = {c.id: (t, c) for t in new.tables for c in t.columns if c.id not in before}

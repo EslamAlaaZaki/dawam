@@ -114,7 +114,7 @@ class PiiViewReport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     columns: list[PiiColumn]
-    """PII-derived DW columns: fed by a confirmed PII column through value edges."""
+    """PII-derived DW columns: fed by an accepted PII column through value edges."""
     tables: list[LineageNode]
     """PII-influenced DW tables: PII only steers them (join, filter, lookup)."""
     source_columns: list[LineageNode]
@@ -127,6 +127,6 @@ class PiiViewReport(BaseModel):
 def get_pii_view(
     workspace_id: uuid.UUID, user: CurrentUser, lineage: LineageServiceDep
 ) -> PiiViewReport:
-    """The PII view (any member): DW columns derived from confirmed PII and, separately,
+    """The PII view (any member): DW columns derived from accepted PII and, separately,
     the tables PII only influences. Recomputed from the current mappings on every call."""
     return PiiViewReport.model_validate(lineage.pii_view(user, workspace_id))

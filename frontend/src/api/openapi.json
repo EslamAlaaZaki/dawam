@@ -4856,7 +4856,7 @@
           "data-warehouse-staging"
         ],
         "summary": "Get Staging Column Mapping",
-        "description": "A staging column's mapping from its source column (any member): `direct`, or `hashed`\nfor a confirmed PII column. 404 `not_found` for anything but a source-fed staging column.",
+        "description": "A staging column's mapping from its source column (any member): `direct`, or `hashed`\nfor an accepted PII column. 404 `not_found` for anything but a source-fed staging column.",
         "operationId": "getStagingColumnMapping",
         "parameters": [
           {
@@ -4919,7 +4919,7 @@
           "data-warehouse-staging"
         ],
         "summary": "Set Staging Column Mapping",
-        "description": "Hash a confirmed PII column in its staging mapping, or map it `direct` again (owners\nand editors). A hashed mapping is a salted SHA-256 of the source column with a\n`:pii_salt` placeholder; the salt is never stored. The column and everything downstream\nstay PII-derived and are marked pseudonymised in the PII view. 404 `not_found` for\nanything but a staging column fed by a source column; 422 `invalid_mapping` to hash a\ncolumn that is not confirmed PII; 409 `version_conflict`.",
+        "description": "Hash an accepted PII column in its staging mapping, or map it `direct` again (owners\nand editors). A hashed mapping is a salted SHA-256 of the source column with a\n`:pii_salt` placeholder; the salt is never stored. The column and everything downstream\nstay PII-derived and are marked pseudonymised in the PII view. 404 `not_found` for\nanything but a staging column fed by a source column; 422 `invalid_mapping` to hash a\ncolumn that is not accepted PII; 409 `version_conflict`.",
         "operationId": "setStagingColumnMapping",
         "parameters": [
           {
@@ -6586,7 +6586,7 @@
           "sources"
         ],
         "summary": "List Pii Findings",
-        "description": "The Source System's PII findings (owners and editors).",
+        "description": "The Source System's PII findings, one per column and rule (owners and editors).",
         "operationId": "listPiiFindings",
         "parameters": [
           {
@@ -6618,8 +6618,8 @@
                 {
                   "enum": [
                     "suggested",
-                    "confirmed",
-                    "dismissed"
+                    "accepted",
+                    "rejected"
                   ],
                   "type": "string"
                 },
@@ -6667,15 +6667,15 @@
         }
       }
     },
-    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/confirm": {
-      "post": {
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns": {
+      "get": {
         "tags": [
           "sources",
           "sources"
         ],
-        "summary": "Confirm Pii Finding",
-        "description": "Confirm a finding (owners and editors): the column becomes sensitive and takes the\nfinding's PII category. Audited.",
-        "operationId": "confirmPiiFinding",
+        "summary": "List Pii Columns",
+        "description": "One tab of the PII folder, one row per column, with every tab's count. Any member\nreads the `pii` tab (names and ratios only, never values); the other tabs are for\nowners and editors.",
+        "operationId": "listPiiColumns",
         "parameters": [
           {
             "name": "workspace_id",
@@ -6698,14 +6698,22 @@
             }
           },
           {
-            "name": "finding_id",
-            "in": "path",
-            "required": true,
+            "name": "tab",
+            "in": "query",
+            "required": false,
             "schema": {
+              "enum": [
+                "pii",
+                "suggested",
+                "accepted",
+                "rejected"
+              ],
               "type": "string",
-              "format": "uuid",
-              "title": "Finding Id"
-            }
+              "description": "The PII folder's tab.",
+              "default": "pii",
+              "title": "Tab"
+            },
+            "description": "The PII folder's tab."
           }
         ],
         "responses": {
@@ -6714,7 +6722,80 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PiiFinding"
+                  "$ref": "#/components/schemas/PiiColumnPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Add Pii Column",
+        "description": "Add a column as PII by hand (owners and editors): flagged sensitive with the\ncategory, no finding. A rejected column comes back accepted. Audited.",
+        "operationId": "addPiiColumn",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddPiiColumnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiFolderColumn"
                 }
               }
             }
@@ -6742,15 +6823,15 @@
         }
       }
     },
-    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/dismiss": {
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/accept": {
       "post": {
         "tags": [
           "sources",
           "sources"
         ],
-        "summary": "Dismiss Pii Finding",
-        "description": "Dismiss a finding (owners and editors). The column stays protected only if it is\nflagged sensitive. Audited.",
-        "operationId": "dismissPiiFinding",
+        "summary": "Accept Pii Column",
+        "description": "Accept a suggested column as PII (owners and editors): every finding on it is\naccepted and the column becomes sensitive with the category. Audited.",
+        "operationId": "acceptPiiColumn",
         "parameters": [
           {
             "name": "workspace_id",
@@ -6773,13 +6854,98 @@
             }
           },
           {
-            "name": "finding_id",
+            "name": "column_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid",
-              "title": "Finding Id"
+              "title": "Column Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiCategoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiFolderColumn"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/reject": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Reject Pii Column",
+        "description": "Reject a suggested column (owners and editors): every finding on it is rejected.\nAudited.",
+        "operationId": "rejectPiiColumn",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Column Id"
             }
           }
         ],
@@ -6789,7 +6955,177 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PiiFinding"
+                  "$ref": "#/components/schemas/PiiFolderColumn"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/accept-rejected": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Accept Rejected Pii Column",
+        "description": "Accept a rejected column as PII after all (owners and editors). Audited.",
+        "operationId": "acceptRejectedPiiColumn",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Column Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PiiCategoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiFolderColumn"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/remove": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Remove Pii Column",
+        "description": "Remove a column's PII (owners and editors): every finding is rejected and the\nsensitive flag and category are cleared. 409 `pii_column_hashed` while its staging\nmapping is hashed. With `profile_again`, the column's table is profiled again. Audited.",
+        "operationId": "removePiiColumn",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "column_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Column Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemovePiiRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PiiRemoved"
                 }
               }
             }
@@ -11348,7 +11684,7 @@
           "lineage"
         ],
         "summary": "Get Pii View",
-        "description": "The PII view (any member): DW columns derived from confirmed PII and, separately,\nthe tables PII only influences. Recomputed from the current mappings on every call.",
+        "description": "The PII view (any member): DW columns derived from accepted PII and, separately,\nthe tables PII only influences. Recomputed from the current mappings on every call.",
         "operationId": "getPiiView",
         "parameters": [
           {
@@ -11402,7 +11738,7 @@
           "lineage"
         ],
         "summary": "Download Pii Inventory",
-        "description": "The PII inventory (any member): the confirmed PII source columns and the DW columns\nthey feed, with category, hashing (`pseudonymised` or `not hashed`), handling note and\nreviewer, never values. PII-influenced tables are listed on their own sheet or section.\nTo keep a copy, save it to the file area with\n`POST .../data-warehouse/files/pii-inventory`.",
+        "description": "The PII inventory (any member): the accepted PII source columns and the DW columns\nthey feed, with category, hashing (`pseudonymised` or `not hashed`), handling note and\nreviewer, never values. PII-influenced tables are listed on their own sheet or section.\nTo keep a copy, save it to the file area with\n`POST .../data-warehouse/files/pii-inventory`.",
         "operationId": "downloadPiiInventory",
         "parameters": [
           {
@@ -17506,6 +17842,7 @@
           "source_system.query",
           "source_table.top_n",
           "pii.review",
+          "pii.view_review",
           "pii.manage_rules",
           "change_set.review",
           "job.cancel_own",
@@ -17733,6 +18070,31 @@
           "role"
         ],
         "title": "AddMemberRequest"
+      },
+      "AddPiiColumnRequest": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "category"
+        ],
+        "title": "AddPiiColumnRequest"
       },
       "AdminSettings": {
         "properties": {
@@ -26941,6 +27303,25 @@
         ],
         "title": "Person"
       },
+      "PiiCategoryRequest": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category"
+        ],
+        "title": "PiiCategoryRequest"
+      },
       "PiiColumn": {
         "properties": {
           "id": {
@@ -27000,6 +27381,32 @@
         ],
         "title": "PiiColumn"
       },
+      "PiiColumnPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PiiFolderColumn"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/PiiTabCounts"
+          },
+          "can_profile": {
+            "type": "boolean",
+            "title": "Can Profile",
+            "description": "A live Connection: a table can be profiled again."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "counts",
+          "can_profile"
+        ],
+        "title": "PiiColumnPage"
+      },
       "PiiFinding": {
         "properties": {
           "id": {
@@ -27032,7 +27439,7 @@
           "rule": {
             "type": "string",
             "title": "Rule",
-            "description": "The name rule that fired, e.g. `national_id`."
+            "description": "The rule that fired, e.g. `national_id`."
           },
           "category": {
             "type": "string",
@@ -27058,8 +27465,8 @@
             "type": "string",
             "enum": [
               "suggested",
-              "confirmed",
-              "dismissed"
+              "accepted",
+              "rejected"
             ],
             "title": "Status",
             "description": "`suggested` findings are the review queue."
@@ -27072,7 +27479,7 @@
           "is_protected": {
             "type": "boolean",
             "title": "Is Protected",
-            "description": "`is_sensitive` or a `suggested`/`confirmed` finding on the column."
+            "description": "`is_sensitive` or a `suggested`/`accepted` finding on the column."
           },
           "detected_at": {
             "type": "string",
@@ -27142,6 +27549,212 @@
         ],
         "title": "PiiFindingPage"
       },
+      "PiiFolderColumn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The Source Column."
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "table": {
+            "type": "string",
+            "title": "Table"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "data_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Type"
+          },
+          "source_status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "source_removed",
+              "out_of_scope"
+            ],
+            "title": "Source Status",
+            "description": "Not `present`: the column is gone from the source; the decision stays."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "suggested",
+              "rejected"
+            ],
+            "title": "State"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "direct_identifier",
+                  "quasi_identifier",
+                  "sensitive",
+                  "financial"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "description": "The column's PII category once accepted; else its most confident rule's."
+          },
+          "is_sensitive": {
+            "type": "boolean",
+            "title": "Is Sensitive"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/PiiRuleMatch"
+            },
+            "type": "array",
+            "title": "Rules",
+            "description": "Every rule that matched, most confident first."
+          },
+          "manual": {
+            "type": "boolean",
+            "title": "Manual",
+            "description": "Added as PII by hand (a Manual line, no rule)."
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "added",
+                  "rejected",
+                  "removed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision",
+            "description": "The latest decision that put the column in its tab."
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "rejected_before_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected Before By",
+            "description": "A suggested column rejected before, back after a later scan."
+          },
+          "rejected_before_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected Before At"
+          },
+          "hashed_mapping": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hashed Mapping",
+            "description": "The staging mapping that hashes the column; PII cannot be removed then."
+          },
+          "table_profiled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Profiled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "table_id",
+          "db_schema",
+          "table",
+          "column",
+          "data_type",
+          "source_status",
+          "state",
+          "category",
+          "is_sensitive",
+          "rules",
+          "manual",
+          "decision",
+          "decided_by",
+          "decided_at",
+          "rejected_before_by",
+          "rejected_before_at",
+          "hashed_mapping",
+          "table_profiled_at"
+        ],
+        "title": "PiiFolderColumn"
+      },
       "PiiKpi": {
         "properties": {
           "id": {
@@ -27192,6 +27805,40 @@
           "influence"
         ],
         "title": "PiiKpi"
+      },
+      "PiiRemoved": {
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PiiFolderColumn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The column, now rejected; `null` for a column added by hand only."
+          },
+          "profile_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Job Id",
+            "description": "The profiling job started for the table, if asked and possible."
+          }
+        },
+        "type": "object",
+        "required": [
+          "column",
+          "profile_job_id"
+        ],
+        "title": "PiiRemoved"
       },
       "PiiRuleCreate": {
         "properties": {
@@ -27276,6 +27923,68 @@
           "custom"
         ],
         "title": "PiiRuleList"
+      },
+      "PiiRuleMatch": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "name",
+              "value"
+            ],
+            "title": "Source",
+            "description": "`name`: a name scan; `value`: a value scan or a query's values."
+          },
+          "rule": {
+            "type": "string",
+            "title": "Rule",
+            "description": "`national_id`, `saudi_national_id`, `custom:<name>`, ..."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "direct_identifier",
+              "quasi_identifier",
+              "sensitive",
+              "financial"
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence",
+            "description": "Why it matched: names and ratios, never a value."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "rule",
+          "category",
+          "confidence",
+          "evidence",
+          "status"
+        ],
+        "title": "PiiRuleMatch"
       },
       "PiiRuleUpdate": {
         "properties": {
@@ -27402,6 +28111,34 @@
           "status"
         ],
         "title": "PiiScanStarted"
+      },
+      "PiiTabCounts": {
+        "properties": {
+          "pii": {
+            "type": "integer",
+            "title": "Pii"
+          },
+          "suggested": {
+            "type": "integer",
+            "title": "Suggested"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "rejected": {
+            "type": "integer",
+            "title": "Rejected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pii",
+          "suggested",
+          "accepted",
+          "rejected"
+        ],
+        "title": "PiiTabCounts"
       },
       "PiiViewReport": {
         "properties": {
@@ -28003,6 +28740,18 @@
           "items"
         ],
         "title": "RelationshipPage"
+      },
+      "RemovePiiRequest": {
+        "properties": {
+          "profile_again": {
+            "type": "boolean",
+            "title": "Profile Again",
+            "description": "Also profile the column's table again, as a background job.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "RemovePiiRequest"
       },
       "RemovedColumn": {
         "properties": {
@@ -29915,7 +30664,7 @@
               }
             ],
             "title": "Pii Category",
-            "description": "Set when a PII finding was confirmed; set only in the Source Schema."
+            "description": "Set when a column is accepted as PII; set only in the Source Schema."
           },
           "is_protected": {
             "anyOf": [
@@ -29927,7 +30676,7 @@
               }
             ],
             "title": "Is Protected",
-            "description": "`is_sensitive` or a `suggested`/`confirmed` PII finding; set only in the Source Schema."
+            "description": "`is_sensitive` or a `suggested`/`accepted` PII finding; set only in the Source Schema."
           }
         },
         "type": "object",
@@ -30891,11 +31640,11 @@
           "pii_found": {
             "type": "integer",
             "title": "Pii Found",
-            "description": "Columns with a suggested or confirmed PII finding."
+            "description": "Columns with a suggested or accepted PII finding."
           },
-          "pii_confirmed": {
+          "pii_accepted": {
             "type": "integer",
-            "title": "Pii Confirmed"
+            "title": "Pii Accepted"
           },
           "pii_to_review": {
             "type": "integer",
@@ -30926,7 +31675,7 @@
           "relationships_accepted",
           "relationships_to_review",
           "pii_found",
-          "pii_confirmed",
+          "pii_accepted",
           "pii_to_review",
           "status"
         ],
@@ -31188,7 +31937,7 @@
               "hashed"
             ],
             "title": "Mapping Type",
-            "description": "`hashed` for a column whose source column is confirmed PII; `direct` undoes it. There is no salt field: the salt is supplied at load time."
+            "description": "`hashed` for a column whose source column is accepted PII; `direct` undoes it. There is no salt field: the salt is supplied at load time."
           },
           "version": {
             "type": "integer",
@@ -31602,7 +32351,7 @@
             "type": "string",
             "enum": [
               "suggested",
-              "confirmed"
+              "accepted"
             ],
             "title": "Status"
           }

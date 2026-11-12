@@ -127,7 +127,7 @@ A group of proposed changes to Assets, shown as a diff and applied only after a 
 _Avoid_: Patch, proposal, suggestion
 
 **Protected Column**:
-A source column flagged sensitive, or with a suggested or confirmed PII finding. Its values never reach the AI or DAWAM's storage.
+A source column flagged sensitive, or with a suggested or accepted PII finding. Its values never reach the AI or DAWAM's storage.
 _Avoid_: PII column (narrower), sensitive column (narrower)
 
 **Layer Approval**:

@@ -61,7 +61,7 @@ from .internal.connector import (
     ConnectorError,
     connector_for,
 )
-from .internal.pii import load_rule_set, scan_columns
+from .internal.pii import load_rule_set, reopen_rejected, scan_columns
 from .internal.query_guard import (
     Rejected,
     cap_rows,
@@ -413,6 +413,8 @@ class SourceQueryService:
                 )
                 if known is not None:
                     continue
+                # A rule that never matched a rejected column sends it back to review.
+                reopen_rejected(db, [column_id])
                 db.add(
                     PiiFindingRecord(
                         id=uuid.uuid4(),
@@ -422,6 +424,7 @@ class SourceQueryService:
                         confidence=VALIDATORS[rule].weight,
                         evidence=EVIDENCE.format(rule=rule),
                         status="suggested",
+                        source="value",
                         snapshot_id=snapshot_id,
                         detected_at=now,
                     )

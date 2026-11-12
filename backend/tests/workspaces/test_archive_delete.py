@@ -127,6 +127,7 @@ def test_reads_still_work_while_archived_and_the_permissions_say_read_only(roles
     assert permissions == {
         "assistant.view_feedback",
         "connection.view",
+        "pii.view_review",
         "workspace.view",
         "workspace.unarchive",
         "workspace.delete",
@@ -149,6 +150,7 @@ def test_the_policy_refuses_every_action_that_changes_anything_once_archived(
     survive = {
         Action.VIEW_WORKSPACE,
         Action.VIEW_CONNECTION,
+        Action.VIEW_PII_REVIEW,
         Action.VIEW_AI_FEEDBACK,
         Action.LEAVE_WORKSPACE,
         Action.UNARCHIVE_WORKSPACE,

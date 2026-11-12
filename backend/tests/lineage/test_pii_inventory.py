@@ -24,14 +24,14 @@ def export_url(roles: RoleClients) -> str:
     return f"/api/v1/workspaces/{roles.workspace_id}/pii/inventory/export"
 
 
-def confirm(roles: RoleClients, column_id: str) -> None:
-    """A confirmed finding decided by the editor."""
+def accept(roles: RoleClients, column_id: str) -> None:
+    """An accepted finding decided by the editor."""
     with roles.app.state.engine.begin() as connection:
         connection.execute(
             sa.text(
                 "insert into pii_findings (id, src_column_id, rule, category, confidence,"
                 " evidence, status, detected_at, decided_by, decided_at) values (:id, :c,"
-                " 'national_id', 'direct_identifier', 0.9, 'name', 'confirmed', :now, :by, :now)"
+                " 'national_id', 'direct_identifier', 0.9, 'name', 'accepted', :now, :by, :now)"
             ),
             {
                 "id": uuid.uuid4(),
@@ -52,7 +52,7 @@ def book(data: bytes) -> dict[str, list[dict]]:
 
 
 def test_a_member_downloads_the_inventory_as_xlsx(graph, roles):
-    confirm(roles, graph["src_amount"])
+    accept(roles, graph["src_amount"])
     stg = graph["stg"]["name"]
     hash_column(roles, graph["stg_amount"])
     set_note(roles, graph["mart"], graph["amount_m"], "Aggregate before sharing.")
@@ -90,7 +90,7 @@ def test_a_member_downloads_the_inventory_as_xlsx(graph, roles):
 
 
 def test_influenced_tables_are_listed_apart_from_pii_columns(graph, roles):
-    confirm(roles, graph["src_status"])
+    accept(roles, graph["src_status"])
 
     sheets = book(roles.client("viewer").get(export_url(roles)).content)
 
@@ -102,7 +102,7 @@ def test_influenced_tables_are_listed_apart_from_pii_columns(graph, roles):
 
 
 def test_a_column_that_is_not_hashed_says_so(graph, roles):
-    confirm(roles, graph["src_amount"])
+    accept(roles, graph["src_amount"])
 
     sheets = book(roles.client("viewer").get(export_url(roles)).content)
 
@@ -110,7 +110,7 @@ def test_a_column_that_is_not_hashed_says_so(graph, roles):
 
 
 def test_a_member_downloads_the_inventory_as_markdown(graph, roles):
-    confirm(roles, graph["src_status"])
+    accept(roles, graph["src_status"])
 
     response = roles.client("viewer").get(export_url(roles), params={"format": "md"})
 
@@ -142,7 +142,7 @@ def test_unknown_formats_are_refused(graph, roles):
 
 
 def test_markdown_cells_cannot_break_the_table(graph, roles):
-    confirm(roles, graph["src_amount"])
+    accept(roles, graph["src_amount"])
     set_note(roles, graph["mart"], graph["amount_m"], "a | b")
 
     text = roles.client("viewer").get(export_url(roles), params={"format": "md"}).text
@@ -151,7 +151,7 @@ def test_markdown_cells_cannot_break_the_table(graph, roles):
 
 
 def test_the_inventory_is_saved_to_the_file_area(graph, roles):
-    confirm(roles, graph["src_amount"])
+    accept(roles, graph["src_amount"])
     save = f"{dw(roles)}/files/pii-inventory"
 
     saved = roles.client("editor").post(save, params={"format": "md"})

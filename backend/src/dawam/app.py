@@ -44,6 +44,7 @@ from dawam.modules.warehouse import (
     ScoreScheduler,
     ScoreService,
     ValidationService,
+    hashed_staging_mappings,
     install_approval_clock,
     install_score_recalculation,
     staged_system_check,
@@ -178,6 +179,8 @@ def create_app(settings: Settings | None = None, *, services: Services | None = 
     app.state.services = services
     app.state.engine = engine
     app.state.score_kpis = kpis_for_score  # the score's DW-wide KPI checks read the KPIs
+    # PII cannot be removed from a column a staging mapping hashes (sources asks warehouse).
+    app.state.pii_hashed_mappings = hashed_staging_mappings
     # Indexing and searching uploaded documents (files); the worker builds the same service.
     app.state.document_search = job_handlers.build_document_search(
         services.jobs,

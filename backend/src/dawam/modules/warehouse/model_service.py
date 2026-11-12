@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
-from dawam.modules.sources import confirmed_pii_column_ids
+from dawam.modules.sources import accepted_pii_column_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -1192,7 +1192,7 @@ class ModelService:
     @staticmethod
     def _ensure_pii_derived(db: Session, workspace_id: uuid.UUID, column: DwColumnRecord) -> None:
         """A handling note goes only on a PII-derived column (spec §6.12, story 138)."""
-        derived = propagate_pii(db, confirmed_pii_column_ids(db, workspace_id)).derived_columns
+        derived = propagate_pii(db, accepted_pii_column_ids(db, workspace_id)).derived_columns
         if column.id not in derived:
             raise _not_pii_derived()
 

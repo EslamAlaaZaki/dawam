@@ -29,6 +29,7 @@ from tests.authz.matrix import (
     linked_file_id,
     outcome_of,
     paused_job_id,
+    pii_column_id,
     pii_staging_column_id,
     public,
     registered_routes,
@@ -979,7 +980,7 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=ensure_data_warehouse,
     ),
-    # Hashing a confirmed PII column in its staging mapping (story 138).
+    # Hashing an accepted PII column in its staging mapping (story 138).
     Row(
         "GET",
         "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/columns/{dw_column_id}/mapping",
@@ -1861,17 +1862,54 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=snapshot_id,
     ),
+    # The PII folder: any member reads the PII tab; owners and editors decide.
     Row(
-        "POST",
-        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/confirm",
-        "Review PII findings (confirm)",
-        workspace(admin=False, owner=True, editor=True, viewer=False),
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns",
+        "Open Workspace content (the PII tab, names and ratios only)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=snapshot_id,
     ),
     Row(
         "POST",
-        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings/{finding_id}/dismiss",
-        "Review PII findings (dismiss)",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns",
+        "Review PII findings (add a column as PII by hand)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {
+            "column_id": pii_column_id(roles, "rejected"),
+            "category": "direct_identifier",
+        },
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/accept",
+        "Review PII findings (accept)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        path_params={"column_id": pii_column_id},
+        json=lambda roles: {"category": "direct_identifier"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/reject",
+        "Review PII findings (reject)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        path_params={"column_id": pii_column_id},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/accept-rejected",
+        "Review PII findings (accept a rejected column)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        path_params={"column_id": lambda roles: pii_column_id(roles, "rejected")},
+        json=lambda roles: {"category": "direct_identifier"},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns/{column_id}/remove",
+        "Review PII findings (remove PII)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        path_params={"column_id": lambda roles: pii_column_id(roles, "accepted")},
+        json=lambda roles: {},
     ),
     Row(
         "POST",
@@ -2011,6 +2049,29 @@ ROWS: list[Row] = [
         path_params={"dw_table_id": _deleted_dw_table_id},
     ),
 ]
+
+
+PII_REVIEW_TABS = [
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-columns",
+        f"Review PII findings (read the {tab} tab)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=snapshot_id,
+        query={"tab": tab},
+    )
+    for tab in ("suggested", "accepted", "rejected")
+]
+"""The PII folder's review tabs: the same endpoint as its PII tab (one row in ``ROWS``),
+asked for another tab, so they are checked apart (``pii.view_review``)."""
+
+
+@pytest.mark.parametrize("role", ROLES)
+@pytest.mark.parametrize("row", PII_REVIEW_TABS, ids=lambda row: row.matrix)
+def test_the_pii_review_tabs_follow_the_matrix(row: Row, role: Role, roles: RoleClients):
+    response = send(row, role, roles)
+
+    assert outcome_of(response.status_code) == row.expect[role], response.text[:300]
 
 
 @pytest.mark.parametrize("role", ROLES)
