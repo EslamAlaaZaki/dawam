@@ -83,7 +83,7 @@ class PiiRuleMatch(BaseModel):
     status: PiiStatus
 
 
-class PiiColumn(BaseModel):
+class PiiFolderColumn(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID = Field(description="The Source Column.")
@@ -125,7 +125,7 @@ class PiiTabCounts(BaseModel):
 
 
 class PiiColumnPage(BaseModel):
-    items: list[PiiColumn]
+    items: list[PiiFolderColumn]
     counts: PiiTabCounts
     can_profile: bool = Field(description="A live Connection: a table can be profiled again.")
 
@@ -146,7 +146,7 @@ class RemovePiiRequest(BaseModel):
 
 
 class PiiRemoved(BaseModel):
-    column: PiiColumn | None = Field(
+    column: PiiFolderColumn | None = Field(
         description="The column, now rejected; `null` for a column added by hand only."
     )
     profile_job_id: uuid.UUID | None = Field(
@@ -183,7 +183,7 @@ def list_pii_columns(
     owners and editors."""
     page = pii.list_columns(user, workspace_id, system_id, tab=tab)
     return PiiColumnPage(
-        items=[PiiColumn.model_validate(c) for c in page.items],
+        items=[PiiFolderColumn.model_validate(c) for c in page.items],
         counts=PiiTabCounts(**page.counts),
         can_profile=page.can_profile,
     )
@@ -196,11 +196,11 @@ def add_pii_column(
     body: AddPiiColumnRequest,
     user: CurrentUser,
     pii: PiiServiceDep,
-) -> PiiColumn:
+) -> PiiFolderColumn:
     """Add a column as PII by hand (owners and editors): flagged sensitive with the
     category, no finding. A rejected column comes back accepted. Audited."""
     column = pii.add(user, workspace_id, system_id, body.column_id, category=body.category)
-    return PiiColumn.model_validate(column)
+    return PiiFolderColumn.model_validate(column)
 
 
 @router.post("/pii-columns/{column_id}/accept", operation_id="acceptPiiColumn")
@@ -211,11 +211,11 @@ def accept_pii_column(
     body: PiiCategoryRequest,
     user: CurrentUser,
     pii: PiiServiceDep,
-) -> PiiColumn:
+) -> PiiFolderColumn:
     """Accept a suggested column as PII (owners and editors): every finding on it is
     accepted and the column becomes sensitive with the category. Audited."""
     column = pii.accept(user, workspace_id, system_id, column_id, category=body.category)
-    return PiiColumn.model_validate(column)
+    return PiiFolderColumn.model_validate(column)
 
 
 @router.post("/pii-columns/{column_id}/reject", operation_id="rejectPiiColumn")
@@ -225,10 +225,10 @@ def reject_pii_column(
     column_id: uuid.UUID,
     user: CurrentUser,
     pii: PiiServiceDep,
-) -> PiiColumn:
+) -> PiiFolderColumn:
     """Reject a suggested column (owners and editors): every finding on it is rejected.
     Audited."""
-    return PiiColumn.model_validate(pii.reject(user, workspace_id, system_id, column_id))
+    return PiiFolderColumn.model_validate(pii.reject(user, workspace_id, system_id, column_id))
 
 
 @router.post("/pii-columns/{column_id}/accept-rejected", operation_id="acceptRejectedPiiColumn")
@@ -239,10 +239,10 @@ def accept_rejected_pii_column(
     body: PiiCategoryRequest,
     user: CurrentUser,
     pii: PiiServiceDep,
-) -> PiiColumn:
+) -> PiiFolderColumn:
     """Accept a rejected column as PII after all (owners and editors). Audited."""
     column = pii.accept_rejected(user, workspace_id, system_id, column_id, category=body.category)
-    return PiiColumn.model_validate(column)
+    return PiiFolderColumn.model_validate(column)
 
 
 @router.post("/pii-columns/{column_id}/remove", operation_id="removePiiColumn")
@@ -267,6 +267,6 @@ def remove_pii_column(
             job_id = None
     column = removal.column
     return PiiRemoved(
-        column=PiiColumn.model_validate(column) if column is not None else None,
+        column=PiiFolderColumn.model_validate(column) if column is not None else None,
         profile_job_id=job_id,
     )
