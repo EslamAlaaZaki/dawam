@@ -214,19 +214,18 @@ function TextEditor({
 /** The row's `⋯` menu: download, then edit (text files) or replace (the others). */
 function RowActions({
   workspaceId,
-  area,
   file,
+  replace,
   onEdit,
 }: {
   workspaceId: string;
-  area: FileArea;
   file: WorkspaceFile;
+  replace: ReturnType<typeof useReplaceFile>;
   onEdit: () => void;
 }) {
-  const replace = useReplaceFile(workspaceId, area, file.id);
   const picker = useRef<HTMLInputElement>(null);
   return (
-    <div className="flex flex-col items-end gap-1">
+    <>
       <input
         ref={picker}
         type="file"
@@ -256,7 +255,6 @@ function RowActions({
             <a
               href={fileDownloadUrl(workspaceId, file.id)}
               download={file.name}
-              aria-label={`Download ${file.name}`}
             >
               Download
             </a>
@@ -269,17 +267,83 @@ function RowActions({
               Edit
             </DropdownMenuItem>
           ) : (
-            <DropdownMenuItem
-              aria-label={`Replace ${file.name}`}
-              onSelect={() => picker.current?.click()}
-            >
+            <DropdownMenuItem onSelect={() => picker.current?.click()}>
               Replace…
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-      {replace.isError && <ErrorText>{replace.error.message}</ErrorText>}
-    </div>
+    </>
+  );
+}
+
+/** One file's row; it owns the replace mutation so its error shows under the name. */
+function FileRow({
+  workspaceId,
+  area,
+  file,
+  author,
+  canEdit,
+  onEdit,
+}: {
+  workspaceId: string;
+  area: FileArea;
+  file: WorkspaceFile;
+  author: string | null | undefined;
+  canEdit: boolean;
+  onEdit: () => void;
+}) {
+  const replace = useReplaceFile(workspaceId, area, file.id);
+  return (
+    <TableRow>
+      <TableCell className={monoClasses}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <a
+              href={fileDownloadUrl(workspaceId, file.id)}
+              download={file.name}
+              className={`${linkClasses} block truncate`}
+            >
+              {file.name}
+            </a>
+          </TooltipTrigger>
+          <TooltipContent className={monoClasses}>{file.name}</TooltipContent>
+        </Tooltip>
+        {replace.isError && <ErrorText>{replace.error.message}</ErrorText>}
+      </TableCell>
+      <TableCell>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge>{typeLabel(file.mime)}</Badge>
+          </TooltipTrigger>
+          <TooltipContent className={monoClasses}>{file.mime}</TooltipContent>
+        </Tooltip>
+      </TableCell>
+      <TableCell>
+        <StatusCell file={file} />
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatSize(file.size)}
+      </TableCell>
+      <TableCell>
+        <div className="flex flex-col gap-0.5">
+          <span>{new Date(file.updated_at).toLocaleDateString()}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {author || "—"}
+          </span>
+        </div>
+      </TableCell>
+      {canEdit && (
+        <TableCell className="text-right">
+          <RowActions
+            workspaceId={workspaceId}
+            file={file}
+            replace={replace}
+            onEdit={onEdit}
+          />
+        </TableCell>
+      )}
+    </TableRow>
   );
 }
 
@@ -394,65 +458,17 @@ export function DocumentsPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {files.data.map((file) => {
-                const author = file.updated_by && authors.get(file.updated_by);
-                return (
-                  <TableRow key={file.id}>
-                    <TableCell className={monoClasses}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <a
-                            href={fileDownloadUrl(workspace.id, file.id)}
-                            download={file.name}
-                            className={`${linkClasses} block truncate`}
-                          >
-                            {file.name}
-                          </a>
-                        </TooltipTrigger>
-                        <TooltipContent className={monoClasses}>
-                          {file.name}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Badge>{typeLabel(file.mime)}</Badge>
-                        </TooltipTrigger>
-                        <TooltipContent className={monoClasses}>
-                          {file.mime}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>
-                      <StatusCell file={file} />
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatSize(file.size)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        <span>
-                          {new Date(file.updated_at).toLocaleDateString()}
-                        </span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          {author || "—"}
-                        </span>
-                      </div>
-                    </TableCell>
-                    {canEdit && (
-                      <TableCell className="text-right">
-                        <RowActions
-                          workspaceId={workspace.id}
-                          area={area}
-                          file={file}
-                          onEdit={() => setEditing(file.id)}
-                        />
-                      </TableCell>
-                    )}
-                  </TableRow>
-                );
-              })}
+              {files.data.map((file) => (
+                <FileRow
+                  key={file.id}
+                  workspaceId={workspace.id}
+                  area={area}
+                  file={file}
+                  author={file.updated_by && authors.get(file.updated_by)}
+                  canEdit={canEdit}
+                  onEdit={() => setEditing(file.id)}
+                />
+              ))}
             </TableBody>
           </Table>
         </TableCard>
