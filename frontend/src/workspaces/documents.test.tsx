@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { openMenu } from "../test/menus";
 import type { WorkspaceFile } from "../api/files";
 import type { Me } from "../api/queries";
 import type { SourceSystem } from "../api/systems";
@@ -232,6 +233,7 @@ describe("a Source System's Documents folder", () => {
       FOLDER,
     );
 
+    fireEvent.click(await screen.findByRole("button", { name: "Upload" }));
     const form = await screen.findByRole("form", { name: "Upload document" });
     const input = within(form).getByLabelText("File");
     fireEvent.change(input, {
@@ -274,6 +276,7 @@ describe("a Source System's Documents folder", () => {
       FOLDER,
     );
 
+    fireEvent.click(await screen.findByRole("button", { name: "Upload" }));
     const form = await screen.findByRole("form", { name: "Upload document" });
     fireEvent.change(within(form).getByLabelText("File"), {
       target: { files: [new File(["x"], "run.exe")] },
@@ -321,8 +324,11 @@ describe("a Source System's Documents folder", () => {
       FOLDER,
     );
 
+    openMenu(
+      await screen.findByRole("button", { name: "Actions for notes.md" }),
+    );
     fireEvent.click(
-      await screen.findByRole("button", { name: "Edit notes.md" }),
+      await screen.findByRole("menuitem", { name: "Edit notes.md" }),
     );
     const editor = await screen.findByRole("form", { name: "Edit notes.md" });
     const box = await within(editor).findByLabelText("Content");
