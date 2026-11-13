@@ -10648,6 +10648,18 @@
             "description": "`catalog`: the KPIs tab (live and accepted KPIs); `all`: suggested and rejected ones too (owners and editors)."
           },
           {
+            "name": "rule_suggestions",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "With `review=all`: add the open and the rejected rule-based suggestions to the first page (the Data Warehouse page).",
+              "default": false,
+              "title": "Rule Suggestions"
+            },
+            "description": "With `review=all`: add the open and the rejected rule-based suggestions to the first page (the Data Warehouse page)."
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -10837,7 +10849,7 @@
           "kpis"
         ],
         "summary": "Accept Suggestion",
-        "description": "Accept a suggestion (owners and editors): it becomes a draft Data Warehouse KPI with\n`origin` `rule`, its formula SQL and links. 404 if no such suggestion is open.",
+        "description": "Accept a suggestion, or a rejected one after all (owners and editors): it becomes a\ndraft Data Warehouse KPI with `origin` `rule`, review state `accepted`, its formula SQL\nand links, and any dismissal is cleared. 404 if no such suggestion is open.",
         "operationId": "acceptKpiSuggestion",
         "parameters": [
           {
@@ -10901,7 +10913,7 @@
           "kpis"
         ],
         "summary": "Dismiss Suggestion",
-        "description": "Hide a suggestion for good (owners and editors). 404 if there is no such suggestion.",
+        "description": "Reject a suggestion (owners and editors): rule runs never propose it again and it is\nlisted as rejected and the decision is audited. 404 if there is no such suggestion;\n409 `invalid_review_state` if it was accepted and its KPI is in the KPIs tab.",
         "operationId": "dismissKpiSuggestion",
         "parameters": [
           {
@@ -24266,6 +24278,24 @@
             ],
             "title": "Next Cursor",
             "description": "The `cursor` of the next page; null on the last."
+          },
+          "rule_suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/KpiSuggestion"
+            },
+            "type": "array",
+            "title": "Rule Suggestions",
+            "description": "The open rule-based suggestions; only on the first page, and only when `rule_suggestions` is asked for.",
+            "default": []
+          },
+          "rejected_rule_suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedKpiSuggestion"
+            },
+            "type": "array",
+            "title": "Rejected Rule Suggestions",
+            "description": "The rejected rule-based suggestions, likewise.",
+            "default": []
           }
         },
         "type": "object",
@@ -24374,6 +24404,14 @@
             "title": "Column Ids",
             "description": "The DW columns the KPI will link to."
           },
+          "column_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Column Labels",
+            "description": "Those columns as `layer.table.column`."
+          },
           "feasibility": {
             "type": "string",
             "enum": [
@@ -24396,6 +24434,7 @@
           "layer",
           "table_name",
           "column_ids",
+          "column_labels",
           "feasibility"
         ],
         "title": "KpiSuggestion"
@@ -28849,6 +28888,123 @@
           "status"
         ],
         "title": "ReindexStarted"
+      },
+      "RejectedKpiSuggestion": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Stable across renames and a measure moving from Core to Mart; send it to accept or dismiss the suggestion."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "avg",
+              "count_distinct",
+              "ratio",
+              "mom_growth",
+              "yoy_growth"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "definition": {
+            "type": "string",
+            "title": "Definition"
+          },
+          "formula_text": {
+            "type": "string",
+            "title": "Formula Text"
+          },
+          "formula_sql": {
+            "type": "string",
+            "title": "Formula Sql",
+            "description": "Written against the DW Schema."
+          },
+          "aggregation": {
+            "type": "string",
+            "title": "Aggregation"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer",
+            "description": "The Layer of the fact it reads."
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "column_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Column Ids",
+            "description": "The DW columns the KPI will link to."
+          },
+          "column_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Column Labels",
+            "description": "Those columns as `layer.table.column`."
+          },
+          "feasibility": {
+            "type": "string",
+            "enum": [
+              "computable",
+              "needs_mapping",
+              "needs_data"
+            ],
+            "title": "Feasibility"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By",
+            "description": "Who rejected it; null if unknown."
+          },
+          "decided_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Decided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "name",
+          "definition",
+          "formula_text",
+          "formula_sql",
+          "aggregation",
+          "layer",
+          "table_name",
+          "column_ids",
+          "column_labels",
+          "feasibility",
+          "decided_by",
+          "decided_at"
+        ],
+        "title": "RejectedKpiSuggestion"
       },
       "Relationship": {
         "properties": {

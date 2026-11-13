@@ -8,9 +8,10 @@ import {
   KPI_STATUS_LABELS,
   useCreateKpi,
   useDecideKpi,
+  useDecideRuleSuggestion,
   useDeleteKpi,
   useKpiLinks,
-  useKpis,
+  useKpiList,
   useUpdateKpi,
   type Kpi,
   type KpiFeasibility,
@@ -18,6 +19,7 @@ import {
   type KpiStatus,
 } from "../api/kpis";
 import { useMembers } from "../api/members";
+import { useSourceSystems, type SourceSystem } from "../api/systems";
 import { allows, type Workspace } from "../api/workspaces";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { EntityFormDialog } from "../components/entity/EntityFormDialog";
@@ -49,6 +51,16 @@ import {
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
 import { KpiFields, readKpiFields } from "./KpiForm";
+import {
+  SystemFilterSelect,
+  UnderBadge,
+  documentedUnder as documentedUnderOf,
+  isRuleSuggestion,
+  matchesSystem,
+  ruleSuggestionRow,
+  type KpiRow,
+  type SystemFilter,
+} from "./KpiDwParts";
 import { DecidedBy } from "./PiiPanel";
 import {
   DetailList,
@@ -100,16 +112,18 @@ function inTab(kpi: Kpi, tab: KpiTab): boolean {
     : kpi.review_state === tab;
 }
 
-type OriginFilter = "all" | "manual" | "ai";
+type OriginFilter = "all" | "manual" | "ai" | "rule";
 
 const ORIGIN_FILTERS: { origin: OriginFilter; label: string }[] = [
   { origin: "all", label: "All" },
   { origin: "manual", label: "Manual" },
   { origin: "ai", label: "AI" },
+  // Rule suggestions come from the DW model, so only the Data Warehouse page has them.
+  { origin: "rule", label: "Rule" },
 ];
 
 const matchesOrigin = (kpi: Kpi, origin: OriginFilter) =>
-  origin === "all" || (origin === "manual" ? kpi.origin === "user" : kpi.origin === "ai");
+  origin === "all" || (origin === "manual" ? kpi.origin === "user" : kpi.origin === origin);
 
 const matchesSearch = (kpi: Kpi, query: string) =>
   query === "" ||
@@ -189,6 +203,24 @@ function TipItems({ items }: { items: [ReactNode, string][] }) {
 }
 
 const TIPS = {
+  "Documented under": (
+    <>
+      <p className="m-0">
+        <b>Documented under</b>: where the KPI lives.
+      </p>
+      <TipItems
+        items={[
+          [<Badge key="s">Core Banking</Badge>, "A Source System: the KPI uses that system's data only."],
+          [
+            <Badge key="d" variant="accent">
+              Data Warehouse
+            </Badge>,
+            "A cross-system KPI, or one from the DW model.",
+          ],
+        ]}
+      />
+    </>
+  ),
   Origin: (
     <>
       <p className="m-0">
@@ -296,7 +328,7 @@ function Decision({ kpi, names }: { kpi: Kpi; names: ReadonlyMap<string, string>
 interface KpiActionHandlers {
   onEdit: (kpi: Kpi) => void;
   onDelete: (kpi: Kpi) => void;
-  onDecide: (kpi: Kpi, action: "accept" | "reject") => void;
+  onDecide: (kpi: KpiRow, action: "accept" | "reject") => void;
   pending: boolean;
 }
 
@@ -307,7 +339,7 @@ function KpiActions({
   compact = false,
   handlers,
 }: {
-  kpi: Kpi;
+  kpi: KpiRow;
   compact?: boolean;
   handlers: KpiActionHandlers;
 }) {
@@ -385,6 +417,8 @@ function StatCard({ label, value, sub }: { label: string; value: number; sub: st
  * member, and for owners and editors the Suggested, Accepted and Rejected tabs. Clicking a
  * row opens its details in a side panel. Owners and editors add, edit and delete KPIs and
  * accept or reject the AI's suggestions; deleting an accepted suggestion moves it to Rejected.
+ * With `scope.workspaceWide` (the Data Warehouse page) it lists every KPI in the Workspace
+ * with a "Documented under" column and filter, and the rule-based suggestions.
  */
 export function KpiCatalog({
   workspace,
@@ -407,8 +441,13 @@ export function KpiCatalog({
   const canEdit = allows(workspace, "kpi.edit");
   // Owners and editors see every tab, archived too; they change KPIs only while active.
   const canSee = allows(workspace, "kpi.view_review");
-  const kpis = useKpis(workspace.id, scope, canSee ? "all" : "catalog");
+  const workspaceWide = scope.workspaceWide === true;
+  // One request: the KPIs and, on the Data Warehouse page, the rule suggestions.
+  const kpis = useKpiList(workspace.id, scope, canSee ? "all" : "catalog");
   const decide = useDecideKpi(workspace.id);
+  const decideRule = useDecideRuleSuggestion(workspace.id);
+  const sourceSystems = useSourceSystems(workspace.id);
+  const systems = sourceSystems.data ?? [];
   const members = useMembers(workspace.id);
   const names = useMemo(
     () => new Map((members.data ?? []).map((m) => [m.user_id, m.display_name])),
@@ -417,30 +456,50 @@ export function KpiCatalog({
   const [tab, setTab] = useState<KpiTab>("kpis");
   const shownTab: KpiTab = canSee ? tab : "kpis";
   const [origin, setOrigin] = useState<OriginFilter>("all");
+  const [systemFilter, setSystemFilter] = useState<SystemFilter>("all");
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const all = kpis.data ?? [];
+  // A rule suggestion is not a stored KPI: it is a row of Suggested (open) or Rejected.
+  const all: KpiRow[] = useMemo(
+    () => [
+      ...(kpis.data?.kpis ?? []),
+      ...(kpis.data?.ruleSuggestions ?? []).map((s) => ruleSuggestionRow(workspace.id, s)),
+      ...(kpis.data?.rejectedRuleSuggestions ?? []).map((s) =>
+        ruleSuggestionRow(workspace.id, s, s),
+      ),
+    ],
+    [kpis.data, workspace.id],
+  );
   // The owners already in use, offered as suggestions in the form.
   const owners = useMemo(
-    () => [...new Set((kpis.data ?? []).map((k) => k.owner.trim()).filter(Boolean))].sort(),
-    [kpis.data],
+    () => [...new Set(all.map((k) => k.owner.trim()).filter(Boolean))].sort(),
+    [all],
   );
   const count = (t: KpiTab) => all.filter((k) => inTab(k, t)).length;
   const catalog = all.filter((k) => inTab(k, "kpis"));
   const inShownTab = all.filter((k) => inTab(k, shownTab));
-  const rows = inShownTab.filter((k) => matchesOrigin(k, origin) && matchesSearch(k, query));
+  const rows = inShownTab.filter(
+    (k) => matchesOrigin(k, origin) && matchesSystem(k, systemFilter) && matchesSearch(k, query),
+  );
   const current = TABS.find((t) => t.tab === shownTab)!;
   const opened = all.find((k) => k.id === openId) ?? null;
   // Looked up in the list, so a reload after a version conflict shows the latest version.
   const editing = all.find((k) => k.id === editingId) ?? null;
   const deleting = all.find((k) => k.id === deletingId) ?? null;
 
+  const decided = (kpi: Kpi, action: "accept" | "reject") => {
+    setOpenId(null);
+    toast.success(
+      action === "accept" ? `${kpi.name} accepted. It is now in KPIs.` : `${kpi.name} rejected.`,
+    );
+  };
+
   const handlers: KpiActionHandlers = {
-    pending: decide.isPending,
+    pending: decide.isPending || decideRule.isPending,
     onEdit: (kpi) => {
       setOpenId(null);
       setEditingId(kpi.id);
@@ -450,25 +509,16 @@ export function KpiCatalog({
       setDeletingId(kpi.id);
     },
     onDecide: (kpi, action) =>
-      decide.mutate(
-        { kpiId: kpi.id, action },
-        {
-          onSuccess: () => {
-            setOpenId(null);
-            toast.success(
-              action === "accept"
-                ? `${kpi.name} accepted. It is now in KPIs.`
-                : `${kpi.name} rejected.`,
-            );
-          },
-        },
-      ),
+      kpi.ruleKey !== undefined
+        ? decideRule.mutate({ key: kpi.ruleKey, action }, { onSuccess: () => decided(kpi, action) })
+        : decide.mutate({ kpiId: kpi.id, action }, { onSuccess: () => decided(kpi, action) }),
   };
 
   const suggestedTab = shownTab === "suggested";
   const showStatus = shownTab === "kpis" || shownTab === "accepted";
   const heads = [
     "Name",
+    ...(workspaceWide ? ["Documented under"] : []),
     "Origin",
     ...(showStatus ? ["Status"] : []),
     suggestedTab ? "Feasibility" : "Formula",
@@ -478,7 +528,7 @@ export function KpiCatalog({
     suggestedTab ? "Why suggested" : "Decision",
   ];
 
-  const openOnEnter = (kpi: Kpi) => (event: KeyboardEvent) => {
+  const openOnEnter = (kpi: KpiRow) => (event: KeyboardEvent) => {
     if (event.key === "Enter" && event.target === event.currentTarget) {
       setOpenId(kpi.id);
     }
@@ -496,7 +546,7 @@ export function KpiCatalog({
         {canEdit && (
           <Button variant="primary" onClick={() => setAdding(true)}>
             <Plus aria-hidden />
-            Add KPI
+            {workspaceWide ? "Add cross-system KPI" : "Add KPI"}
           </Button>
         )}
       </div>
@@ -512,7 +562,13 @@ export function KpiCatalog({
             value={catalog.filter((k) => k.formula_sql).length}
             sub={`of ${catalog.length} KPIs`}
           />
-          {canSee && <StatCard label="To review" value={count("suggested")} sub="AI suggestions" />}
+          {canSee && (
+            <StatCard
+              label="To review"
+              value={count("suggested")}
+              sub={workspaceWide ? "AI and rule suggestions" : "AI suggestions"}
+            />
+          )}
           {canSee && (
             <StatCard label="Rejected" value={count("rejected")} sub="incl. removed suggestions" />
           )}
@@ -537,6 +593,9 @@ export function KpiCatalog({
           </TabsList>
         </Tabs>
         <div className="ms-auto flex flex-wrap items-center gap-1 pb-1.5">
+          {workspaceWide && (
+            <SystemFilterSelect value={systemFilter} systems={systems} onChange={setSystemFilter} />
+          )}
           <Input
             type="search"
             aria-label="Search KPIs"
@@ -546,7 +605,7 @@ export function KpiCatalog({
             className="h-7 w-52 max-w-full text-sm"
           />
           <div role="group" aria-label="Filter by origin" className="flex gap-1">
-            {ORIGIN_FILTERS.map((f) => (
+            {ORIGIN_FILTERS.filter((f) => workspaceWide || f.origin !== "rule").map((f) => (
               <Button
                 key={f.origin}
                 type="button"
@@ -574,11 +633,16 @@ export function KpiCatalog({
         </Hint>
       )}
       {decide.isError && <ErrorText>{decide.error.message}</ErrorText>}
+      {decideRule.isError && <ErrorText>{decideRule.error.message}</ErrorText>}
       {kpis.isPending && <Loading label="Loading KPIs…" className="p-0" />}
       {kpis.isError && <ErrorText>Could not load the KPIs: {kpis.error.message}</ErrorText>}
       {kpis.isSuccess && rows.length === 0 && (
         <EmptyState title={inShownTab.length ? "No matches" : current.empty[0]}>
-          {inShownTab.length ? "No KPI here matches the search or filter." : current.empty[1]}
+          {inShownTab.length
+            ? "No KPI here matches the search or filter."
+            : workspaceWide && shownTab === "suggested"
+              ? "New AI and rule suggestions show up here."
+              : current.empty[1]}
         </EmptyState>
       )}
       {kpis.isSuccess && rows.length > 0 && (
@@ -626,6 +690,11 @@ export function KpiCatalog({
                       </p>
                     )}
                   </TableCell>
+                  {workspaceWide && (
+                    <TableCell className="align-top">
+                      <UnderBadge kpi={kpi} systems={systems} />
+                    </TableCell>
+                  )}
                   <TableCell className="align-top">
                     <OriginBadge origin={kpi.origin} />
                   </TableCell>
@@ -674,6 +743,7 @@ export function KpiCatalog({
         workspaceId={workspace.id}
         kpi={opened}
         names={names}
+        systems={systems}
         actions={opened && canEdit ? <KpiActions kpi={opened} handlers={handlers} /> : null}
         onClose={() => setOpenId(null)}
       />
@@ -681,8 +751,9 @@ export function KpiCatalog({
         <AddKpiDialog
           workspaceId={workspace.id}
           scope={scope}
-          documentedUnder={systemName}
+          documentedUnder={workspaceWide ? "Data Warehouse" : systemName}
           owners={owners}
+          crossSystem={workspaceWide}
           open={adding}
           onOpenChange={setAdding}
         />
@@ -691,7 +762,7 @@ export function KpiCatalog({
         <EditKpiDialog
           workspaceId={workspace.id}
           kpi={editing}
-          documentedUnder={systemName}
+          documentedUnder={documentedUnderOf(editing, systems)}
           owners={owners}
           reload={() => void kpis.refetch()}
           open
@@ -724,16 +795,23 @@ function KpiDetails({
   workspaceId,
   kpi,
   names,
+  systems,
   actions,
   onClose,
 }: {
   workspaceId: string;
-  kpi: Kpi | null;
+  kpi: KpiRow | null;
   names: ReadonlyMap<string, string>;
+  systems: readonly SourceSystem[];
   actions: ReactNode;
   onClose: () => void;
 }) {
-  const links = useKpiLinks(workspaceId, kpi?.id ?? "", kpi != null && kpi.link_count > 0);
+  // A rule suggestion is not stored yet: it brings its columns with it.
+  const links = useKpiLinks(
+    workspaceId,
+    kpi?.id ?? "",
+    kpi != null && kpi.link_count > 0 && !isRuleSuggestion(kpi),
+  );
   const inCatalog = kpi != null && (kpi.review_state === "live" || kpi.review_state === "accepted");
 
   return (
@@ -786,7 +864,15 @@ function KpiDetails({
             </DetailSection>
             {kpi.link_count > 0 && (
               <DetailSection label="Linked DW columns">
-                {links.isSuccess ? (
+                {kpi.ruleLinks ? (
+                  <ul className="m-0 flex list-none flex-col gap-1 p-0">
+                    {kpi.ruleLinks.map((label) => (
+                      <li key={label} className={cn(monoClasses, "text-xs")}>
+                        {label}
+                      </li>
+                    ))}
+                  </ul>
+                ) : links.isSuccess ? (
                   <ul className="m-0 flex list-none flex-col gap-1 p-0">
                     {links.data.map((link) => (
                       <li key={link.dw_column_id} className={cn(monoClasses, "text-xs")}>
@@ -802,6 +888,10 @@ function KpiDetails({
               </DetailSection>
             )}
             <DetailList className="m-0 gap-y-2.5 text-sm [&_dd]:m-0 [&_dt]:font-normal [&_dt]:text-subtle-foreground">
+              <dt>Documented under</dt>
+              <dd>
+                <UnderBadge kpi={kpi} systems={systems} />
+              </dd>
               <dt>Unit</dt>
               <dd>{kpi.unit || <Dash />}</dd>
               <dt>Aggregation</dt>
@@ -863,6 +953,7 @@ function AddKpiDialog({
   scope,
   documentedUnder,
   owners,
+  crossSystem,
   open,
   onOpenChange,
 }: {
@@ -870,6 +961,8 @@ function AddKpiDialog({
   scope: KpiScope;
   documentedUnder: string;
   owners: readonly string[];
+  /** The Data Warehouse page adds cross-system KPIs, documented under the Data Warehouse. */
+  crossSystem: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -884,7 +977,7 @@ function AddKpiDialog({
     }
     setProblem(null);
     create.mutate(
-      { ...fields, source_system_id: scope.systemId },
+      { ...fields, source_system_id: crossSystem ? null : scope.systemId },
       {
         onSuccess: (kpi) => {
           toast.success(`${kpi.name} added.`);
@@ -905,9 +998,13 @@ function AddKpiDialog({
         onOpenChange(next);
       }}
       wide
-      title="Add KPI"
-      description="Document a KPI: what it means and how it is calculated."
-      submitLabel="Add KPI"
+      title={crossSystem ? "Add cross-system KPI" : "Add KPI"}
+      description={
+        crossSystem
+          ? "Document a KPI that needs more than one Source System: what it means and how it is calculated."
+          : "Document a KPI: what it means and how it is calculated."
+      }
+      submitLabel={crossSystem ? "Add cross-system KPI" : "Add KPI"}
       onSubmit={onSubmit}
       pending={create.isPending}
       error={problem ? new Error(problem) : create.error}

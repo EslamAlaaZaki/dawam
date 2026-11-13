@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "b3e8d1f4a926"
+  "c5f2a8d3b714"
  ],
  "modules": [
   {
@@ -7900,6 +7900,21 @@ a.tlink:hover { text-decoration: underline; }
      "attribute": "removed",
      "app_default": "False",
      "description": "A rejected KPI that was accepted and then deleted (\"Removed by\"), not rejected.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "suggestion_key",
+     "type": "character varying(200)",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "suggestion_key",
+     "app_default": null,
+     "description": "The key of the rule-based suggestion the KPI was accepted from; ``None`` for any\nother KPI. It keeps the suggestion from coming back, even after a rename or a removal.",
      "pk": false,
      "fk": []
     }

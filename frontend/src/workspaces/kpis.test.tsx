@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { Kpi } from "../api/kpis";
+import type { Kpi, RejectedRuleSuggestion, RuleSuggestion } from "../api/kpis";
 import type { Me } from "../api/queries";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace, WorkspaceRole } from "../api/workspaces";
@@ -122,16 +122,49 @@ const REJECTED: Kpi = {
   decided_by: ADA.id,
 };
 
-const inCatalog = (kpi: Kpi) => kpi.review_state === "live" || kpi.review_state === "accepted";
+const DW_KPI_ID = "88888888-8888-4888-8888-888888888888";
+
+const RULE: RuleSuggestion = {
+  key: "sum:amount",
+  kind: "sum",
+  name: "Sum of amount (fact_loan)",
+  definition: "Sum of Amount over all rows of fact_loan.",
+  formula_text: "SUM(amount)",
+  formula_sql: "SELECT SUM(amount) AS sum_amount FROM core.fact_loan",
+  aggregation: "sum",
+  layer: "core",
+  table_name: "fact_loan",
+  column_ids: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+  column_labels: ["core.fact_loan.amount"],
+  feasibility: "needs_mapping",
+};
+
+const RULE_REJECTED: RejectedRuleSuggestion = {
+  ...RULE,
+  key: "avg:fee",
+  kind: "avg",
+  name: "Average of fee (fact_loan)",
+  decided_by: ADA.id,
+  decided_at: "2026-01-06T09:00:00Z",
+};
+
+const inCatalog =(kpi: Kpi) => kpi.review_state === "live" || kpi.review_state === "accepted";
 
 const SYSTEM_FOLDER = `${PATH}?folder=systems/${CBS.id}/kpis`;
 const DW_FOLDER = `${PATH}?folder=dw/kpis`;
 
-/** `kpis`: what the list returns for the Source System, and for the Data Warehouse. */
+/**
+ * `kpis`: what the list returns for the Source System, and for the Data Warehouse page (every
+ * KPI of the Workspace). `rules`: the rule suggestions that come with the Data Warehouse page.
+ */
 function backend(
   role: WorkspaceRole,
   kpis: { system: Kpi[]; dw: Kpi[] },
   handle: (r: ApiRequest) => Response | undefined = () => undefined,
+  rules: { open: RuleSuggestion[]; rejected: RejectedRuleSuggestion[] } = {
+    open: [],
+    rejected: [],
+  },
 ) {
   return (r: ApiRequest) => {
     switch (`${r.method} ${r.path}`) {
@@ -148,12 +181,15 @@ function backend(
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/systems`:
         return json({ items: [CBS], next_cursor: null });
       case `GET ${KPIS}`: {
-        const items = r.query.data_warehouse === "true" ? kpis.dw : kpis.system;
+        const items = r.query.source_system_id ? kpis.system : kpis.dw;
+        const withRules = r.query.rule_suggestions === "true";
         return (
           handle(r) ??
           json({
             items: r.query.review === "all" ? items : items.filter(inCatalog),
             next_cursor: null,
+            rule_suggestions: withRules ? rules.open : [],
+            rejected_rule_suggestions: withRules ? rules.rejected : [],
           })
         );
       }
@@ -199,17 +235,55 @@ describe("the KPIs folders", () => {
     expect(requests.find((r) => r.path === KPIS)?.query.review).toBe("catalog");
   });
 
-  it("lists the Data Warehouse's KPIs apart, before it is set up", async () => {
-    const requests = renderApp(
-      backend("viewer", { system: [NIM], dw: [{ ...NIM, name: "Customer count", source_system_id: null }] }),
-      DW_FOLDER,
-    );
+  it("lists every KPI of the Workspace on the Data Warehouse page, in one request", async () => {
+    const dwKpi = { ...NIM, id: DW_KPI_ID, name: "Customer count", source_system_id: null };
+    const requests = renderApp(backend("viewer", { system: [], dw: [NIM, dwKpi] }), DW_FOLDER);
 
-    expect(await screen.findByRole("row", { name: /Customer count/ })).toBeInTheDocument();
+    const system = await screen.findByRole("row", { name: /Net interest margin/ });
+    const dw = screen.getByRole("row", { name: /Customer count/ });
+    await waitFor(() => expect(system).toHaveTextContent("Core Banking"));
+    expect(dw).toHaveTextContent("Data Warehouse");
+    expect(screen.getByRole("button", { name: "What is documented under?" })).toBeInTheDocument();
+    const lists = requests.filter((r) => r.path === KPIS);
+    expect(lists).toHaveLength(1);
+    expect(lists[0]!.query.data_warehouse).toBeUndefined();
+    expect(lists[0]!.query.source_system_id).toBeUndefined();
+    // viewers: the KPIs tab only, but the filter is theirs too
+    expect(screen.queryByRole("tab", { name: /Suggested/ })).not.toBeInTheDocument();
+    expect(lists[0]!.query.rule_suggestions).toBeUndefined();
+    const filter = screen.getByRole("combobox", { name: "Documented under" });
+    fireEvent.change(filter, { target: { value: "dw" } });
     expect(screen.queryByRole("row", { name: /Net interest margin/ })).not.toBeInTheDocument();
-    expect(requests.some((r) => r.path === KPIS && r.query.data_warehouse === "true")).toBe(
-      true,
-    );
+    fireEvent.change(filter, { target: { value: CBS.id } });
+    expect(screen.getByRole("row", { name: /Net interest margin/ })).toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: /Customer count/ })).not.toBeInTheDocument();
+  });
+
+  it("combines the system filter with the origin chips and the search", async () => {
+    const dwAi = { ...AI_KPI, id: DW_KPI_ID, name: "Cross-sell ratio", source_system_id: null };
+    renderApp(backend("editor", { system: [], dw: [NIM, AI_KPI, dwAi] }), DW_FOLDER);
+
+    await screen.findByRole("row", { name: /Net interest margin/ });
+    fireEvent.change(screen.getByRole("combobox", { name: "Documented under" }), {
+      target: { value: "dw" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.getByRole("row", { name: /Cross-sell ratio/ })).toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: /Cost to income/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: /Net interest margin/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search KPIs" }), {
+      target: { value: "nothing like this" },
+    });
+    expect(screen.getByText("No matches")).toBeInTheDocument();
+  });
+
+  it("gives a Source System's page no system filter, no Documented under and no Rule chip", async () => {
+    renderApp(backend("editor", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
+
+    await screen.findByRole("row", { name: /Net interest margin/ });
+    expect(screen.queryByRole("combobox", { name: "Documented under" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rule" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /Documented under/ })).not.toBeInTheDocument();
   });
 
   it("shows an empty state", async () => {
@@ -389,7 +463,7 @@ describe("documenting a KPI", () => {
     });
   });
 
-  it("adds a Data Warehouse KPI with no Source System", async () => {
+  it("adds a cross-system KPI under the Data Warehouse, with no Source System", async () => {
     const requests = renderApp(
       backend("owner", { system: [], dw: [] }, (r) =>
         r.method === "POST" && r.path === KPIS
@@ -399,9 +473,16 @@ describe("documenting a KPI", () => {
       DW_FOLDER,
     );
 
-    const form = await openAddKpi();
+    fireEvent.click(await screen.findByRole("button", { name: "Add cross-system KPI" }));
+    const form = await screen.findByRole("dialog", { name: "Add cross-system KPI" });
+    expect(
+      within(form).getByText(
+        "Document a KPI that needs more than one Source System: what it means and how it is calculated.",
+      ),
+    ).toBeInTheDocument();
+    expect(form).toHaveTextContent("Documented under Data Warehouse");
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Customer count" } });
-    fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
+    fireEvent.click(within(form).getByRole("button", { name: "Add cross-system KPI" }));
 
     await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
     expect(requests.find((r) => r.method === "POST")?.body).toMatchObject({
@@ -600,5 +681,113 @@ describe("editing a KPI", () => {
       true,
     );
     expect(await screen.findByText(/No KPIs yet/)).toBeInTheDocument();
+  });
+});
+
+describe("rule suggestions on the Data Warehouse page", () => {
+  const ruleBackend = (handle?: (r: ApiRequest) => Response | undefined, kpis: Kpi[] = []) =>
+    backend("editor", { system: [], dw: kpis }, handle, {
+      open: [RULE],
+      rejected: [RULE_REJECTED],
+    });
+  const acceptedRule = (r: ApiRequest) =>
+    r.method === "POST" && r.path === `${KPIS}/suggestions/accept`
+      ? json({ ...NIM, source_system_id: null, origin: "rule" }, 201)
+      : undefined;
+
+  it("lists them in Suggested and Rejected with origin Rule under the Data Warehouse", async () => {
+    const requests = renderApp(ruleBackend(), DW_FOLDER);
+
+    const suggested = await screen.findByRole("tab", { name: /^Suggested/ });
+    await waitFor(() => expect(suggested).toHaveTextContent("1"));
+    fireEvent.mouseDown(suggested);
+    const row = await screen.findByRole("row", { name: /Sum of amount \(fact_loan\)/ });
+    expect(row).toHaveTextContent("Rule");
+    expect(row).toHaveTextContent("Data Warehouse");
+    expect(row).toHaveTextContent("Needs mapping");
+    fireEvent.click(within(row).getByRole("button", { name: "Sum of amount (fact_loan)" }));
+    const panel = await screen.findByRole("dialog", { name: "Sum of amount (fact_loan)" });
+    expect(within(panel).getByText(/SELECT SUM\(amount\)/)).toBeInTheDocument();
+    expect(within(panel).getByText("core.fact_loan.amount")).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Rejected/ }));
+    const rejected = await screen.findByRole("row", { name: /Average of fee/ });
+    await waitFor(() => expect(rejected).toHaveTextContent("Rejected by Ada Lovelace"));
+    // one request for the page, and none for a suggestion's links
+    expect(requests.filter((r) => r.path === KPIS)).toHaveLength(1);
+    expect(requests.some((r) => r.path.includes("/links"))).toBe(false);
+  });
+
+  it("accepts one: it is created by its key", async () => {
+    const requests = renderApp(ruleBackend(acceptedRule), DW_FOLDER);
+
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /^Suggested/ }));
+    const row = await screen.findByRole("row", { name: /Sum of amount/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Accept" }));
+
+    expect(
+      await screen.findByText("Sum of amount (fact_loan) accepted. It is now in KPIs."),
+    ).toBeInTheDocument();
+    expect(requests.find((r) => r.path === `${KPIS}/suggestions/accept`)?.body).toEqual({
+      key: RULE.key,
+    });
+  });
+
+  it("rejects one, and accepts a rejected one after all", async () => {
+    const requests = renderApp(
+      ruleBackend((r) =>
+        r.method === "POST" && r.path === `${KPIS}/suggestions/dismiss`
+          ? noContent()
+          : acceptedRule(r),
+      ),
+      DW_FOLDER,
+    );
+
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /^Suggested/ }));
+    const row = await screen.findByRole("row", { name: /Sum of amount/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Reject" }));
+    expect(await screen.findByText("Sum of amount (fact_loan) rejected.")).toBeInTheDocument();
+    expect(requests.find((r) => r.path === `${KPIS}/suggestions/dismiss`)?.body).toEqual({
+      key: RULE.key,
+    });
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Rejected/ }));
+    const rejected = await screen.findByRole("row", { name: /Average of fee/ });
+    fireEvent.click(within(rejected).getByRole("button", { name: "Accept after all" }));
+    await waitFor(() =>
+      expect(requests.find((r) => r.path === `${KPIS}/suggestions/accept`)?.body).toEqual({
+        key: RULE_REJECTED.key,
+      }),
+    );
+  });
+
+  it("moves an accepted rule KPI to Rejected when deleted", async () => {
+    const accepted: Kpi = {
+      ...NIM,
+      id: DW_KPI_ID,
+      source_system_id: null,
+      name: "Sum of fee (fact_loan)",
+      origin: "rule",
+      review_state: "accepted",
+      decision: "accepted",
+    };
+    const requests = renderApp(
+      ruleBackend((r) => (r.method === "DELETE" ? noContent() : undefined), [accepted]),
+      DW_FOLDER,
+    );
+
+    const row = await screen.findByRole("row", { name: /Sum of fee/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete Sum of fee (fact_loan)?" });
+    expect(dialog).toHaveTextContent("It moves to Rejected as “Removed by you”");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete KPI" }));
+
+    expect(
+      await screen.findByText("Sum of fee (fact_loan) moved to Rejected."),
+    ).toBeInTheDocument();
+    expect(requests.some((r) => r.method === "DELETE" && r.path === `${KPIS}/${DW_KPI_ID}`)).toBe(
+      true,
+    );
   });
 });

@@ -2958,8 +2958,9 @@ export interface paths {
         put?: never;
         /**
          * Accept Suggestion
-         * @description Accept a suggestion (owners and editors): it becomes a draft Data Warehouse KPI with
-         *     `origin` `rule`, its formula SQL and links. 404 if no such suggestion is open.
+         * @description Accept a suggestion, or a rejected one after all (owners and editors): it becomes a
+         *     draft Data Warehouse KPI with `origin` `rule`, review state `accepted`, its formula SQL
+         *     and links, and any dismissal is cleared. 404 if no such suggestion is open.
          */
         post: operations["acceptKpiSuggestion"];
         delete?: never;
@@ -2979,7 +2980,9 @@ export interface paths {
         put?: never;
         /**
          * Dismiss Suggestion
-         * @description Hide a suggestion for good (owners and editors). 404 if there is no such suggestion.
+         * @description Reject a suggestion (owners and editors): rule runs never propose it again and it is
+         *     listed as rejected and the decision is audited. 404 if there is no such suggestion;
+         *     409 `invalid_review_state` if it was accepted and its KPI is in the KPIs tab.
          */
         post: operations["dismissKpiSuggestion"];
         delete?: never;
@@ -7719,6 +7722,18 @@ export interface components {
              * @description The `cursor` of the next page; null on the last.
              */
             next_cursor: string | null;
+            /**
+             * Rule Suggestions
+             * @description The open rule-based suggestions; only on the first page, and only when `rule_suggestions` is asked for.
+             * @default []
+             */
+            rule_suggestions: components["schemas"]["KpiSuggestion"][];
+            /**
+             * Rejected Rule Suggestions
+             * @description The rejected rule-based suggestions, likewise.
+             * @default []
+             */
+            rejected_rule_suggestions: components["schemas"]["RejectedKpiSuggestion"][];
         };
         /** KpiProgress */
         KpiProgress: {
@@ -7776,6 +7791,11 @@ export interface components {
              * @description The DW columns the KPI will link to.
              */
             column_ids: string[];
+            /**
+             * Column Labels
+             * @description Those columns as `layer.table.column`.
+             */
+            column_labels: string[];
             /**
              * Feasibility
              * @enum {string}
@@ -9754,6 +9774,65 @@ export interface components {
             job_id: string;
             /** Status */
             status: string;
+        };
+        /** RejectedKpiSuggestion */
+        RejectedKpiSuggestion: {
+            /**
+             * Key
+             * @description Stable across renames and a measure moving from Core to Mart; send it to accept or dismiss the suggestion.
+             */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "sum" | "avg" | "count_distinct" | "ratio" | "mom_growth" | "yoy_growth";
+            /** Name */
+            name: string;
+            /** Definition */
+            definition: string;
+            /** Formula Text */
+            formula_text: string;
+            /**
+             * Formula Sql
+             * @description Written against the DW Schema.
+             */
+            formula_sql: string;
+            /** Aggregation */
+            aggregation: string;
+            /**
+             * Layer
+             * @description The Layer of the fact it reads.
+             * @enum {string}
+             */
+            layer: "core" | "mart";
+            /** Table Name */
+            table_name: string;
+            /**
+             * Column Ids
+             * @description The DW columns the KPI will link to.
+             */
+            column_ids: string[];
+            /**
+             * Column Labels
+             * @description Those columns as `layer.table.column`.
+             */
+            column_labels: string[];
+            /**
+             * Feasibility
+             * @enum {string}
+             */
+            feasibility: "computable" | "needs_mapping" | "needs_data";
+            /**
+             * Decided By
+             * @description Who rejected it; null if unknown.
+             */
+            decided_by: string | null;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
         };
         /** Relationship */
         Relationship: {
@@ -19207,6 +19286,8 @@ export interface operations {
                 data_warehouse?: boolean;
                 /** @description `catalog`: the KPIs tab (live and accepted KPIs); `all`: suggested and rejected ones too (owners and editors). */
                 review?: "catalog" | "all";
+                /** @description With `review=all`: add the open and the rejected rule-based suggestions to the first page (the Data Warehouse page). */
+                rule_suggestions?: boolean;
                 /** @description How many items to return at most. */
                 limit?: number;
                 /** @description `next_cursor` of the previous page; omit for the first. */

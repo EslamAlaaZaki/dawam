@@ -73,6 +73,9 @@ class KpiRecord(Base):
     decision; ``accepted``: a suggestion someone accepted; ``rejected``: one someone
     rejected, or an accepted one someone deleted (``removed``). Only ``live`` and
     ``accepted`` KPIs count elsewhere (the KPIs tab)."""
+    suggestion_key: Mapped[str | None] = mapped_column(sa.String(200))
+    """The key of the rule-based suggestion the KPI was accepted from; ``None`` for any
+    other KPI. It keeps the suggestion from coming back, even after a rename or a removal."""
     decided_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
