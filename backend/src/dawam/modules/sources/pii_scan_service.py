@@ -1,13 +1,16 @@
-"""The value-based PII scan (spec §6.12, stories 131, 132).
+"""Detect PII: the value-based PII scan and the AI detection (spec §6.12, stories 131, 132).
 
-An owner or editor picks tables of a Source System that has a live Connection
-(``start_scan``); a ``pii_scan`` background job (``run_scan`` is its handler) samples up to
-N rows per table (default 1 000) and tests each column's values in memory against the
-validators (``internal.pii_scan``). Only the match ratio is recorded, as the evidence of a
-``suggested`` finding at or above 0.5 confidence; a column that already has a finding for
-the rule keeps its status and gains confidence, unless the scan sends a rejected column
-back to review (``internal.pii.reopens``). The values are discarded as soon as the
-table is scored and are never logged: the job log holds table names and counts only.
+An owner or editor picks tables of a Source System (``start_detection``). That queues the
+AI PII detection (``pii_ai_service``, metadata only) and, when the system has a live
+Connection, at the same time and independent of it, the value scan: a ``pii_scan``
+background job (``run_scan`` is its handler) samples up to N rows per table (default 1 000)
+and tests each column's values in memory against the validators (``internal.pii_scan``).
+Only the match ratio is recorded, as the evidence of a ``suggested`` ``value`` finding at
+or above 0.5 confidence; a column that already has a value finding for the rule keeps its
+status and gains confidence, unless the scan sends a rejected column back to review
+(``internal.pii.reopens``). The scan writes only ``value`` rows: a name finding of the same
+rule stays as it is. The values are discarded as soon as the table is scored and are never
+logged: the job log holds table names and counts only.
 
 The source is read outside any app-database transaction; each table's findings are written
 in one transaction.
@@ -17,6 +20,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -32,12 +36,12 @@ from dawam.platform.errors import ApiError
 
 from .connection_service import PASSWORD_CONTEXT
 from .internal.connector import ConnectionParams, Connector, ConnectorError, connector_for
-from .internal.pii import load_rule_set, reopen_rejected, reopens
+from .internal.pii import load_rule_set, upsert_finding
 from .internal.pii_rules import RuleSet
 from .internal.pii_scan import DEFAULT_SAMPLE_SIZE, MAX_SAMPLE_SIZE, ValueFinding, score_column
+from .pii_ai_service import PII_AI_JOB
 from .tables import (
     ConnectionRecord,
-    PiiFindingRecord,
     SourceSystemRecord,
     SrcColumnRecord,
     SrcDbSchemaRecord,
@@ -45,6 +49,13 @@ from .tables import (
 )
 
 PII_SCAN_JOB = "pii_scan"
+
+
+@dataclass(frozen=True)
+class DetectionStarted:
+    value_job: Job | None
+    """The value scan; ``None`` when the system has no Connection (it is skipped)."""
+    ai_job: Job
 
 
 class PiiScanError(Exception):
@@ -71,7 +82,7 @@ class PiiScanService:
         self._clock = clock
         self._connectors = connectors
 
-    def start_scan(
+    def start_detection(
         self,
         user: User,
         workspace_id: uuid.UUID,
@@ -79,11 +90,12 @@ class PiiScanService:
         table_ids: list[uuid.UUID],
         *,
         sample_size: int = DEFAULT_SAMPLE_SIZE,
-    ) -> Job:
-        """Queue a ``pii_scan`` job over ``table_ids`` (owners and editors). 409
-        ``connection_missing`` without a live Connection, 404 for a table that is not a
-        present table of the Source System, 422 for an empty selection or a bad sample
-        size."""
+    ) -> DetectionStarted:
+        """Detect PII (owners and editors): queue, at the same time and independent of each
+        other, a ``pii_scan`` value scan over ``table_ids`` (only when the system has a live
+        Connection) and a ``pii_ai_detect`` AI detection over their metadata. 404 for a table
+        that is not a present table of the Source System, 422 for an empty selection or a bad
+        sample size."""
         self._workspaces.authorize(user, Action.REVIEW_PII, workspace_id)
         wanted = list(dict.fromkeys(table_ids))
         if not wanted:
@@ -99,12 +111,6 @@ class PiiScanService:
             connection = db.scalars(
                 sa.select(ConnectionRecord).where(ConnectionRecord.source_system_id == system_id)
             ).first()
-            if connection is None:
-                raise ApiError(
-                    409,
-                    "connection_missing",
-                    "A value-based PII scan needs a live Connection: an owner adds one first.",
-                )
             found = set(
                 db.scalars(
                     sa.select(SrcTableRecord.id)
@@ -118,18 +124,32 @@ class PiiScanService:
             )
             if found != set(wanted):
                 raise ApiError(404, "not_found", "Table not found.")
-            return self._jobs.submit(
+            tables = [str(t) for t in wanted]
+            value_job = (
+                self._jobs.submit(
+                    workspace_id,
+                    PII_SCAN_JOB,
+                    {
+                        "source_system_id": str(system_id),
+                        "table_ids": tables,
+                        "sample_size": sample_size,
+                    },
+                    title=f"PII scan: {system.name}",
+                    created_by=user.id,
+                    db=db,
+                )
+                if connection is not None
+                else None
+            )
+            ai_job = self._jobs.submit(
                 workspace_id,
-                PII_SCAN_JOB,
-                {
-                    "source_system_id": str(system_id),
-                    "table_ids": [str(t) for t in wanted],
-                    "sample_size": sample_size,
-                },
-                title=f"PII scan: {system.name}",
+                PII_AI_JOB,
+                {"source_system_id": str(system_id), "table_ids": tables, "user_id": str(user.id)},
+                title=f"AI PII detection: {system.name}",
                 created_by=user.id,
                 db=db,
             )
+        return DetectionStarted(value_job=value_job, ai_job=ai_job)
 
     # -- the job ------------------------------------------------------------------------
 
@@ -225,46 +245,16 @@ class PiiScanService:
     def _upsert(
         self, db: Session, column_id: uuid.UUID, finding: ValueFinding, now: datetime
     ) -> int:
-        existing = db.scalars(
-            sa.select(PiiFindingRecord)
-            .where(
-                PiiFindingRecord.src_column_id == column_id, PiiFindingRecord.rule == finding.rule
-            )
-            .with_for_update()
-        ).first()
-        rejected = db.scalar(
-            sa.select(sa.func.count())
-            .select_from(PiiFindingRecord)
-            .where(
-                PiiFindingRecord.src_column_id == column_id,
-                PiiFindingRecord.status == "rejected",
-            )
+        upsert_finding(
+            db,
+            column_id,
+            source="value",
+            rule=finding.rule,
+            category=finding.category,
+            confidence=finding.confidence,
+            evidence=finding.evidence,
+            at=now,
         )
-        if rejected and reopens(existing, finding.confidence):
-            reopen_rejected(db, [column_id])
-            if existing is not None:
-                db.refresh(existing)
-        if existing is None:
-            db.add(
-                PiiFindingRecord(
-                    id=uuid.uuid4(),
-                    src_column_id=column_id,
-                    rule=finding.rule,
-                    category=finding.category,
-                    confidence=finding.confidence,
-                    evidence=finding.evidence[:500],
-                    status="suggested",
-                    source="value",
-                    snapshot_id=None,
-                    detected_at=now,
-                )
-            )
-            return 1
-        # A decision stays unless the scan reopened it: the confidence moves, and the
-        # evidence only on a finding waiting for review. ``source`` stays as created.
-        existing.confidence = max(existing.confidence, finding.confidence)
-        if existing.status == "suggested":
-            existing.evidence = finding.evidence[:500]
         return 1
 
     def _password(self, connection: ConnectionRecord) -> str | None:

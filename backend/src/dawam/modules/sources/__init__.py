@@ -31,11 +31,16 @@ Public interface. Other modules import only what is re-exported here:
 - ``DataDictionaryService``: any member exports the latest Snapshot with its enhancements as
   an XLSX data dictionary (``DataDictionary``, never values); ``files`` saves it to the file
   area. ``GET .../systems/{system_id}/data-dictionary`` downloads it.
-- ``PiiScanService``: owners and editors start a value-based PII scan of selected tables of a
-  Source System with a live Connection (``start_scan`` queues a ``pii_scan`` job; ``run_scan``
-  is its handler, which ``dawam.job_handlers`` registers). Sampled values are tested in memory
+- ``PiiScanService``: owners and editors Detect PII in selected tables of a Source System
+  (``start_detection`` queues, independent of each other, a ``pii_scan`` value scan when the
+  system has a live Connection and a ``pii_ai_detect`` AI detection; ``run_scan`` is the value
+  scan's handler, which ``dawam.job_handlers`` registers). Sampled values are tested in memory
   against ``dawam.platform.pii_validators`` and discarded; only the match ratio is stored, as
   the evidence of a ``suggested`` finding (confidence at least 0.5).
+- ``PiiAiDetectService``: ``run_detection`` is the ``pii_ai_detect`` handler. The
+  Workspace's agent model reads the tables' metadata, existing findings and rule catalogue,
+  never a data value, and may search the Documents through a ``PiiDocumentSearch`` the
+  composition root fills; validated answers become ``ai`` findings.
 - ``RelationshipService``: owners and editors infer undeclared relationships of a Source System
   (``start_inference`` queues an ``infer_relationships`` job; ``run_inference`` is its handler,
   which ``dawam.job_handlers`` registers). Candidates are scored from name similarity, type
@@ -108,7 +113,7 @@ Owns the ``source_systems`` and ``connections`` tables, the Source Objects
 (``snapshots``, ``snapshot_*``, ``definition_texts``). ``internal/`` holds the Connector
 interface, its PostgreSQL implementation and the Snapshot writer, which other code
 reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
-``changesets``, ``jobs`` and ``workspaces``.
+``changesets``, ``jobs``, ``llm`` (the AI PII detection's model) and ``workspaces``.
 """
 
 from fastapi import APIRouter
@@ -142,6 +147,7 @@ from .internal.query_guard import (
     untraceable_views,
 )
 from .internal.query_guard_catalog import load_guard_catalog
+from .pii_ai_service import PII_AI_JOB, PiiAiDetectService, PiiDocumentSearch
 from .pii_rule_api import router as _pii_rules_router
 from .pii_rule_service import PiiRuleService
 from .pii_scan_service import PII_SCAN_JOB, PiiScanService
@@ -193,6 +199,7 @@ __all__ = [
     "EXTRACT_JOB",
     "INFER_JOB",
     "MASK",
+    "PII_AI_JOB",
     "PII_SCAN_JOB",
     "PROFILE_JOB",
     "AcceptedPiiColumn",
@@ -209,6 +216,8 @@ __all__ = [
     "ImportResult",
     "ImportStatus",
     "OutputColumn",
+    "PiiAiDetectService",
+    "PiiDocumentSearch",
     "PiiFinding",
     "PiiRuleService",
     "PiiScanService",

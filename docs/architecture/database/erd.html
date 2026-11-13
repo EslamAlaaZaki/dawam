@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "a7c3e9d1f520"
+  "f3b8c1d6a924"
  ],
  "modules": [
   {
@@ -12325,13 +12325,14 @@ a.tlink:hover { text-decoration: underline; }
       "source": "CHECK ck_pii_findings_source",
       "values": [
        "name",
-       "value"
+       "value",
+       "ai"
       ]
      },
      "in_orm": true,
      "attribute": "source",
      "app_default": null,
-     "description": "``name`` (a name scan) or ``value`` (a value scan or a query's values): what the\nconfidence and evidence come from.",
+     "description": "``name`` (a name scan), ``value`` (a value scan or a query's values) or ``ai`` (the\nAI PII detection, from metadata only): what the confidence and evidence come from. Each\nsource writes and updates only its own rows.",
      "pk": false,
      "fk": []
     },
@@ -12422,7 +12423,7 @@ a.tlink:hover { text-decoration: underline; }
      "columns": [
       "source"
      ],
-     "definition": "CHECK (((source)::text = ANY ((ARRAY['name'::character varying, 'value'::character varying])::text[])))"
+     "definition": "CHECK (((source)::text = ANY ((ARRAY['name'::character varying, 'value'::character varying, 'ai'::character varying])::text[])))"
     },
     {
      "name": "ck_pii_findings_status",
@@ -12469,9 +12470,10 @@ a.tlink:hover { text-decoration: underline; }
      "kind": "UNIQUE",
      "columns": [
       "src_column_id",
-      "rule"
+      "rule",
+      "source"
      ],
-     "definition": "UNIQUE (src_column_id, rule)"
+     "definition": "UNIQUE (src_column_id, rule, source)"
     }
    ],
    "indexes": [
@@ -12503,10 +12505,11 @@ a.tlink:hover { text-decoration: underline; }
      "method": "btree",
      "columns": [
       "src_column_id",
-      "rule"
+      "rule",
+      "source"
      ],
      "predicate": null,
-     "definition": "CREATE UNIQUE INDEX uq_pii_findings_src_column_id ON public.pii_findings USING btree (src_column_id, rule)",
+     "definition": "CREATE UNIQUE INDEX uq_pii_findings_src_column_id ON public.pii_findings USING btree (src_column_id, rule, source)",
      "backs_constraint": true
     }
    ],
@@ -12515,7 +12518,7 @@ a.tlink:hover { text-decoration: underline; }
    "module": "sources",
    "orm_class": "PiiFindingRecord",
    "source": "backend/src/dawam/modules/sources/tables.py",
-   "description": "A suspected PII column (spec §6.12). One per column and rule; it attaches to the\nstable Source Column, so a decision survives Snapshots. It never holds a value."
+   "description": "A suspected PII column (spec §6.12). One per column, rule and source: the name scan,\nthe value scan and the AI PII detection each keep their own row for a rule. It attaches\nto the stable Source Column, so a decision survives Snapshots. It never holds a value."
   },
   {
    "name": "registration_attempts",

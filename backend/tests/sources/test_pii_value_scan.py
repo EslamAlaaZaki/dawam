@@ -176,10 +176,13 @@ def test_a_value_scan_that_raises_a_rejected_rules_confidence_sends_it_back_to_r
 
     scan(roles, system, [table])
 
-    [after] = findings(roles, system)
-    assert after["id"] == before["id"] and after["status"] == "suggested"
-    assert after["confidence"] > before["confidence"]
-    assert "sampled values" in after["evidence"]
+    # The value scan writes its own row; the name row keeps its confidence and evidence.
+    name, value = sorted(findings(roles, system), key=lambda f: f["id"] != before["id"])
+    assert name["id"] == before["id"] and name["status"] == "suggested"
+    assert name["confidence"] == before["confidence"] and name["evidence"] == before["evidence"]
+    assert value["rule"] == "email" and value["status"] == "suggested"
+    assert value["confidence"] > before["confidence"]
+    assert "sampled values" in value["evidence"]
 
 
 def test_the_sample_size_caps_the_rows_read(roles: RoleClients, scratch_source):
@@ -212,13 +215,13 @@ def test_no_sampled_value_is_stored_logged_or_in_the_job_output(
         assert value not in text, value
 
 
-def test_the_scan_needs_a_live_connection(roles: RoleClients):
+def test_without_a_connection_unknown_tables_are_still_refused(roles: RoleClients):
     system = add_system(roles)
 
     response = roles.client("editor").post(f"{system}/pii-scans", json={"table_ids": [NO_SUCH]})
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "connection_missing"
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"
 
 
 def test_the_scan_needs_known_tables_and_a_valid_sample_size(roles: RoleClients, scratch_source):

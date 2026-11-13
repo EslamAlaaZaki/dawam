@@ -974,6 +974,16 @@ class DocumentSearchService:
                 db=db,
             )
 
+    def has_passages(self, workspace_id: uuid.UUID) -> bool:
+        """Whether any of the Workspace's documents is indexed (has passages to search).
+        No authorization: it says nothing about what the documents hold."""
+        with Session(self._engine) as db:
+            return bool(
+                db.scalar(
+                    sa.select(sa.exists().where(DocumentChunkRecord.workspace_id == workspace_id))
+                )
+            )
+
     def index_overview(self, user: User, workspace_id: uuid.UUID) -> list[FileIndexStatus]:
         """Where indexing stands for every file of the Workspace (any member), by name: its
         status, passages, how many are embedded and how many of those were made by a model

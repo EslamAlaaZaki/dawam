@@ -1914,7 +1914,7 @@ ROWS: list[Row] = [
     Row(
         "POST",
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-scans",
-        "Review PII findings (start a value-based scan)",
+        "Review PII findings (Detect PII: value scan and AI detection)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
         json=lambda roles: {"table_ids": [table_id(roles)]},
     ),

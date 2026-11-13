@@ -1,4 +1,5 @@
-"""``.../systems/{system_id}/pii-scans``: the value-based PII scan (spec stories 131, 132).
+"""``.../systems/{system_id}/pii-scans``: Detect PII, the value-based PII scan and the AI
+PII detection side by side (spec stories 131, 132).
 
 Handlers only translate HTTP to ``PiiScanService`` calls; the service authorizes every
 call through the workspaces module's policy.
@@ -45,12 +46,20 @@ class PiiScanRequest(BaseModel):
     )
 
 
+JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
+
+
 class PiiScanStarted(BaseModel):
-    job_id: uuid.UUID = Field(
-        description="The `pii_scan` job: follow its status, progress and log at "
-        "`GET /jobs/{job_id}`."
+    job_id: uuid.UUID | None = Field(
+        description="The `pii_scan` value scan job: follow it at `GET /jobs/{job_id}`. "
+        "`null` when the system has no Connection: the value scan is skipped."
     )
-    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    status: JobStatus | None = Field(description="The value scan job's status.")
+    ai_job_id: uuid.UUID = Field(
+        description="The `pii_ai_detect` AI PII detection job, started at the same time and "
+        "independent of the value scan."
+    )
+    ai_status: JobStatus = Field(description="The AI detection job's status.")
 
 
 @router.post("/pii-scans", operation_id="startPiiScan", status_code=202)
@@ -61,11 +70,19 @@ def start_pii_scan(
     user: CurrentUser,
     scans: PiiScanServiceDep,
 ) -> PiiScanStarted:
-    """Scan the selected tables' sampled values for PII, as a background job (owners and
-    editors; live Connection only). Values are tested in memory and discarded: only the
-    match ratio is kept, as the evidence of a `suggested` finding. 409
-    `connection_missing` without a Connection; 422 for no tables or a bad sample size."""
-    job = scans.start_scan(
+    """Detect PII in the selected tables (owners and editors), as two background jobs started
+    together. The value scan (live Connection only; skipped without one) tests sampled values
+    in memory and discards them: only the match ratio is kept. The AI detection reads the
+    tables' metadata (names, types, keys, comments, existing findings and the Workspace's
+    rules), and Documents when shared, never a data value. Both record `suggested`
+    findings. 422 for no tables or a bad sample size."""
+    started = scans.start_detection(
         user, workspace_id, system_id, body.table_ids, sample_size=body.sample_size
     )
-    return PiiScanStarted(job_id=job.id, status=job.status)  # type: ignore[arg-type]
+    value = started.value_job
+    return PiiScanStarted(
+        job_id=value.id if value else None,
+        status=value.status if value else None,  # type: ignore[arg-type]
+        ai_job_id=started.ai_job.id,
+        ai_status=started.ai_job.status,  # type: ignore[arg-type]
+    )

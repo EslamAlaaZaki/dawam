@@ -23,6 +23,7 @@ from dawam.modules.changesets import (
 )
 from dawam.modules.files import DocumentSearchService, FileContentHandler
 from dawam.modules.kpis import KpiLinkHandler, KpiPropagationHandler
+from dawam.modules.llm import workspace_document_sharing
 from dawam.modules.memory import MemoryItemHandler
 from dawam.modules.notifications import NotificationService
 from dawam.modules.propagation import PropagationService
@@ -98,6 +99,34 @@ def after_change_set(
         propagation_hook(user, applied)
 
     return hook
+
+
+class PiiDocuments:
+    """The AI PII detection's view of the Workspace's Documents (``sources`` cannot import
+    ``files``, which imports it): offered only when some are indexed and the Workspace shares
+    Documents with the AI; searched as the member who started the detection."""
+
+    def __init__(
+        self, documents: DocumentSearchService, engine: sa.Engine, settings: Settings, clock: Clock
+    ) -> None:
+        self._documents = documents
+        self._engine = engine
+        self._auth = AuthService(engine, settings, clock=clock)
+
+    def available(self, workspace_id: uuid.UUID) -> bool:
+        shared, _ = workspace_document_sharing(self._engine, workspace_id)
+        return shared and self._documents.has_passages(workspace_id)
+
+    def search(
+        self, user_id: uuid.UUID, workspace_id: uuid.UUID, query: str, limit: int
+    ) -> list[dict[str, str]]:
+        user = self._auth.get_user(user_id)
+        if user is None or not user.is_active:
+            return []
+        return [
+            {"document": p.document, "section": p.section, "text": p.text}
+            for p in self._documents.search(user, workspace_id, query, limit=limit)
+        ]
 
 
 def propagation(engine: sa.Engine, clock: Clock) -> PropagationService:
