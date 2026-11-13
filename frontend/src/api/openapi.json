@@ -24404,6 +24404,14 @@
             "title": "Column Ids",
             "description": "The DW columns the KPI will link to."
           },
+          "column_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Column Labels",
+            "description": "Those columns as `layer.table.column`."
+          },
           "feasibility": {
             "type": "string",
             "enum": [
@@ -24426,6 +24434,7 @@
           "layer",
           "table_name",
           "column_ids",
+          "column_labels",
           "feasibility"
         ],
         "title": "KpiSuggestion"
@@ -28942,6 +28951,14 @@
             "title": "Column Ids",
             "description": "The DW columns the KPI will link to."
           },
+          "column_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Column Labels",
+            "description": "Those columns as `layer.table.column`."
+          },
           "feasibility": {
             "type": "string",
             "enum": [
@@ -28982,6 +28999,7 @@
           "layer",
           "table_name",
           "column_ids",
+          "column_labels",
           "feasibility",
           "decided_by",
           "decided_at"

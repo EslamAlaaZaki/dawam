@@ -20,9 +20,24 @@ export const KPI_STATUS_LABELS: Record<KpiStatus, string> = {
   approved: "Approved",
 };
 
-/** Where a KPI is documented: under one Source System, or under the Data Warehouse. */
+/**
+ * Where a KPIs list reads from: one Source System (`systemId`), the Data Warehouse's own
+ * KPIs (`systemId` null), or with `workspaceWide` every KPI in the Workspace (the Data
+ * Warehouse page), which also brings the rule-based suggestions.
+ */
 export interface KpiScope {
   systemId: string | null;
+  workspaceWide?: boolean;
+}
+
+export type RuleSuggestion = components["schemas"]["KpiSuggestion"];
+export type RejectedRuleSuggestion = components["schemas"]["RejectedKpiSuggestion"];
+
+/** What one list request returns: the KPIs and, for the whole Workspace, the rule suggestions. */
+export interface KpiList {
+  kpis: Kpi[];
+  ruleSuggestions: RuleSuggestion[];
+  rejectedRuleSuggestions: RejectedRuleSuggestion[];
 }
 
 const kpisKey = (workspaceId: string) => ["workspace", workspaceId, "kpis"] as const;
@@ -36,11 +51,35 @@ export function useKpis(
   scope: KpiScope,
   review: "catalog" | "all" = "catalog",
 ) {
+  return useKpiListQuery(workspaceId, scope, review, (list) => list.kpis);
+}
+
+/** The same request as `useKpis`, with the rule suggestions of the Workspace-wide scope. */
+export function useKpiList(
+  workspaceId: string,
+  scope: KpiScope,
+  review: "catalog" | "all" = "catalog",
+) {
+  return useKpiListQuery(workspaceId, scope, review, (list) => list);
+}
+
+function useKpiListQuery<T>(
+  workspaceId: string,
+  scope: KpiScope,
+  review: "catalog" | "all",
+  select: (list: KpiList) => T,
+) {
   const client = useApiClient();
+  const withRules = scope.workspaceWide === true && review === "all";
   return useQuery({
-    queryKey: [...kpisKey(workspaceId), scope.systemId ?? "dw", review],
-    queryFn: async () => {
-      const kpis: Kpi[] = [];
+    queryKey: [
+      ...kpisKey(workspaceId),
+      scope.workspaceWide ? "workspace" : (scope.systemId ?? "dw"),
+      review,
+    ],
+    select,
+    queryFn: async (): Promise<KpiList> => {
+      const list: KpiList = { kpis: [], ruleSuggestions: [], rejectedRuleSuggestions: [] };
       let cursor: string | undefined;
       do {
         const { data, error, response } = await client.GET(
@@ -51,7 +90,12 @@ export function useKpis(
               query: {
                 limit: 100,
                 review,
-                ...(scope.systemId ? { source_system_id: scope.systemId } : { data_warehouse: true }),
+                ...(withRules ? { rule_suggestions: true } : {}),
+                ...(scope.workspaceWide
+                  ? {}
+                  : scope.systemId
+                    ? { source_system_id: scope.systemId }
+                    : { data_warehouse: true }),
                 ...(cursor ? { cursor } : {}),
               },
             },
@@ -60,10 +104,13 @@ export function useKpis(
         if (error) {
           throw new ApiError(response.status, error.error);
         }
-        kpis.push(...data.items);
+        list.kpis.push(...data.items);
+        // The suggestions come with the first page only.
+        list.ruleSuggestions.push(...data.rule_suggestions);
+        list.rejectedRuleSuggestions.push(...data.rejected_rule_suggestions);
         cursor = data.next_cursor ?? undefined;
       } while (cursor);
-      return kpis;
+      return list;
     },
   });
 }
@@ -140,6 +187,31 @@ export function useDecideKpi(workspaceId: string) {
         throw new ApiError(response.status, error.error);
       }
       return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: kpisKey(workspaceId) }),
+  });
+}
+
+/** Accept a rule suggestion (or a rejected one after all), or reject one; owners and editors. */
+export function useDecideRuleSuggestion(workspaceId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ key, action }: { key: string; action: "accept" | "reject" }) => {
+      const params = { path: { workspace_id: workspaceId } };
+      const { error, response } =
+        action === "accept"
+          ? await client.POST("/api/v1/workspaces/{workspace_id}/kpis/suggestions/accept", {
+              params,
+              body: { key },
+            })
+          : await client.POST("/api/v1/workspaces/{workspace_id}/kpis/suggestions/dismiss", {
+              params,
+              body: { key },
+            });
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: kpisKey(workspaceId) }),
   });

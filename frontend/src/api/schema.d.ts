@@ -7791,6 +7791,11 @@ export interface components {
              */
             column_ids: string[];
             /**
+             * Column Labels
+             * @description Those columns as `layer.table.column`.
+             */
+            column_labels: string[];
+            /**
              * Feasibility
              * @enum {string}
              */
@@ -9807,6 +9812,11 @@ export interface components {
              * @description The DW columns the KPI will link to.
              */
             column_ids: string[];
+            /**
+             * Column Labels
+             * @description Those columns as `layer.table.column`.
+             */
+            column_labels: string[];
             /**
              * Feasibility
              * @enum {string}

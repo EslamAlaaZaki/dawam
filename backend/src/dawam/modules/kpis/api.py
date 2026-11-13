@@ -152,6 +152,7 @@ class KpiSuggestion(BaseModel):
     layer: Literal["core", "mart"] = Field(description="The Layer of the fact it reads.")
     table_name: str
     column_ids: list[uuid.UUID] = Field(description="The DW columns the KPI will link to.")
+    column_labels: list[str] = Field(description="Those columns as `layer.table.column`.")
     feasibility: Feasibility
 
 

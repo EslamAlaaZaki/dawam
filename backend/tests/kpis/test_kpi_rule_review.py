@@ -41,6 +41,7 @@ def test_the_list_carries_the_rule_suggestions_in_one_request(roles: RoleClients
     suggestion = {s["name"]: s for s in body["rule_suggestions"]}[NAME]
     assert suggestion["feasibility"] == "needs_mapping"
     assert suggestion["formula_sql"]
+    assert suggestion["column_labels"] == ["core.fact_loan.amount"]
     assert body["rejected_rule_suggestions"] == []
     assert body["items"] == []
     # not asked for, or not the review: no suggestions
