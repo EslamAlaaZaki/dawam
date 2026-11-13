@@ -19,11 +19,31 @@ import { cn } from "../lib/utils";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+// An ended job's outcome shows until it is dismissed, also on a later visit to the page.
+const seenKey = (jobId: string) => `dawam:kpi-suggestions-seen:${jobId}`;
+
+function wasSeen(jobId: string): boolean {
+  try {
+    return window.localStorage.getItem(seenKey(jobId)) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function markSeen(jobId: string): void {
+  try {
+    window.localStorage.setItem(seenKey(jobId), "1");
+  } catch {
+    // Without storage the outcome only hides until the page is opened again.
+  }
+}
+
 /**
  * For owners and editors: the button (secondary, beside Add KPI) and, under the header, a
  * status bar while the job runs and once it ends: KPIs suggested, none to suggest, or failed.
  * `kpis` is every KPI of the system in every review state; `onSuggested` runs when a job
- * this page watched ends with new suggestions (the page shows the Suggested tab).
+ * ends with new suggestions, or the page opens on one not dismissed yet (it shows the
+ * Suggested tab).
  */
 export function KpiSuggestJob({
   workspaceId,
@@ -47,13 +67,16 @@ export function KpiSuggestJob({
   const current = job.data ?? null;
   const running = isRunning(current);
   // The job whose end this page reports: one seen running here (started here, or already
-  // running when the page opened). A job that ended while nobody watched shows nothing.
+  // running when the page opened), or one that ended since its outcome was last dismissed.
   const [watched, setWatched] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
   if (current && running && watched !== current.job_id) {
     setWatched(current.job_id);
   }
-  const ended = current && !running && current.job_id === watched ? current : null;
+  const ended =
+    current && !running && (current.job_id === watched || !wasSeen(current.job_id))
+      ? current
+      : null;
   const endedId = ended?.job_id;
   const created = ended?.created ?? 0;
 
@@ -106,7 +129,10 @@ export function KpiSuggestJob({
           job={ended}
           name={name}
           total={kpis.length}
-          onDismiss={() => setDismissed(ended.job_id)}
+          onDismiss={() => {
+            markSeen(ended.job_id);
+            setDismissed(ended.job_id);
+          }}
         />
       ) : null}
     </>

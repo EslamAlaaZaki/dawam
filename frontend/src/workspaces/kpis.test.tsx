@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { KpiSuggestionJob } from "../api/kpiSuggestions";
@@ -914,6 +914,49 @@ describe("suggesting KPIs with the AI", () => {
 
     const title = await screen.findByText("Suggesting KPIs failed");
     expect(title.closest("[role=status]")).toHaveTextContent("No model is assigned.");
+  });
+
+  it("shows a job that ended while the page was closed until it is dismissed", async () => {
+    const ended = job({ status: "succeeded", created: 1, dropped: 1, skipped: 0 });
+    const open = () =>
+      renderApp(
+        backend("editor", { system: [NIM, SUGGESTED], dw: [] }, jobs(ended, ended)),
+        SYSTEM_FOLDER,
+      );
+    open();
+
+    const title = await screen.findByText("1 new KPI suggested");
+    expect(title.closest("[role=status]")).toHaveTextContent(
+      "1 more was dropped: based on tables outside Core Banking.",
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /^Suggested/ })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("1 new KPI suggested")).not.toBeInTheDocument();
+
+    cleanup();
+    open();
+    await screen.findByRole("button", { name: "Suggest KPIs" });
+    await screen.findByRole("tab", { name: /^Suggested/ });
+    expect(screen.queryByText("1 new KPI suggested")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^KPIs/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("disables the button in an archived Workspace", async () => {
+    const live = backend("editor", { system: [NIM], dw: [] }, jobs(null, job({})));
+    renderApp(
+      (r) =>
+        r.method === "GET" && r.path === `/api/v1/workspaces/${WORKSPACE_ID}`
+          ? json({ ...workspace("editor"), status: "archived", archived_at: "2026-02-01T09:00:00Z" })
+          : live(r),
+      SYSTEM_FOLDER,
+    );
+
+    expect(await screen.findByRole("button", { name: "Suggest KPIs" })).toBeDisabled();
   });
 
   it("lists the tables a suggestion is based on in its details", async () => {

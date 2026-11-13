@@ -552,6 +552,7 @@ export function KpiCatalog({
             workspaceId={workspace.id}
             systemId={scope.systemId}
             kpis={all}
+            disabled={workspace.status !== "active"}
             onSuggested={() => {
               setTab("suggested");
               setOrigin("all");
