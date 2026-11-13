@@ -65,7 +65,10 @@ export function usePiiColumns(
   });
 }
 
-/** Start a value scan of the given tables as a background job. */
+/**
+ * Detect PII in the given tables: a value scan (only with a Connection; `job_id` is null
+ * without one) and an AI detection (`ai_job_id`), two background jobs started together.
+ */
 export function useStartPiiScan(workspaceId: string, systemId: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
