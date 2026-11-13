@@ -1053,7 +1053,7 @@ describe("suggesting KPIs with the AI", () => {
 
       const title = await screen.findByText("2 new KPIs suggested");
       expect(title.closest("[role=status]")).toHaveTextContent(
-        "They are in the Suggested tab for you to accept or reject. 1 more was dropped: it used only one Source System.",
+        "They are in the Suggested tab for you to accept or reject. 1 more was dropped: it used only one Source System or named tables that don't exist.",
       );
       expect(requests.some((r) => r.method === "POST" && r.path === DW_JOBS)).toBe(true);
     });
