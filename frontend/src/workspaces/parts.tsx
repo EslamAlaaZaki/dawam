@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Info } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
 
@@ -190,5 +190,55 @@ export function Callout({
       {icon}
       <div className="flex min-w-0 flex-1 flex-col gap-2">{children}</div>
     </div>
+  );
+}
+
+/** An ⓘ button whose tooltip explains a column (hover or keyboard focus; Escape closes). */
+export function InfoTip({
+  label,
+  ariaLabel,
+  contentClassName,
+  children,
+}: {
+  label: string;
+  /** The button's accessible name; defaults to "What is <label>?". */
+  ariaLabel?: string;
+  contentClassName?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={ariaLabel ?? `What is ${label.toLowerCase()}?`}
+          className="ms-1 inline-grid size-4 cursor-help place-items-center rounded-full align-middle text-subtle-foreground hover:text-primary focus-visible:text-primary"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Info aria-hidden className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        className={cn(
+          "flex flex-col gap-1.5 border border-border bg-surface-raised p-3 leading-normal text-foreground shadow-overlay",
+          contentClassName,
+        )}
+      >
+        {children}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function TipItems({ items }: { items: [ReactNode, string][] }) {
+  return (
+    <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+      {items.map(([badge, text]) => (
+        <li key={text}>
+          <span className="me-1.5">{badge}</span>
+          {text}
+        </li>
+      ))}
+    </ul>
   );
 }
