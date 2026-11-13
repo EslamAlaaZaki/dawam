@@ -70,6 +70,7 @@ from .internal.routing import is_simple_question
 from .internal.structured import strip_cards
 from .internal.supervisor import DELEGATE, SUPERVISOR_PROMPT, SpecialistAsked, Supervisor
 from .internal.tools import ToolRegistry
+from .kpi_suggestions import KpiSuggestionJobs
 from .tables import (
     ERROR_MAX_LENGTH,
     FEEDBACK_COMMENT_MAX_LENGTH,
@@ -360,6 +361,18 @@ class AssistantService:
         self._max_job_tool_calls = max_job_tool_calls
         self._users = users
         self._timer = timer
+
+    def kpi_suggestions(self) -> KpiSuggestionJobs:
+        """The per-Source System KPI suggestion jobs, on this assistant's model and tools."""
+        return KpiSuggestionJobs(
+            self._engine,
+            workspaces=self._workspaces,
+            roles=self._roles,
+            ai=self._ai,
+            tools=self._tools,
+            users=self._users,
+            timer=self._timer,
+        )
 
     # -- conversations ---------------------------------------------------------------
 

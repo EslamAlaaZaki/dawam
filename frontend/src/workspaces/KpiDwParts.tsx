@@ -43,6 +43,7 @@ export function ruleSuggestionRow(
     origin: "rule",
     // The rule that produced it, for the "Why suggested" column.
     rationale: s.formula_text,
+    based_on: [],
     status: "draft",
     review_state: decided ? "rejected" : "suggested",
     decision: decided ? "rejected" : null,

@@ -108,6 +108,10 @@ class Kpi(BaseModel):
     rationale: str | None = Field(
         description="Why the AI suggested the KPI; null unless `origin` is `ai`."
     )
+    based_on: list[str] = Field(
+        description="The source tables (`schema.table`) an AI suggestion is based on, all of "
+        "its Source System; empty for other KPIs."
+    )
     status: KpiStatus = Field(description="The sign-off, apart from the review state.")
     review_state: KpiReviewState = Field(
         description="`live`: added by hand or by a rule; `suggested`: an AI suggestion "

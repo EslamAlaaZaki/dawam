@@ -277,3 +277,15 @@ def source_column_labels(
         column_id: ".".join(part for part in (system, schema, table, column) if part)
         for column_id, system, schema, table, column in rows
     }
+
+
+def source_table_names(db: Session, system_id: uuid.UUID) -> dict[str, str]:
+    """The present tables and views of a Source System as ``schema.table``, keyed by that
+    name in lower case (to match a name ignoring case); in the caller's session, no
+    permission check."""
+    rows = db.execute(
+        sa.select(SrcDbSchemaRecord.name, SrcTableRecord.name)
+        .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+        .where(SrcDbSchemaRecord.source_system_id == system_id, SrcTableRecord.status == "present")
+    )
+    return {f"{schema}.{table}".lower(): f"{schema}.{table}" for schema, table in rows}

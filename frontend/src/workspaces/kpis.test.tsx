@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import type { KpiSuggestionJob } from "../api/kpiSuggestions";
 import type { Kpi, RejectedRuleSuggestion, RuleSuggestion } from "../api/kpis";
 import type { Me } from "../api/queries";
 import type { SourceSystem } from "../api/systems";
@@ -77,6 +78,7 @@ const NIM: Kpi = {
   targets: [{ label: "FY2027", value: "3.2%" }],
   origin: "user",
   rationale: null,
+  based_on: [],
   status: "draft",
   review_state: "live",
   decision: "added",
@@ -789,5 +791,146 @@ describe("rule suggestions on the Data Warehouse page", () => {
     expect(requests.some((r) => r.method === "DELETE" && r.path === `${KPIS}/${DW_KPI_ID}`)).toBe(
       true,
     );
+  });
+});
+
+describe("suggesting KPIs with the AI", () => {
+  const JOBS = `/api/v1/workspaces/${WORKSPACE_ID}/systems/${CBS.id}/kpi-suggestions`;
+  const job = (fields: Partial<KpiSuggestionJob>): KpiSuggestionJob => ({
+    job_id: "99999999-9999-4999-8999-999999999999",
+    status: "running",
+    error: null,
+    created: null,
+    dropped: null,
+    skipped: null,
+    created_at: "2026-01-05T09:00:00Z",
+    finished_at: null,
+    ...fields,
+  });
+
+  /** The job endpoints: GET answers `before` until a job starts, then `after`. */
+  function jobs(before: KpiSuggestionJob | null, after: KpiSuggestionJob, onEnd?: () => void) {
+    let started = false;
+    return (r: ApiRequest) => {
+      if (r.path !== JOBS) {
+        return undefined;
+      }
+      if (r.method === "POST") {
+        started = true;
+        return json(job({}), 202);
+      }
+      if (started) {
+        onEnd?.();
+      }
+      return json({ job: started ? after : before });
+    };
+  }
+
+  it("shows owners and editors the button, never viewers", async () => {
+    renderApp(backend("viewer", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
+    await screen.findByRole("row", { name: /Net interest margin/ });
+    expect(screen.queryByRole("button", { name: "Suggest KPIs" })).not.toBeInTheDocument();
+  });
+
+  it("disables the button while a job runs and says what the AI reads", async () => {
+    renderApp(
+      backend("editor", { system: [NIM, REJECTED], dw: [] }, jobs(job({}), job({}))),
+      SYSTEM_FOLDER,
+    );
+
+    const button = await screen.findByRole("button", { name: "Suggesting…" });
+    expect(button).toBeDisabled();
+    const status = await screen.findByRole("status");
+    await waitFor(() => expect(status).toHaveTextContent("Suggesting KPIs for Core Banking…"));
+    expect(status).toHaveTextContent("the 2 KPIs already here (1 rejected)");
+    expect(status).toHaveTextContent("You can leave this page; the job keeps running.");
+  });
+
+  it("reports new suggestions, counts the dropped ones and shows the Suggested tab", async () => {
+    const system = [NIM];
+    const requests = renderApp(
+      backend(
+        "editor",
+        { system, dw: [] },
+        jobs(null, job({ status: "succeeded", created: 1, dropped: 1, skipped: 0 }), () => {
+          if (!system.includes(SUGGESTED)) {
+            system.push(SUGGESTED);
+          }
+        }),
+      ),
+      SYSTEM_FOLDER,
+    );
+
+    const button = await screen.findByRole("button", { name: "Suggest KPIs" });
+    fireEvent.click(button);
+
+    const status = await screen.findByText("1 new KPI suggested");
+    expect(status.closest("[role=status]")).toHaveTextContent(
+      "They are in the Suggested tab for you to accept or reject. 1 more was dropped: based on tables outside Core Banking.",
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /^Suggested/ })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    expect(await screen.findByRole("row", { name: /Dormant account rate/ })).toBeInTheDocument();
+    expect(requests.some((r) => r.method === "POST" && r.path === JOBS)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("1 new KPI suggested")).not.toBeInTheDocument();
+  });
+
+  it("says when there is nothing new to suggest, which is not an error", async () => {
+    renderApp(
+      backend(
+        "editor",
+        { system: [NIM, REJECTED], dw: [] },
+        jobs(null, job({ status: "succeeded", created: 0, dropped: 0, skipped: 0 })),
+      ),
+      SYSTEM_FOLDER,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Suggest KPIs" }));
+
+    const title = await screen.findByText("No new KPIs to suggest");
+    expect(title.closest("[role=status]")).toHaveTextContent(
+      "The AI found nothing that differs from the 2 KPIs already here, including rejected ones.",
+    );
+    expect(screen.getByRole("tab", { name: /^KPIs/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Suggest KPIs" })).toBeEnabled();
+  });
+
+  it("says why a job failed", async () => {
+    renderApp(
+      backend(
+        "editor",
+        { system: [NIM], dw: [] },
+        jobs(null, job({ status: "failed", error: "No model is assigned." })),
+      ),
+      SYSTEM_FOLDER,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Suggest KPIs" }));
+
+    const title = await screen.findByText("Suggesting KPIs failed");
+    expect(title.closest("[role=status]")).toHaveTextContent("No model is assigned.");
+  });
+
+  it("lists the tables a suggestion is based on in its details", async () => {
+    renderApp(
+      backend("editor", {
+        system: [{ ...SUGGESTED, based_on: ["core.accounts", "core.transactions"] }],
+        dw: [],
+      }),
+      SYSTEM_FOLDER,
+    );
+
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /^Suggested/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Dormant account rate" }));
+
+    const panel = await screen.findByRole("dialog", { name: "Dormant account rate" });
+    const list = within(panel).getByText("Based on").parentElement!;
+    expect(within(list).getByText("core.accounts")).toBeInTheDocument();
+    expect(within(list).getByText("core.transactions")).toBeInTheDocument();
   });
 });

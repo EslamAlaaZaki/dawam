@@ -78,6 +78,8 @@ Public interface. Other modules import only what is re-exported here:
   and ``assign_placeholders`` (the stable ``placeholder_no`` of non-Latin names).
   ``source_column_labels`` (in the caller's session, no permission check) names a
   Workspace's source columns ``SYSTEM.schema.table.column`` for the lineage graph.
+  ``source_table_names`` (the same) names a Source System's present tables ``schema.table``,
+  for checking the tables an AI KPI suggestion is based on.
 - ``SourceSystemService.delete`` soft-deletes a Source System (owners only); for the
   ``deletions`` module (in the caller's session, no permission check):
   ``deleted_source_systems`` / ``deleted_source_system`` read the soft-deleted ones (and
@@ -180,6 +182,7 @@ from .staging_source_service import (
     StagingSystem,
     StagingTable,
     source_column_labels,
+    source_table_names,
 )
 from .summary_service import SourceSummary, SourceSummaryService
 from .system_code_change import SourceSystemCodeHandler
@@ -263,5 +266,6 @@ __all__ = [
     "shown_cell",
     "source_column_labels",
     "source_system_contents",
+    "source_table_names",
     "untraceable_views",
 ]

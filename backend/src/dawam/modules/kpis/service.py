@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
-from dawam.modules.sources import SourceSystemService
+from dawam.modules.sources import SourceSystemService, source_table_names
 from dawam.modules.warehouse import (
     DwSchema,
     SchemaColumn,
@@ -23,7 +23,12 @@ from dawam.modules.warehouse import (
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
-from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
+from dawam.platform.pagination import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    encode_cursor,
+)
 from dawam.platform.pii_validators import redact_text
 
 from .links import (
@@ -124,6 +129,8 @@ class Kpi:
     """How many DW columns the KPI links to."""
     feasibility: str | None = None
     """``computable``, ``needs_mapping`` or ``needs_data``; ``None`` without links."""
+    based_on: list[str] = field(default_factory=list)
+    """The source tables (``schema.table``) an AI suggestion is based on."""
 
 
 @dataclass(frozen=True)
@@ -205,6 +212,9 @@ class KpiSuggestion:
     formula_text: str = ""
     unit: str = ""
     aggregation: str = ""
+    based_on: Sequence[str] = ()
+    """The source tables (``schema.table``) it uses; under a Source System every one must be
+    a table of that system."""
 
 
 @dataclass(frozen=True)
@@ -212,6 +222,9 @@ class SuggestedKpis:
     created: list[Kpi]
     skipped: list[str]
     """Names of suggestions left out because a KPI of that name already exists."""
+    dropped: list[str] = field(default_factory=list)
+    """Names of suggestions left out because they are based on no table, or on a table
+    outside the Source System."""
 
 
 def _name_key(name: str) -> str:
@@ -237,6 +250,7 @@ def _view(record: KpiRecord, *, link_count: int = 0, feasibility: str | None = N
         decided_at=decided_at,
         link_count=link_count,
         feasibility=feasibility,
+        based_on=list(record.based_on or []),
         id=record.id,
         workspace_id=record.workspace_id,
         source_system_id=record.source_system_id,
@@ -407,11 +421,13 @@ class KpiService:
     ) -> SuggestedKpis:
         """Create the AI's suggestions as ``suggested`` KPIs (``origin`` ``ai``, with a
         rationale, status draft) waiting for an owner or editor to accept or reject them,
-        under a Source System or the Data Warehouse. Create-only: a suggestion whose name
-        matches a KPI of the same scope in any review state (rejected included; ignoring
-        case and spaces), or an earlier suggestion, is skipped; no KPI is ever updated or
-        deleted. One audit entry ``via=ai`` per KPI. Every text is checked with the PII
-        validators and matches are redacted. 404 if the Source System is not in the
+        under a Source System or the Data Warehouse. Under a Source System each suggestion
+        must be based on its tables: one based on no table, or on a table (``schema.table``,
+        ignoring case) that is not a present table of that system, is dropped. Create-only: a
+        suggestion whose name matches a KPI of the same scope in any review state (rejected
+        included; ignoring case and spaces), or an earlier suggestion, is skipped; no KPI is
+        ever updated or deleted. One audit entry ``via=ai`` per KPI. Every text is checked
+        with the PII validators and matches are redacted. 404 if the Source System is not in the
         Workspace; 422 ``invalid_kpi`` (nothing is created)."""
         self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
         if source_system_id is not None:
@@ -429,12 +445,21 @@ class KpiService:
                     )
                 )
             }
+            tables = source_table_names(db, source_system_id) if source_system_id else {}
             created: list[KpiRecord] = []
             skipped: list[str] = []
+            dropped: list[str] = []
             for suggestion in suggestions:
                 name = _clean(
                     redact_text(suggestion.name), "name", "name", NAME_MAX_LENGTH, required=True
                 )
+                based_on: list[str] = []
+                if source_system_id is not None:
+                    wanted = [t.strip().lower() for t in suggestion.based_on if t.strip()]
+                    if not wanted or any(t not in tables for t in wanted):
+                        dropped.append(name)
+                        continue
+                    based_on = list(dict.fromkeys(tables[t] for t in wanted))
                 if _name_key(name) in taken:
                     skipped.append(name)
                     continue
@@ -465,6 +490,7 @@ class KpiService:
                     or None,
                     status="draft",
                     review_state="suggested",
+                    based_on=based_on,
                     created_by=user.id,
                     created_at=now,
                     updated_at=now,
@@ -486,13 +512,39 @@ class KpiService:
                         **_snapshot(record),
                         "origin": "ai",
                         "rationale": record.rationale,
+                        "based_on": record.based_on,
                         "review_state": "suggested",
                     },
                     at=now,
                     via="ai",
                 )
                 self._record_activity(db, user, "kpi.created", record, details={"via": "ai"})
-            return SuggestedKpis(created=[_view(r) for r in created], skipped=skipped)
+            return SuggestedKpis(
+                created=[_view(r) for r in created], skipped=skipped, dropped=dropped
+            )
+
+    def every_state(
+        self, user: User, workspace_id: uuid.UUID, source_system_id: uuid.UUID | None
+    ) -> list[Kpi]:
+        """Every KPI of one scope (a Source System, or ``None``: the Data Warehouse) in every
+        review state, by name: what the AI is shown so it suggests only different ones
+        (owners and editors, ``kpi.view_review``)."""
+        kpis: list[Kpi] = []
+        cursor: str | None = None
+        while True:
+            page = self.list(
+                user,
+                workspace_id,
+                source_system_id=source_system_id,
+                data_warehouse=source_system_id is None,
+                review="all",
+                limit=MAX_PAGE_SIZE,
+                cursor=cursor,
+            )
+            kpis += page.items
+            if page.next_cursor is None:
+                return kpis
+            cursor = page.next_cursor
 
     def rule_suggestions(self, user: User, workspace_id: uuid.UUID) -> list[RuleSuggestion]:
         """The rule-based KPI suggestions for the DW Schema (any member): a computed list,

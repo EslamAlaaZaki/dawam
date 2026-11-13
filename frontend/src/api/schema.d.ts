@@ -4742,6 +4742,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/kpi-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kpi Suggestions
+         * @description The newest KPI suggestion job of this Source System, with its outcome once it has
+         *     succeeded (owners and editors).
+         */
+        get: operations["getKpiSuggestions"];
+        put?: never;
+        /**
+         * Start Kpi Suggestions
+         * @description Suggest KPIs for this Source System with the AI, as a background job (owners and
+         *     editors). The AI reads this system only and sees every KPI under it in every review
+         *     state; suggestions land in the Suggested tab. 409 `kpi_suggestions_running` while a job
+         *     runs for this system already.
+         */
+        post: operations["startKpiSuggestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/documentation-pack": {
         parameters: {
             query?: never;
@@ -7616,6 +7644,11 @@ export interface components {
              */
             rationale: string | null;
             /**
+             * Based On
+             * @description The source tables (`schema.table`) an AI suggestion is based on, all of its Source System; empty for other KPIs.
+             */
+            based_on: string[];
+            /**
              * Status
              * @description The sign-off, apart from the review state.
              * @enum {string}
@@ -7802,10 +7835,55 @@ export interface components {
              */
             feasibility: "computable" | "needs_mapping" | "needs_data";
         };
+        /** KpiSuggestionJob */
+        KpiSuggestionJob: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
+            /**
+             * Error
+             * @description Why the job failed; null otherwise.
+             */
+            error: string | null;
+            /**
+             * Created
+             * @description New suggested KPIs; null until the job has succeeded. Zero is a normal outcome: nothing differs from the KPIs already there.
+             */
+            created: number | null;
+            /**
+             * Dropped
+             * @description Suggestions dropped because they were based on tables outside the Source System; null until the job has succeeded.
+             */
+            dropped: number | null;
+            /**
+             * Skipped
+             * @description Suggestions skipped because a KPI of that name exists there (any review state); null until the job has succeeded.
+             */
+            skipped: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
         /** KpiSuggestions */
         KpiSuggestions: {
             /** Items */
             items: components["schemas"]["KpiSuggestion"][];
+        };
+        /** LatestKpiSuggestionJob */
+        LatestKpiSuggestionJob: {
+            /** @description The newest job; null if none ran yet. */
+            job: components["schemas"]["KpiSuggestionJob"] | null;
         };
         /** LayerApproval */
         LayerApproval: {
@@ -23767,6 +23845,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunDetailOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getKpiSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LatestKpiSuggestionJob"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startKpiSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KpiSuggestionJob"];
                 };
             };
             /** @description Validation error */

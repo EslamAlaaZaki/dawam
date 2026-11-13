@@ -7,11 +7,14 @@ Public interface. Other modules import only what is re-exported here:
   first); ``get`` / ``list`` / ``cancel`` act for a user through the workspaces policy.
   ``answer`` resumes a job that paused (a handler raises ``JobPausedError(question)`` after
   saving a checkpoint; the answer is under ``"answer"`` in its checkpoint).
+  ``latest(workspace_id, job_type, params)`` is the newest job of a type whose params
+  contain ``params`` (one job per object, e.g. per Source System; the caller authorizes).
   The worker uses ``claim_next``, ``execute``, ``heartbeat`` and ``fail_lost``.
   ``Job`` and ``JobPage`` are what it returns.
 - ``JobRunner`` (the handlers by job type): a module registers ``handler(params, ctx)``
   for its type in ``dawam.job_handlers``; ``ctx`` is a ``JobContext`` (``job_id``,
-  ``progress``, ``log``, ``raise_if_cancelled``, ``checkpoint``, ``save_checkpoint``).
+  ``progress``, ``log``, ``raise_if_cancelled``, ``checkpoint``, ``save_checkpoint``,
+  ``set_result``: a small JSON outcome kept on the job as ``Job.result``).
   ``QueuedJobRunner`` leaves jobs for the worker process; ``InlineJobRunner`` runs them
   as soon as they are committed (tests).
 - ``JobService.cancel_for_workspace``: the ``WorkspaceArchivedHook`` the composition

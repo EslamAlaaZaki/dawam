@@ -548,7 +548,7 @@ There are 35 tools.
 | `propose_changes` | Propose descriptions, tags, sensitivity flags, classifications, SCD hints for source tables/columns, and accept/reject inferred relationships → **Change Set** |
 | `propose_check_fix` | Propose the exact changes that fix a failed score check → Change Set |
 | `propose_kpi_links` | Propose KPI → DW column links and formula SQL → Change Set |
-| `suggest_kpis` | Create **suggested** KPIs with a rationale, waiting in the Suggested tab for an owner or editor to accept or reject (existing KPIs are never changed) |
+| `suggest_kpis` | Create **suggested** KPIs with a rationale and the source tables each is `based_on`, waiting in the Suggested tab for an owner or editor to accept or reject (existing KPIs are never changed). Called first without suggestions it returns every KPI of the scope in every review state. Under a Source System a suggestion based on no table, or on a table outside it, is dropped and counted (`dropped`); a name already in the scope is skipped (#597) |
 | `generate_dw_schema` | Generate or regenerate the DW's Core and Mart Layers (Kimball facts and dimensions) from staging tables, source schemas, KPIs and documents → one Change Set (runs as a job) |
 | `draft_mappings` | Draft branches, column mappings and lookups for Core/Mart tables from the Layer below → one Change Set |
 | `generate_file` | Save a file: Markdown the model writes (gaps report, KPI docs, documentation) or an export (`ddl`, `mapping_sheet`, `data_dictionary`). If the file exists, returns a diff and overwrites only with `replace=true` after the user agrees |
@@ -866,6 +866,8 @@ RAG over documents is only one source. The agent also grounds its answers throug
 ---
 
 ## 9. Background agent jobs
+
+**KPI suggestion jobs (#597).** Besides `assistant_task`, the `kpi_suggest` job (`assistant/kpi_suggestions.py`, `KpiSuggestionJobs`) suggests KPIs for one Source System, started by the **Suggest KPIs** button (`POST /workspaces/{id}/systems/{id}/kpi-suggestions`, owners and editors who may ask the assistant). One runs per system at a time (an advisory lock plus `JobService.latest`, 409 `kpi_suggestions_running`). The handler re-checks the member, then runs `run_agent` with `SYSTEM_PROMPT + KPI_JOB_PROMPT` over `ScopedKpiTools`: the job's bound tools narrowed to `search_catalog`, `get_object` (source objects only), `get_profile`, `get_relationships`, `search_documents` and `suggest_kpis`, with `system_id` removed from their schemas and set by the job on every call, so the model cannot choose the scope. The task (quoted as data) names the system, its tables and every KPI under it in every review state. A cap of 40 tool calls, no checkpoint or plan. It ends with `JobContext.set_result({"created", "dropped", "skipped"})` (kept as `jobs.result`), which `GET .../kpi-suggestions` returns with the newest job; zero created is a success.
 
 - The model calls `start_job` with a complete task (or a long tool like `generate_dw_schema` starts one); a row is queued in the `jobs` table with type `assistant_task`.
 - The **worker process** (`python -m dawam worker`, `worker.py`) claims jobs one at a time with `SELECT … FOR UPDATE SKIP LOCKED` (highest `priority` first, then oldest; #391), sends heartbeats, and fails jobs whose worker died. Tests run jobs inline (`InlineJobRunner`).
