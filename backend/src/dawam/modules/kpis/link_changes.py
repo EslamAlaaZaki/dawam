@@ -22,7 +22,7 @@ from dawam.modules.workspaces import Action
 from dawam.platform.errors import ApiError
 
 from .links import check_links, link_ids, validate_formula, write_links
-from .tables import SQL_MAX_LENGTH, KpiRecord
+from .tables import CATALOG_STATES, SQL_MAX_LENGTH, KpiRecord
 
 FIELDS = ("formula_sql", "links")
 
@@ -152,8 +152,11 @@ class KpiLinkHandler:
     ) -> KpiRecord | None:
         if object_id is None:
             return None
+        # A suggested or rejected KPI is not in the KPIs tab: as missing as a deleted one.
         query = sa.select(KpiRecord).where(
-            KpiRecord.id == object_id, KpiRecord.workspace_id == workspace_id
+            KpiRecord.id == object_id,
+            KpiRecord.workspace_id == workspace_id,
+            KpiRecord.review_state.in_(CATALOG_STATES),
         )
         if lock:
             query = query.with_for_update()

@@ -64,6 +64,8 @@ class RuleSuggestion:
     table_name: str
     column_ids: tuple[uuid.UUID, ...]
     """The DW columns the KPI will link to."""
+    column_labels: tuple[str, ...]
+    """The same columns as ``layer.table.column``, for display."""
     feasibility: str
 
 
@@ -242,6 +244,7 @@ def _of_fact(model: _Model, fact: SchemaTable) -> list[RuleSuggestion]:
             layer=fact.layer,
             table_name=fact.name,
             column_ids=tuple(c.id for c in links),
+            column_labels=tuple(f"{fact.layer}.{fact.name}.{c.name}" for c in links),
             feasibility=feasibility_of(inputs, model.columns, model.state.mapped),
         )
 

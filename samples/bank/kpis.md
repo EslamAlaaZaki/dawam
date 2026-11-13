@@ -1,6 +1,6 @@
 # Bank sample: KPIs to enter by hand
 
-Nine KPIs for the demo's KPI step. Enter each one with **Add KPI** in the KPIs folder named in "Enter under": a Source System's **KPIs** folder (under Systems) or **Data Warehouse > KPIs** for the ones that need both systems. Copy the fields as they are; leave **Formula SQL** empty, because it is written against the DW Schema once the warehouse exists (the assistant can propose it then).
+Nine KPIs for the demo's KPI step. Enter each one with **Add KPI** in the KPIs folder named in "Enter under": a Source System's **KPIs** folder (under Systems) or **Data Warehouse > KPIs** for the ones that need both systems (there the button is **+ Add cross-system KPI**). Copy the fields as they are. Pick **Unit**, **Aggregation** and **Refresh frequency** from their lists, or choose **Other…** and type the value when it isn't listed. Enter each target as one row with a **Label** and a **Value**: for `FY2026: 35%`, the label is `FY2026` and the value is `35%`. Leave **Formula SQL** empty, because it is written against the DW Schema once the warehouse exists (the assistant can propose it then).
 
 Every KPI can be computed from the sample data. The data covers calendar year 2025 and is as of 31 December 2025.
 

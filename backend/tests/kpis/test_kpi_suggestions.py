@@ -188,8 +188,9 @@ def test_a_dismissed_suggestion_stays_hidden(roles: RoleClients, model):
     # it does not come back when the model changes
     map_mart_amount(roles, model)
     assert "Average of fee (fact_loan)" not in by_name(roles)
+    # a rejected suggestion is accepted after all (see test_kpi_rule_review)
     accept = roles.client("editor").post(f"{suggestions_path(roles)}/accept", json={"key": key})
-    assert accept.status_code == 404
+    assert accept.status_code == 201
 
 
 def test_a_dismissal_survives_a_measure_moving_to_the_mart(roles: RoleClients, model):

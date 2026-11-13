@@ -38,10 +38,11 @@ from starlette.routing import BaseRoute, Route
 from dawam.modules.auth import AuthService, Invitations
 from dawam.modules.changesets import ChangeSetService, ProposedItem
 from dawam.modules.jobs import InlineJobRunner, JobPausedError, JobService, QueuedJobRunner
+from dawam.modules.kpis import KpiService, KpiSuggestion
 from dawam.modules.llm import FakeAdapter
 from dawam.modules.mail import MailService
 from dawam.modules.notifications import NotificationService
-from dawam.modules.sources import EXTRACT_JOB, SnapshotService
+from dawam.modules.sources import EXTRACT_JOB, SnapshotService, SourceSystemService
 from dawam.modules.sources.internal.connector import ColumnInfo, SourceCatalog, TableInfo
 from dawam.modules.warehouse import EvaluationService, Finding, FindingItem, ModelService
 from dawam.modules.workspaces import WorkspaceService
@@ -209,10 +210,11 @@ def system_id(roles: RoleClients) -> uuid.UUID:
 
 
 def kpi_id(roles: RoleClients) -> uuid.UUID:
-    """A KPI of the Workspace (the owner adds it through the API once)."""
+    """A KPI of the Workspace (the owner adds it through the API once), or the suggested one
+    ``suggested_kpi`` made, which sorts first."""
     owner = roles.client("owner")
     path = f"/api/v1/workspaces/{roles.workspace_id}/kpis"
-    listed = owner.get(path).json()["items"]
+    listed = owner.get(path, params={"review": "all"}).json()["items"]
     if listed:
         return uuid.UUID(listed[0]["id"])
     response = owner.post(path, json={"name": "Customer count"})
@@ -505,6 +507,15 @@ def dw_table_id(roles: RoleClients) -> str:
     return response.json()["id"]
 
 
+def dw_model_table(roles: RoleClients) -> str:
+    """A Core table as ``core.table`` (``dw_table_id`` adds one unless there is one), for a
+    cross-system AI KPI suggestion to be based on."""
+    dw_table_id(roles)
+    path = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse/tables"
+    listed = roles.client("owner").get(path, params={"layer": "core"}).json()["items"]
+    return f"core.{listed[0]['name']}"
+
+
 def dw_column_id(roles: RoleClients) -> str:
     """A measure of that fact."""
     table = dw_table_id(roles)
@@ -750,6 +761,32 @@ def run_id(roles: RoleClients) -> uuid.UUID:
             {"id": run, "c": cid, "q": question, "a": answer, "now": now},
         )
     return run
+
+
+def suggested_kpi(roles: RoleClients) -> None:
+    """An AI-suggested KPI waiting for review, made through the kpis module (create-only:
+    it is made once); ``kpi_id`` names it."""
+    state = roles.app.state
+    clock = state.services.clock
+    workspaces = WorkspaceService(state.engine, clock=clock)
+    roles.client("owner")  # the owner is a member from now on
+    based_on = dw_model_table(roles)  # a Data Warehouse suggestion is cross-system
+    KpiService(
+        state.engine,
+        workspaces=workspaces,
+        systems=SourceSystemService(state.engine, workspaces=workspaces, clock=clock),
+        clock=clock,
+    ).suggest(
+        roles.user("owner"),
+        roles.workspace_id,
+        [
+            KpiSuggestion(
+                name="A suggested KPI",
+                rationale="The ledger points to it.",
+                based_on=(based_on,),
+            )
+        ],
+    )
 
 
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {

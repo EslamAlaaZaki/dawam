@@ -344,11 +344,17 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               // A different folder starts with no KPI open.
               key={folder.id}
               workspace={workspace.data}
-              scope={{ systemId: kpiSystem?.id ?? null }}
+              scope={{ systemId: kpiSystem?.id ?? null, workspaceWide: kpiSystem == null }}
               title={
                 kpiSystem ? `KPIs of ${kpiSystem.name}` : "Data Warehouse KPIs"
               }
+              description={
+                kpiSystem
+                  ? `Business metrics based on ${kpiSystem.name}: what they mean and how they are calculated.`
+                  : "Every KPI in the Workspace: KPIs from each Source System and KPIs that span systems."
+              }
               hideTitle={kpiSystem != null}
+              systemName={kpiSystem?.name}
             />
           ) : folder.id === "document-index" ? (
             <IndexStatusPanel workspace={workspace.data} />

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections import defaultdict
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -12,7 +13,11 @@ from sqlalchemy.orm import Session
 from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
-from dawam.modules.sources import SourceSystemService
+from dawam.modules.sources import (
+    SourceSystemService,
+    source_table_names,
+    workspace_source_table_names,
+)
 from dawam.modules.warehouse import (
     DwSchema,
     SchemaColumn,
@@ -22,7 +27,12 @@ from dawam.modules.warehouse import (
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
-from dawam.platform.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
+from dawam.platform.pagination import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    encode_cursor,
+)
 from dawam.platform.pii_validators import redact_text
 
 from .links import (
@@ -30,6 +40,7 @@ from .links import (
     described,
     drop_links,
     link_ids,
+    restore_links,
     validate_formula,
     write_links,
 )
@@ -43,6 +54,7 @@ from .suggestions import (
 )
 from .tables import (
     AGGREGATION_MAX_LENGTH,
+    CATALOG_STATES,
     MAX_TARGETS,
     NAME_MAX_LENGTH,
     OWNER_MAX_LENGTH,
@@ -110,12 +122,36 @@ class Kpi:
     version: int
     created_at: datetime
     updated_at: datetime
+    review_state: str = "live"
+    """``live``, ``suggested``, ``accepted`` or ``rejected``; apart from ``status``."""
+    decision: str | None = None
+    """``added`` (live), ``accepted``, ``rejected`` or ``removed``; ``None`` while suggested."""
+    decided_by: uuid.UUID | None = None
+    """Who added the KPI by hand or decided on the suggestion."""
+    decided_at: datetime | None = None
+    link_count: int = 0
+    """How many DW columns the KPI links to."""
+    feasibility: str | None = None
+    """``computable``, ``needs_mapping`` or ``needs_data``; ``None`` without links."""
+    based_on: list[str] = field(default_factory=list)
+    """The source tables (``schema.table``) an AI suggestion is based on."""
 
 
 @dataclass(frozen=True)
 class KpiPage:
     items: list[Kpi]
     next_cursor: str | None
+    rule_suggestions: list[RuleSuggestion] = field(default_factory=list)
+    """Open rule-based suggestions (first page, when asked for)."""
+    rejected_rule_suggestions: list[RejectedRuleSuggestion] = field(default_factory=list)
+    """Dismissed rule-based suggestions (first page, when asked for)."""
+
+
+@dataclass(frozen=True)
+class RejectedRuleSuggestion:
+    suggestion: RuleSuggestion
+    decided_by: uuid.UUID | None
+    decided_at: datetime
 
 
 @dataclass(frozen=True)
@@ -180,6 +216,13 @@ class KpiSuggestion:
     formula_text: str = ""
     unit: str = ""
     aggregation: str = ""
+    based_on: Sequence[str] = ()
+    """The tables it uses. Under a Source System: ``schema.table``, each a table of that
+    system. Under the Data Warehouse: Source System tables as ``SYSTEM.schema.table`` (its
+    System Code first) and DW model tables as ``core.table`` or ``mart.table``, spanning two
+    or more Source Systems or including a DW model table."""
+    formula_sql: str = ""
+    """Under the Data Warehouse once its model exists: the formula against the DW Schema."""
 
 
 @dataclass(frozen=True)
@@ -187,14 +230,98 @@ class SuggestedKpis:
     created: list[Kpi]
     skipped: list[str]
     """Names of suggestions left out because a KPI of that name already exists."""
+    dropped: list[str] = field(default_factory=list)
+    """Names of suggestions left out because of the tables they are based on: none, one
+    outside the Source System or, under the Data Warehouse, only one Source System's."""
+    without_sql: list[str] = field(default_factory=list)
+    """Names of Data Warehouse suggestions created without their formula SQL (words only)
+    because it did not fit the DW Schema."""
+
+
+@dataclass(frozen=True)
+class CrossSystemReadiness:
+    """Whether a Workspace can have cross-system KPIs suggested (spec story 75)."""
+
+    source_systems: int
+    """Its Source Systems (deleted ones not counted)."""
+    dw_model: bool
+    """Whether the DW model exists: Core or Mart has tables."""
+
+    @property
+    def ready(self) -> bool:
+        return self.source_systems >= 2 or self.dw_model
 
 
 def _name_key(name: str) -> str:
     return " ".join(name.lower().split())
 
 
-def _view(record: KpiRecord) -> Kpi:
+def _dw_model(schema: DwSchema | None) -> DwSchema | None:
+    """The DW Schema when the DW model exists (Core or Mart has tables)."""
+    return schema if schema is not None and schema.tables else None
+
+
+def _dw_table_names(schema: DwSchema | None) -> dict[str, str]:
+    """The DW model's tables as ``core.table`` / ``mart.table`` (the Layer's schema name), keyed
+    in lower case by that name and by the Layer's own name."""
+    if schema is None:
+        return {}
+    names: dict[str, str] = {}
+    for table in schema.tables:
+        shown = f"{schema.layer_schemas.get(table.layer, table.layer)}.{table.name}"
+        names[shown.lower()] = shown
+        names[f"{table.layer}.{table.name}".lower()] = shown
+    return names
+
+
+def _cross_system(
+    wanted: Sequence[str],
+    sources: Mapping[str, tuple[str, uuid.UUID]],
+    dw_tables: Mapping[str, str],
+) -> list[str] | None:
+    """The tables a Data Warehouse suggestion is based on, as stored; ``None`` (drop it) unless
+    every one is a Source System or DW model table and together they span two or more Source
+    Systems or include a DW model table."""
+    found: list[str] = []
+    systems: set[uuid.UUID] = set()
+    uses_model = False
+    for name in (t.strip() for t in wanted):
+        if not name:
+            continue
+        if name.lower() in dw_tables:
+            found.append(dw_tables[name.lower()])
+            uses_model = True
+        elif name.lower() in sources:
+            shown, system_id = sources[name.lower()]
+            found.append(shown)
+            systems.add(system_id)
+        else:
+            return None
+    if not uses_model and len(systems) < 2:
+        return None
+    return list(dict.fromkeys(found))
+
+
+def _decision(record: KpiRecord) -> tuple[str | None, uuid.UUID | None, datetime | None]:
+    if record.review_state == "live":
+        return "added", record.created_by, record.created_at
+    if record.review_state == "suggested":
+        return None, None, None
+    if record.review_state == "rejected" and record.removed:
+        return "removed", record.decided_by, record.decided_at
+    return record.review_state, record.decided_by, record.decided_at
+
+
+def _view(record: KpiRecord, *, link_count: int = 0, feasibility: str | None = None) -> Kpi:
+    decision, decided_by, decided_at = _decision(record)
     return Kpi(
+        review_state=record.review_state,
+        decision=decision,
+        decided_by=decided_by,
+        decided_at=decided_at,
+        link_count=link_count,
+        feasibility=feasibility,
+        based_on=list(record.based_on or []),
         id=record.id,
         workspace_id=record.workspace_id,
         source_system_id=record.source_system_id,
@@ -226,6 +353,10 @@ def _snapshot(record: KpiRecord) -> dict[str, Any]:
 
 def _not_found() -> ApiError:
     return ApiError(404, "not_found", "KPI not found.")
+
+
+def _not_in_catalog(record: KpiRecord, message: str) -> ApiError:
+    return ApiError(409, "invalid_review_state", message, {"review_state": record.review_state})
 
 
 def _invalid(message: str, field: str) -> ApiError:
@@ -359,13 +490,22 @@ class KpiService:
         *,
         source_system_id: uuid.UUID | None = None,
     ) -> SuggestedKpis:
-        """Create the AI's suggestions as draft KPIs (``origin`` ``ai``, with a rationale),
-        under a Source System or the Data Warehouse. Create-only: a suggestion whose name
-        matches an existing KPI of the Workspace (ignoring case and spaces), or an earlier
-        suggestion, is skipped; no KPI is ever updated or deleted. One audit entry
-        ``via=ai`` per KPI. Every text is checked with the PII validators and matches are
-        redacted. 404 if the Source System is not in the Workspace; 422 ``invalid_kpi``
-        (nothing is created)."""
+        """Create the AI's suggestions as ``suggested`` KPIs (``origin`` ``ai``, with a
+        rationale, status draft) waiting for an owner or editor to accept or reject them,
+        under a Source System or the Data Warehouse. Under a Source System each suggestion
+        must be based on its tables: one based on no table, or on a table (``schema.table``,
+        ignoring case) that is not a present table of that system, is dropped. Under the Data
+        Warehouse a suggestion is cross-system: its tables (Source System tables as
+        ``SYSTEM.schema.table``, DW model tables as ``core.table`` or ``mart.table``) must all
+        exist and span two or more Source Systems or include a DW model table, or it is
+        dropped. Once the DW model exists its formula SQL is kept when it fits the DW Schema
+        (``validate_formula``), linked to the DW columns it reads (no lineage edges until it
+        is accepted); SQL that does not fit leaves it words only (``without_sql``). Create-only: a
+        suggestion whose name matches a KPI of the same scope in any review state (rejected
+        included; ignoring case and spaces), or an earlier suggestion, is skipped; no KPI is
+        ever updated or deleted. One audit entry ``via=ai`` per KPI. Every text is checked
+        with the PII validators and matches are redacted. 404 if the Source System is not in the
+        Workspace; 422 ``invalid_kpi`` (nothing is created)."""
         self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
         if source_system_id is not None:
             self._systems.get(user, workspace_id, source_system_id)
@@ -374,19 +514,51 @@ class KpiService:
             taken = {
                 _name_key(name)
                 for name in db.scalars(
-                    sa.select(KpiRecord.name).where(KpiRecord.workspace_id == workspace_id)
+                    sa.select(KpiRecord.name).where(
+                        KpiRecord.workspace_id == workspace_id,
+                        KpiRecord.source_system_id.is_(None)
+                        if source_system_id is None
+                        else KpiRecord.source_system_id == source_system_id,
+                    )
                 )
             }
+            tables = source_table_names(db, source_system_id) if source_system_id else {}
+            model = _dw_model(read_schema(db, workspace_id)) if source_system_id is None else None
+            everywhere = (
+                workspace_source_table_names(db, workspace_id) if source_system_id is None else {}
+            )
+            dw_tables = _dw_table_names(model)
             created: list[KpiRecord] = []
+            links: dict[uuid.UUID, list[uuid.UUID]] = {}
             skipped: list[str] = []
+            dropped: list[str] = []
+            without_sql: list[str] = []
             for suggestion in suggestions:
                 name = _clean(
                     redact_text(suggestion.name), "name", "name", NAME_MAX_LENGTH, required=True
                 )
+                based_on: list[str] | None
+                if source_system_id is not None:
+                    wanted = [t.strip().lower() for t in suggestion.based_on if t.strip()]
+                    based_on = (
+                        list(dict.fromkeys(tables[t] for t in wanted))
+                        if wanted and all(t in tables for t in wanted)
+                        else None
+                    )
+                else:
+                    based_on = _cross_system(suggestion.based_on, everywhere, dw_tables)
+                if based_on is None:
+                    dropped.append(name)
+                    continue
                 if _name_key(name) in taken:
                     skipped.append(name)
                     continue
                 taken.add(_name_key(name))
+                sql, columns = None, []
+                if model is not None and suggestion.formula_sql.strip():
+                    sql, columns = _suggested_formula(db, workspace_id, model, suggestion)
+                    if sql is None:
+                        without_sql.append(name)
                 texts = {
                     field: _clean(redact_text(value), label, field, limit)
                     for field, value in (
@@ -405,13 +577,15 @@ class KpiService:
                     owner="",
                     refresh_frequency="",
                     targets=[],
-                    formula_sql=None,
+                    formula_sql=sql,
                     origin="ai",
                     rationale=_clean(
                         redact_text(suggestion.rationale), "rationale", "rationale", TEXT_MAX_LENGTH
                     )
                     or None,
                     status="draft",
+                    review_state="suggested",
+                    based_on=based_on,
                     created_by=user.id,
                     created_at=now,
                     updated_at=now,
@@ -420,6 +594,13 @@ class KpiService:
                 )
                 db.add(record)
                 created.append(record)
+                links[record.id] = columns
+            db.flush()
+            for record in created:
+                # Stored for Feasibility; lineage edges only once accepted (``_decide``).
+                db.add_all(
+                    KpiLinkRecord(kpi_id=record.id, dw_column_id=i) for i in links[record.id]
+                )
             db.flush()
             for record in created:
                 record_audit(
@@ -429,29 +610,92 @@ class KpiService:
                     entity_type="kpi",
                     entity_id=record.id,
                     old=None,
-                    new={**_snapshot(record), "origin": "ai", "rationale": record.rationale},
+                    new={
+                        **_snapshot(record),
+                        "origin": "ai",
+                        "rationale": record.rationale,
+                        "based_on": record.based_on,
+                        "review_state": "suggested",
+                        **(
+                            {"links": sorted(str(i) for i in links[record.id])}
+                            if links[record.id]
+                            else {}
+                        ),
+                    },
                     at=now,
                     via="ai",
                 )
                 self._record_activity(db, user, "kpi.created", record, details={"via": "ai"})
-            return SuggestedKpis(created=[_view(r) for r in created], skipped=skipped)
+            return SuggestedKpis(
+                created=_views(db, workspace_id, created),
+                skipped=skipped,
+                dropped=dropped,
+                without_sql=without_sql,
+            )
+
+    def cross_system_readiness(self, user: User, workspace_id: uuid.UUID) -> CrossSystemReadiness:
+        """Whether cross-system KPIs can be suggested (any member): at least two Source
+        Systems (deleted ones not counted), or the DW model exists (Core or Mart has tables)."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        systems = 0
+        cursor: str | None = None
+        while True:
+            page = self._systems.list(user, workspace_id, limit=MAX_PAGE_SIZE, cursor=cursor)
+            systems += len(page.items)
+            if page.next_cursor is None:
+                break
+            cursor = page.next_cursor
+        with Session(self._engine) as db:
+            model = _dw_model(read_schema(db, workspace_id))
+        return CrossSystemReadiness(source_systems=systems, dw_model=model is not None)
+
+    def every_state(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        source_system_id: uuid.UUID | None,
+        *,
+        workspace_wide: bool = False,
+    ) -> list[Kpi]:
+        """Every KPI of one scope (a Source System, or ``None``: the Data Warehouse) or, with
+        ``workspace_wide``, of the whole Workspace, in every review state, by name: what the
+        AI is shown so it suggests only different ones (owners and editors,
+        ``kpi.view_review``)."""
+        kpis: list[Kpi] = []
+        cursor: str | None = None
+        while True:
+            page = self.list(
+                user,
+                workspace_id,
+                source_system_id=source_system_id,
+                data_warehouse=source_system_id is None and not workspace_wide,
+                review="all",
+                limit=MAX_PAGE_SIZE,
+                cursor=cursor,
+            )
+            kpis += page.items
+            if page.next_cursor is None:
+                return kpis
+            cursor = page.next_cursor
 
     def rule_suggestions(self, user: User, workspace_id: uuid.UUID) -> list[RuleSuggestion]:
         """The rule-based KPI suggestions for the DW Schema (any member): a computed list,
         not KPIs. Left out are the dismissed ones and those whose name is already a KPI's
-        (an accepted one). Empty before the Data Warehouse is set up."""
+        in the KPIs tab (an accepted one). Empty before the Data Warehouse is set up."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
             return self._open_suggestions(db, workspace_id)[0]
 
     def accept_suggestion(self, user: User, workspace_id: uuid.UUID, key: str) -> Kpi:
-        """Accept a rule-based suggestion: a draft Data Warehouse KPI (``origin`` ``rule``)
-        with its formula SQL and links to the measures, audited like any new KPI. 404 if no
-        such suggestion is open (it was dismissed, accepted or is gone)."""
+        """Accept a rule-based suggestion: a draft Data Warehouse KPI (``origin`` ``rule``,
+        review state ``accepted``, the decision recorded) with its formula SQL and links to
+        the measures, audited like any new KPI. A dismissed suggestion can be accepted after
+        all: the dismissal is cleared. 404 if no such suggestion is open (it was accepted or
+        is gone)."""
         self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
         now = self._clock()
         with Session(self._engine) as db, db.begin():
-            open_ones, schema = self._open_suggestions(db, workspace_id)
+            open_ones, schema = self._open_suggestions(db, workspace_id, include_dismissed=True)
             suggestion = next((s for s in open_ones if s.key == key), None)
             if suggestion is None or schema is None:
                 raise ApiError(404, "not_found", "Suggestion not found.")
@@ -472,12 +716,19 @@ class KpiService:
                 origin="rule",
                 rationale=None,
                 status="draft",
+                review_state="accepted",
+                suggestion_key=key,
+                decided_by=user.id,
+                decided_at=now,
                 created_by=user.id,
                 created_at=now,
                 updated_at=now,
                 version=1,
             )
             db.add(record)
+            dismissal = db.get(KpiSuggestionDismissalRecord, (workspace_id, key))
+            if dismissal is not None:
+                db.delete(dismissal)
             db.flush()
             write_links(db, record.id, suggestion.column_ids)
             record_audit(
@@ -495,28 +746,71 @@ class KpiService:
                 at=now,
             )
             self._record_activity(db, user, "kpi.created", record, details={"origin": "rule"})
-            return _view(record)
+            return _views(db, workspace_id, [record])[0]
 
     def dismiss_suggestion(self, user: User, workspace_id: uuid.UUID, key: str) -> None:
-        """Hide a rule-based suggestion for good (owners and editors); dismissing one that
-        is already hidden is fine. 404 if there is no such suggestion."""
+        """Reject a rule-based suggestion (owners and editors): it is hidden for good and
+        audited like any review decision; rejecting one that is already rejected is fine.
+        404 if there is no such suggestion, 409 ``invalid_review_state`` if it was accepted
+        and its KPI is in the KPIs tab."""
         self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
         with Session(self._engine) as db, db.begin():
             schema = read_schema(db, workspace_id)
-            known = schema is not None and any(
-                s.key == key for s in suggest(schema, read_mapping_state(db, workspace_id))
-            )
-            if not known:
-                raise ApiError(404, "not_found", "Suggestion not found.")
-            if db.get(KpiSuggestionDismissalRecord, (workspace_id, key)) is None:
-                db.add(
-                    KpiSuggestionDismissalRecord(
-                        workspace_id=workspace_id,
-                        key=key,
-                        dismissed_by=user.id,
-                        dismissed_at=self._clock(),
-                    )
+            found = None
+            if schema is not None:
+                found = next(
+                    (
+                        s
+                        for s in suggest(schema, read_mapping_state(db, workspace_id))
+                        if s.key == key
+                    ),
+                    None,
                 )
+            if found is None:
+                raise ApiError(404, "not_found", "Suggestion not found.")
+            state = db.scalar(
+                sa.select(KpiRecord.review_state).where(
+                    KpiRecord.workspace_id == workspace_id,
+                    KpiRecord.suggestion_key == key,
+                    KpiRecord.review_state.in_(CATALOG_STATES),
+                )
+            )
+            if state is not None:
+                raise ApiError(
+                    409,
+                    "invalid_review_state",
+                    "This suggestion is already a KPI in the KPIs tab; delete the KPI instead.",
+                    {"review_state": state},
+                )
+            if db.get(KpiSuggestionDismissalRecord, (workspace_id, key)) is not None:
+                return
+            now = self._clock()
+            db.add(
+                KpiSuggestionDismissalRecord(
+                    workspace_id=workspace_id, key=key, dismissed_by=user.id, dismissed_at=now
+                )
+            )
+            record_audit(
+                db,
+                workspace_id=workspace_id,
+                actor_id=user.id,
+                entity_type="kpi_suggestion",
+                entity_id=key,
+                old={"review_state": "suggested"},
+                new={"review_state": "rejected", "name": found.name},
+                at=now,
+            )
+            record_activity(
+                db,
+                workspace_id=workspace_id,
+                actor_id=user.id,
+                verb="kpi.rejected",
+                object_type="kpi_suggestion",
+                object_id=key,
+                object_label=found.name,
+                details={"origin": "rule"},
+                at=now,
+            )
 
     def feasibility(self, user: User, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> KpiFeasibility:
         """Whether a KPI (a rule or an AI suggestion, or any other) can be computed (any
@@ -525,27 +819,16 @@ class KpiService:
         or the formula names what the DW Schema lacks."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
-            record = self._load(db, workspace_id, kpi_id)
+            record = self._load_visible(db, user, workspace_id, kpi_id)
             schema = read_schema(db, workspace_id)
             if schema is None:
                 return KpiFeasibility(NEEDS_DATA, [])
-            inputs = set(link_ids(db, kpi_id))
-            if record.formula_sql:
-                read = formula_columns(schema, record.formula_sql)
-                if read is None:
-                    return KpiFeasibility(NEEDS_DATA, [])
-                inputs |= read
-            if not inputs:
-                return KpiFeasibility(NEEDS_DATA, [])
-            mapped = read_mapping_state(db, workspace_id).mapped
-            columns = {c.id: c for t in schema.tables for c in t.columns}
-            state = feasibility_of(inputs, columns, mapped)
-            unmapped = sorted(
-                f"{columns[i].table_name}.{columns[i].name}"
-                for i in inputs
-                if i in columns and i not in mapped
+            return _feasibility(
+                schema,
+                read_mapping_state(db, workspace_id).mapped,
+                set(link_ids(db, kpi_id)),
+                record.formula_sql,
             )
-            return KpiFeasibility(state, unmapped if state != COMPUTABLE else [])
 
     def list(
         self,
@@ -554,12 +837,25 @@ class KpiService:
         *,
         source_system_id: uuid.UUID | None = None,
         data_warehouse: bool = False,
+        review: str = "catalog",
+        rule_suggestions: bool = False,
         limit: int = DEFAULT_PAGE_SIZE,
         cursor: str | None = None,
     ) -> KpiPage:
         """The Workspace's KPIs (any member), by name; narrowed to one Source System's or
-        to the Data Warehouse's. 422 ``invalid_filter`` if both are asked for."""
-        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        to the Data Warehouse's. ``review`` ``catalog``: the KPIs tab (live and accepted);
+        ``all``: suggested and rejected KPIs too (owners and editors, ``kpi.view_review``).
+        ``rule_suggestions`` (with ``review`` ``all``) adds the open and the dismissed
+        rule-based suggestions to the first page, so the Data Warehouse page needs one
+        request. 422 ``invalid_filter`` if both scopes are asked for, or the suggestions
+        without ``review`` ``all``."""
+        self._workspaces.authorize(
+            user,
+            Action.VIEW_KPI_REVIEW if review == "all" else Action.VIEW_WORKSPACE,
+            workspace_id,
+        )
+        if rule_suggestions and review != "all":
+            raise ApiError(422, "invalid_filter", "Rule suggestions come with `review=all` only.")
         if source_system_id is not None and data_warehouse:
             raise ApiError(
                 422,
@@ -574,6 +870,8 @@ class KpiService:
             .order_by(KpiRecord.name, KpiRecord.id)
             .limit(limit + 1)
         )
+        if review != "all":
+            query = query.where(KpiRecord.review_state.in_(CATALOG_STATES))
         if source_system_id is not None:
             query = query.where(KpiRecord.source_system_id == source_system_id)
         elif data_warehouse:
@@ -589,17 +887,38 @@ class KpiService:
             query = query.where(sa.tuple_(KpiRecord.name, KpiRecord.id) > (after_name, after))
         with Session(self._engine) as db:
             records = list(db.scalars(query))
-        page = records[:limit]
+            page = records[:limit]
+            items = _views(db, workspace_id, page)
+            open_ones: list[RuleSuggestion] = []
+            rejected: list[RejectedRuleSuggestion] = []
+            if rule_suggestions and cursor is None:
+                open_ones = self._open_suggestions(db, workspace_id)[0]
+                rejected = self._rejected_suggestions(db, workspace_id)
         next_cursor = (
             encode_cursor(page[-1].name, str(page[-1].id)) if len(records) > limit else None
         )
-        return KpiPage(items=[_view(r) for r in page], next_cursor=next_cursor)
+        return KpiPage(
+            items=items,
+            next_cursor=next_cursor,
+            rule_suggestions=open_ones,
+            rejected_rule_suggestions=rejected,
+        )
 
-    def get(self, user: User, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> Kpi:
-        """Open a KPI (any member). 404 if it is not in ``workspace_id``."""
+    def get(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        kpi_id: uuid.UUID,
+        *,
+        catalog_only: bool = False,
+    ) -> Kpi:
+        """Open a KPI (any member). A suggested or rejected one opens only for owners and
+        editors (``kpi.view_review``), and never with ``catalog_only`` (the assistant's
+        reads). 404 if it is not in ``workspace_id``."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
-            return _view(self._load(db, workspace_id, kpi_id))
+            record = self._load_visible(db, user, workspace_id, kpi_id, catalog_only=catalog_only)
+            return _views(db, workspace_id, [record])[0]
 
     def update(
         self,
@@ -614,10 +933,13 @@ class KpiService:
         ``definition``, ``formula_text``, ``formula_sql`` (``None`` clears it), ``unit``,
         ``aggregation``, ``owner``, ``refresh_frequency``, ``targets`` (a list of
         ``KpiTarget``) and ``status``); the others stay. A stale ``version`` is 409
-        ``version_conflict``."""
+        ``version_conflict``; a suggested or rejected KPI is 409 ``invalid_review_state``
+        (accept it first)."""
         self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
         with Session(self._engine) as db, db.begin():
             record = self._load(db, workspace_id, kpi_id, lock=True)
+            if record.review_state not in CATALOG_STATES:
+                raise _not_in_catalog(record, "Accept this KPI before editing it.")
             if record.version != version:
                 raise ApiError(
                     409,
@@ -646,7 +968,7 @@ class KpiService:
             after = _snapshot(record)
             changed = [f for f in AUDITED_FIELDS if before[f] != after[f]]
             if not changed:
-                return _view(record)
+                return _views(db, workspace_id, [record])[0]
             record.version += 1
             now = self._clock()
             record.updated_at = now
@@ -668,13 +990,22 @@ class KpiService:
                 record,
                 details={"fields": changed},
             )
-            return _view(record)
+            return _views(db, workspace_id, [record])[0]
 
     def delete(self, user: User, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> None:
-        """Delete a KPI (owners and editors). The audit trail keeps what it held."""
+        """Delete a KPI (owners and editors). One added by hand (or by a rule) is deleted,
+        the audit trail keeping what it held. One that came from an AI suggestion is not:
+        an accepted one moves to ``rejected`` as removed ("Removed by"), a suggested one is
+        rejected, so the suggestion never comes back on its own."""
         self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
         with Session(self._engine) as db, db.begin():
             record = self._load(db, workspace_id, kpi_id, lock=True)
+            if record.review_state != "live":
+                if record.review_state != "rejected":
+                    self._decide(
+                        db, user, record, "rejected", removed=record.review_state == "accepted"
+                    )
+                return
             now = self._clock()
             record_audit(
                 db,
@@ -690,11 +1021,77 @@ class KpiService:
             drop_links(db, record.id)
             db.delete(record)
 
+    def accept(self, user: User, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> Kpi:
+        """Accept an AI-suggested KPI, or a rejected one after all (owners and editors): it
+        joins the KPIs tab as ``accepted``, its status unchanged. Audited. 409
+        ``invalid_review_state`` for a KPI that is not suggested or rejected."""
+        return self._review(user, workspace_id, kpi_id, "accepted", ("suggested", "rejected"))
+
+    def reject(self, user: User, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> Kpi:
+        """Reject an AI-suggested KPI (owners and editors): it moves to ``rejected`` and
+        counts nowhere else. Audited. 409 ``invalid_review_state`` unless it is suggested."""
+        return self._review(user, workspace_id, kpi_id, "rejected", ("suggested",))
+
+    def _review(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        kpi_id: uuid.UUID,
+        state: str,
+        allowed_from: tuple[str, ...],
+    ) -> Kpi:
+        self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            record = self._load(db, workspace_id, kpi_id, lock=True)
+            if record.review_state not in allowed_from:
+                raise ApiError(
+                    409,
+                    "invalid_review_state",
+                    f"Only a {' or '.join(allowed_from)} KPI can be {state}; "
+                    f"this one is {record.review_state}.",
+                    {"review_state": record.review_state},
+                )
+            self._decide(db, user, record, state)
+            return _views(db, workspace_id, [record])[0]
+
+    def _decide(
+        self, db: Session, user: User, record: KpiRecord, state: str, *, removed: bool = False
+    ) -> None:
+        """Move the locked ``record`` to ``state`` as ``user``'s decision, audit it and keep
+        its lineage edges only while it is in the KPIs tab (its links stay stored)."""
+        before = {"review_state": record.review_state, "removed": record.removed}
+        record.review_state = state
+        record.removed = removed
+        now = self._clock()
+        record.decided_by = user.id
+        record.decided_at = now
+        record.version += 1
+        record.updated_at = now
+        db.flush()
+        if state in CATALOG_STATES:
+            restore_links(db, record.id)
+        else:
+            drop_links(db, record.id)
+        record_audit(
+            db,
+            workspace_id=record.workspace_id,
+            actor_id=user.id,
+            entity_type="kpi",
+            entity_id=record.id,
+            old=before,
+            new={"review_state": state, "removed": removed},
+            at=now,
+        )
+        if record.suggestion_key is not None:
+            self._sync_dismissal(db, user, record, now)
+        verb = "removed" if removed else state
+        self._record_activity(db, user, f"kpi.{verb}", record)
+
     def links(self, user: User, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> KpiLinks:
         """The DW columns a KPI uses (any member), by Layer, table and position."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
-            record = self._load(db, workspace_id, kpi_id)
+            record = self._load_visible(db, user, workspace_id, kpi_id)
             return KpiLinks(
                 record.version, [_link_view(c) for c in described(db, workspace_id, kpi_id)]
             )
@@ -723,6 +1120,8 @@ class KpiService:
                     "Someone else changed this KPI since you loaded it. Reload and try again.",
                     {"current_version": record.version},
                 )
+            if record.review_state not in CATALOG_STATES:
+                raise _not_in_catalog(record, "Accept this KPI before linking it to DW columns.")
             columns = check_links(db, workspace_id, dw_column_ids)
             change = self._apply_links(db, user, record, columns)
             return KpiLinks(
@@ -731,14 +1130,16 @@ class KpiService:
             )
 
     def link_candidates(self, user: User, workspace_id: uuid.UUID) -> LinkCandidates:
-        """The KPIs that have no links or no formula SQL, with the DW Schema to propose them
-        from (any member): the AI's input for a Change Set."""
+        """The KPIs of the KPIs tab (live and accepted) that have no links or no formula SQL,
+        with the DW Schema to propose them from (any member): the AI's input for a Change
+        Set."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         linked = sa.select(KpiLinkRecord.kpi_id)
         query = (
             sa.select(KpiRecord)
             .where(
                 KpiRecord.workspace_id == workspace_id,
+                KpiRecord.review_state.in_(CATALOG_STATES),
                 sa.or_(KpiRecord.formula_sql.is_(None), KpiRecord.id.not_in(linked)),
             )
             .order_by(KpiRecord.name, KpiRecord.id)
@@ -749,23 +1150,84 @@ class KpiService:
                 kpis=[_view(r) for r in db.scalars(query)], schema=read_schema(db, workspace_id)
             )
 
-    def _open_suggestions(
+    def _sync_dismissal(self, db: Session, user: User, record: KpiRecord, now: datetime) -> None:
+        """A KPI accepted from a rule suggestion stays dismissed while it is out of the KPIs
+        tab (removed), and is not while it is in it (accepted after all)."""
+        key = record.suggestion_key
+        assert key is not None
+        dismissal = db.get(KpiSuggestionDismissalRecord, (record.workspace_id, key))
+        if record.review_state in CATALOG_STATES:
+            if dismissal is not None:
+                db.delete(dismissal)
+        elif dismissal is None:
+            db.add(
+                KpiSuggestionDismissalRecord(
+                    workspace_id=record.workspace_id,
+                    key=key,
+                    dismissed_by=user.id,
+                    dismissed_at=now,
+                )
+            )
+
+    def _rejected_suggestions(
         self, db: Session, workspace_id: uuid.UUID
+    ) -> list[RejectedRuleSuggestion]:
+        """The dismissed rule-based suggestions still in the DW Schema, by name. One whose
+        KPI was removed is the rejected KPI itself, not listed here."""
+        schema = read_schema(db, workspace_id)
+        if schema is None:
+            return []
+        dismissals = {
+            d.key: d
+            for d in db.scalars(
+                sa.select(KpiSuggestionDismissalRecord).where(
+                    KpiSuggestionDismissalRecord.workspace_id == workspace_id
+                )
+            )
+        }
+        kept = self._kpi_keys(db, workspace_id)
+        return [
+            RejectedRuleSuggestion(
+                s, dismissals[s.key].dismissed_by, dismissals[s.key].dismissed_at
+            )
+            for s in suggest(schema, read_mapping_state(db, workspace_id))
+            if s.key in dismissals and s.key not in kept
+        ]
+
+    @staticmethod
+    def _kpi_keys(db: Session, workspace_id: uuid.UUID) -> set[str]:
+        """The keys of the suggestions that became a KPI, in any review state."""
+        return set(
+            db.scalars(
+                sa.select(KpiRecord.suggestion_key).where(
+                    KpiRecord.workspace_id == workspace_id,
+                    KpiRecord.suggestion_key.is_not(None),
+                )
+            )
+        )
+
+    def _open_suggestions(
+        self, db: Session, workspace_id: uuid.UUID, *, include_dismissed: bool = False
     ) -> tuple[list[RuleSuggestion], DwSchema | None]:
         schema = read_schema(db, workspace_id)
         if schema is None:
             return [], None
-        hidden = set(
-            db.scalars(
-                sa.select(KpiSuggestionDismissalRecord.key).where(
-                    KpiSuggestionDismissalRecord.workspace_id == workspace_id
+        hidden = self._kpi_keys(db, workspace_id)
+        if not include_dismissed:
+            hidden |= set(
+                db.scalars(
+                    sa.select(KpiSuggestionDismissalRecord.key).where(
+                        KpiSuggestionDismissalRecord.workspace_id == workspace_id
+                    )
                 )
             )
-        )
         taken = {
             _name_key(name)
             for name in db.scalars(
-                sa.select(KpiRecord.name).where(KpiRecord.workspace_id == workspace_id)
+                sa.select(KpiRecord.name).where(
+                    KpiRecord.workspace_id == workspace_id,
+                    KpiRecord.review_state.in_(CATALOG_STATES),
+                )
             )
         }
         return [
@@ -806,6 +1268,28 @@ class KpiService:
         self._record_activity(db, user, "kpi.edited", record, details={"fields": ["links"]})
         return True
 
+    def _load_visible(
+        self,
+        db: Session,
+        user: User,
+        workspace_id: uuid.UUID,
+        kpi_id: uuid.UUID,
+        *,
+        catalog_only: bool = False,
+    ) -> KpiRecord:
+        """The KPI, if ``user`` may read it: one in the KPIs tab for any member, a suggested
+        or rejected one only with ``kpi.view_review`` and never with ``catalog_only``; else
+        404, as if it did not exist."""
+        record = self._load(db, workspace_id, kpi_id)
+        if record.review_state not in CATALOG_STATES:
+            if catalog_only:
+                raise _not_found()
+            try:
+                self._workspaces.authorize(user, Action.VIEW_KPI_REVIEW, workspace_id)
+            except ApiError:
+                raise _not_found() from None
+        return record
+
     def _load(
         self, db: Session, workspace_id: uuid.UUID, kpi_id: uuid.UUID, *, lock: bool = False
     ) -> KpiRecord:
@@ -845,6 +1329,55 @@ class KpiService:
         )
 
 
+def _feasibility(
+    schema: DwSchema,
+    mapped: Collection[uuid.UUID],
+    links: set[uuid.UUID],
+    formula_sql: str | None,
+) -> KpiFeasibility:
+    inputs = set(links)
+    if formula_sql:
+        read = formula_columns(schema, formula_sql)
+        if read is None:
+            return KpiFeasibility(NEEDS_DATA, [])
+        inputs |= read
+    if not inputs:
+        return KpiFeasibility(NEEDS_DATA, [])
+    columns = {c.id: c for t in schema.tables for c in t.columns}
+    state = feasibility_of(inputs, columns, mapped)
+    unmapped = sorted(
+        f"{columns[i].table_name}.{columns[i].name}"
+        for i in inputs
+        if i in columns and i not in mapped
+    )
+    return KpiFeasibility(state, unmapped if state != COMPUTABLE else [])
+
+
+def _views(db: Session, workspace_id: uuid.UUID, records: Sequence[KpiRecord]) -> list[Kpi]:
+    """The records as views with their link counts and, for those with links, their
+    feasibility: one read of the links, the DW Schema and the mappings for them all."""
+    links: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+    if records:
+        for kpi_id, column_id in db.execute(
+            sa.select(KpiLinkRecord.kpi_id, KpiLinkRecord.dw_column_id).where(
+                KpiLinkRecord.kpi_id.in_([r.id for r in records])
+            )
+        ):
+            links[kpi_id].add(column_id)
+    schema = read_schema(db, workspace_id) if links else None
+    mapped = read_mapping_state(db, workspace_id).mapped if schema is not None else set()
+    return [
+        _view(
+            r,
+            link_count=len(links.get(r.id, ())),
+            feasibility=_feasibility(schema, mapped, links[r.id], r.formula_sql).feasibility
+            if schema is not None and links.get(r.id)
+            else None,
+        )
+        for r in records
+    ]
+
+
 def _revoke_approval(
     record: KpiRecord, before: Mapping[str, Any], changes: Mapping[str, Any]
 ) -> None:
@@ -856,6 +1389,26 @@ def _revoke_approval(
         and record.formula_sql != before["formula_sql"]
     ):
         record.status = "draft"
+
+
+def _suggested_formula(
+    db: Session, workspace_id: uuid.UUID, model: DwSchema, suggestion: KpiSuggestion
+) -> tuple[str | None, list[uuid.UUID]]:
+    """An AI suggestion's formula SQL, redacted, if it fits the DW model, and the DW columns
+    it reads as its links (none if they cannot be links, e.g. a Core column a Mart column is
+    mapped from); ``(None, [])`` if the SQL does not fit."""
+    try:
+        sql = _clean_sql(redact_text(suggestion.formula_sql))
+        if sql is None:
+            return None, []
+        validate_formula(model, sql)
+    except ApiError:
+        return None, []
+    columns = sorted(formula_columns(model, sql) or ())
+    try:
+        return sql, [c.id for c in check_links(db, workspace_id, columns)]
+    except ApiError:
+        return sql, []
 
 
 def _clean_sql(value: str | None) -> str | None:

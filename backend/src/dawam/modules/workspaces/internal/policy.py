@@ -132,8 +132,11 @@ class Action(StrEnum):
     LIST_ALL_WORKSPACES = "installation.list_workspaces"
     """See every Workspace's metadata, never its content (admins only; spec §4.3)."""
     EDIT_KPI = "kpi.edit"
-    """Create, edit and delete KPIs, and move them between statuses (owners and editors;
-    spec §4.3, stories 73, 74, 80)."""
+    """Create, edit and delete KPIs, move them between statuses, and accept or reject the
+    AI's suggested KPIs (owners and editors; spec §4.3, stories 73-76, 80)."""
+    VIEW_KPI_REVIEW = "kpi.view_review"
+    """Read the KPIs folder's Suggested, Accepted and Rejected tabs (owners and editors,
+    archived Workspaces too, where they are read-only; spec §6.13)."""
     APPROVE_LAYER = "layer.approve"
     """Move the Core or Mart Layer between ``draft``, ``in_review`` and ``approved`` (owners
     and editors; spec §4.3 "Move to in review; approve a Layer (core, mart) or KPI", stories
@@ -260,6 +263,7 @@ _RULES: dict[Action, _SystemRule | _WorkspaceRule] = {
     Action.CANCEL_ANY_JOB: _WorkspaceRule(min_role="owner"),
     Action.LIST_ALL_WORKSPACES: _SystemRule(admin_only=True),
     Action.EDIT_KPI: _WorkspaceRule(min_role="editor"),
+    Action.VIEW_KPI_REVIEW: _WorkspaceRule(min_role="editor", state="any"),
     Action.APPROVE_LAYER: _WorkspaceRule(min_role="editor"),
     Action.MANAGE_SCORE_SETTINGS: _WorkspaceRule(min_role="owner"),
     Action.REQUIRE_DISTINCT_APPROVER: _WorkspaceRule(min_role="owner"),

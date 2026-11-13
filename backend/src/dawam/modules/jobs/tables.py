@@ -64,5 +64,8 @@ class JobRecord(Base):
     plan: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     """A todo list the handler keeps (``{"id", "text", "status"}`` steps), shown with the job.
     Kept after the job ends."""
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    """A small JSON outcome the handler reported (``JobContext.set_result``), e.g. how many
+    KPIs an AI suggestion job created; ``None`` if it reported none."""
     attempts: Mapped[int] = mapped_column(server_default="0")
     """How many times a worker has claimed the job (more than once: it was resumed)."""

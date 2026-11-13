@@ -6,9 +6,18 @@ Public interface. Other modules import only what is re-exported here:
   ``KpiPage``, ``KpiTarget``), under a Source System or under the Data Warehouse
   (``source_system_id`` ``None``; no Data Warehouse setup needed). Every call
   authorizes through the workspaces module's policy; every change is audited and
-  recorded as activity. ``suggest`` creates the AI's suggestions as draft KPIs
-  (``origin`` ``ai``, with a ``rationale``), create-only: it skips names that exist,
-  redacts values the PII validators match, and audits each KPI as ``via=ai``.
+  recorded as activity. A KPI has a review state apart from its status: ``live`` (added
+  by hand or by a rule), ``suggested``, ``accepted`` or ``rejected``; only live and
+  accepted KPIs (the KPIs tab) are listed by default and count in DW generation, links,
+  lineage, the score, exports and the assistant's reads. ``suggest`` creates the AI's
+  suggestions as ``suggested`` KPIs (``origin`` ``ai``, with a ``rationale``),
+  create-only: it skips names of the same scope in any review state, redacts values the
+  PII validators match, and audits each KPI as ``via=ai``. Under the Data Warehouse a
+  suggestion must be cross-system (based on tables of two or more Source Systems, or on DW
+  model tables) and, once the DW model exists, keeps formula SQL that fits it, linked to the
+  columns it reads; ``cross_system_readiness`` (``CrossSystemReadiness``) tells whether a
+  Workspace may have cross-system KPIs suggested. ``accept`` / ``reject`` decide
+  on them; ``delete`` moves a KPI that came from a suggestion to rejected ("removed").
   Formula SQL is one SELECT query validated with sqlglot against the Core and Mart tables of
   the Data Warehouse (only parsed before it is set up). ``links`` / ``set_links`` read and
   replace the DW columns a KPI uses (``KpiLinks``, ``KpiLink``), at the highest Layer
@@ -23,7 +32,7 @@ Public interface. Other modules import only what is re-exported here:
   a dismissed one stays hidden. ``feasibility`` (``KpiFeasibility``) tells for any KPI,
   an AI suggestion included, whether it is *computable*, *needs mapping* or *needs data*.
 - ``kpi_names`` (in the caller's session, no permission check): the names of the given
-  KPIs of a Workspace, for the lineage graph's ``kpi`` nodes.
+  KPIs of a Workspace in the KPIs tab, for the lineage graph's ``kpi`` nodes.
 - ``kpis_for_score`` (in the caller's session, no permission check): the Workspace's KPIs as
   the warehouse score's DW-wide KPI checks read them (``ScoreService(kpis=...)``); a change
   to a KPI or its links asks for a rescore.
@@ -43,6 +52,7 @@ Public interface. Other modules import only what is re-exported here:
   refuses a direct platform edit while a KPI holds formula SQL.
 - ``router``: ``GET|POST /workspaces/{workspace_id}/kpis``,
   ``GET|PATCH|DELETE /workspaces/{workspace_id}/kpis/{kpi_id}``,
+  ``POST /workspaces/{workspace_id}/kpis/{kpi_id}/accept|reject``,
   ``GET|PUT /workspaces/{workspace_id}/kpis/{kpi_id}/links``,
   ``GET /workspaces/{workspace_id}/kpis/{kpi_id}/feasibility``,
   ``GET /workspaces/{workspace_id}/kpis/suggestions`` and ``POST .../suggestions/accept|dismiss``.
@@ -58,6 +68,7 @@ from .platform_change import kpi_formulas_check, plan_kpi_transpile
 from .propagation import KpiPlan, KpiPropagationHandler, plan_kpi_propagation
 from .score_feed import kpis_for_score
 from .service import (
+    CrossSystemReadiness,
     Kpi,
     KpiFeasibility,
     KpiLink,
@@ -72,6 +83,7 @@ from .service import (
 from .suggestions import RuleSuggestion
 
 __all__ = [
+    "CrossSystemReadiness",
     "Kpi",
     "KpiFeasibility",
     "KpiLink",

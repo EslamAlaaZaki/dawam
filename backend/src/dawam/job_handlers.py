@@ -15,7 +15,7 @@ from collections.abc import Callable, Mapping
 
 import sqlalchemy as sa
 
-from dawam.modules.assistant import ASSISTANT_JOB, build_assistant_service
+from dawam.modules.assistant import ASSISTANT_JOB, KPI_SUGGEST_JOB, build_assistant_service
 from dawam.modules.changesets import ObjectHandlers
 from dawam.modules.files import (
     INDEX_JOB,
@@ -201,6 +201,7 @@ def _service_handlers(
     )
     return {
         ASSISTANT_JOB: assistant.run_job,
+        KPI_SUGGEST_JOB: assistant.kpi_suggestions().run,
         EXTRACT_JOB: snapshots.run_extraction,
         PROFILE_JOB: profiling.run_profiling,
         PII_SCAN_JOB: pii_scans.run_scan,

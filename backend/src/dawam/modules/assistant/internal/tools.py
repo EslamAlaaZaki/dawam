@@ -524,10 +524,50 @@ class _KpiIdea(BaseModel):
     formula_text: str = Field(default="", max_length=4000, description="The formula in words.")
     unit: str = Field(default="", max_length=50)
     aggregation: str = Field(default="", max_length=50)
+    based_on: list[Annotated[str, StringConstraints(max_length=300)]] = Field(
+        default_factory=list,
+        max_length=20,
+        description="The tables the KPI uses. Under a Source System: schema.table, each one "
+        "of its tables. Under the Data Warehouse: Source System tables as SYSTEM.schema.table "
+        "(the System Code first) and DW model tables as core.table or mart.table, spanning two "
+        "or more Source Systems or including a DW model table. Otherwise it is dropped.",
+    )
+    formula_sql: str = Field(
+        default="",
+        max_length=20000,
+        description="Under the Data Warehouse once its model exists: one SELECT against the "
+        "Core and Mart tables. It is validated; SQL that does not fit leaves the KPI words "
+        "only. Leave empty otherwise.",
+    )
+
+
+KPI_SUGGESTION_RULES = (
+    "Suggest only KPIs this scope's own data can measure by itself, never one that needs "
+    "another Source System, and never a repeat or rewording of a KPI already listed (in any "
+    "review state: live, suggested, accepted or rejected). Give each the source tables it is "
+    "based on (schema.table, tables of this Source System only): a suggestion based on any "
+    "other table is dropped. Suggesting nothing is a fine outcome when nothing differs."
+)
+
+CROSS_SYSTEM_KPI_RULES = (
+    "Suggest only cross-system KPIs: ones that need two or more Source Systems, or the Data "
+    "Warehouse model. Never a single-system KPI (those belong on that system's page) and never "
+    "a repeat or rewording of a KPI already listed (in any review state: live, suggested, "
+    "accepted or rejected, under any Source System or the Data Warehouse). Give each the "
+    "tables it is based on: Source System tables as SYSTEM.schema.table (the System Code "
+    "first) and DW model tables as core.table or mart.table. A suggestion whose tables come "
+    "from only one Source System, with no DW model table, is dropped. When the DW model "
+    "exists, give each its formula_sql: one SELECT against the Core and Mart tables. "
+    "Suggesting nothing is a fine outcome when nothing differs."
+)
 
 
 class _SuggestKpis(BaseModel):
-    suggestions: list[_KpiIdea] = Field(min_length=1, max_length=20)
+    suggestions: Annotated[list[_KpiIdea], Field(min_length=1, max_length=20)] | None = Field(
+        default=None,
+        description="Leave out first to read every KPI already in the scope; then call again "
+        "with your suggestions.",
+    )
     system_id: uuid.UUID | None = Field(
         default=None,
         description="The Source System the KPIs are documented under; leave out for the "
@@ -1192,7 +1232,8 @@ def _not_found(what: str) -> ApiError:
 
 def _get_object(ctx: ToolContext, args: _GetObject) -> Any:
     if args.kind == "kpi":
-        return ctx.services.kpis.get(ctx.user, ctx.workspace_id, args.id)
+        # Suggested and rejected KPIs are not in the catalog the assistant reads.
+        return ctx.services.kpis.get(ctx.user, ctx.workspace_id, args.id, catalog_only=True)
     system_id, content = _source_tables(ctx, args.system_id)
     if args.kind == "table":
         for table in content.tables:
@@ -1975,6 +2016,21 @@ def _update_file(ctx: ToolContext, args: _UpdateFile) -> Any:
 
 
 def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
+    if args.suggestions is None:  # first phase: what is there already, in every state
+        # The Data Warehouse's are cross-system: they must differ from every KPI in the
+        # Workspace.
+        existing = ctx.services.kpis.every_state(
+            ctx.user, ctx.workspace_id, args.system_id, workspace_wide=args.system_id is None
+        )
+        rules = KPI_SUGGESTION_RULES if args.system_id else CROSS_SYSTEM_KPI_RULES
+        return {
+            "existing_kpis": [
+                {"name": k.name, "definition": k.definition, "review_state": k.review_state}
+                for k in existing
+            ],
+            "note": rules + " Call suggest_kpis again with your suggestions and the same "
+            "system_id.",
+        }
     result = ctx.services.kpis.suggest(
         ctx.user,
         ctx.workspace_id,
@@ -1989,13 +2045,23 @@ def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
                 "name": kpi.name,
                 "status": kpi.status,
                 "origin": kpi.origin,
-                "link": f"?folder={folder}/kpis",
+                "link": f"?folder={folder}/kpis&tab=suggested",
             }
             for kpi in result.created
         ],
         "skipped": result.skipped,
-        "note": "Created as AI-labelled drafts. Names that already exist were skipped; "
-        "existing KPIs are never changed.",
+        "dropped": result.dropped,
+        **({"without_sql": result.without_sql} if result.without_sql else {}),
+        "note": "Created as suggestions in the KPIs folder's Suggested tab, for an owner or "
+        "editor to accept or reject. Names that already exist there (rejected ones included) "
+        "were skipped; existing KPIs are never changed. "
+        + (
+            "Dropped ones were based on no table, or on a table outside the Source System."
+            if args.system_id
+            else "Dropped ones were based on an unknown table, or on one Source System's "
+            "tables only. Those without_sql were created words only: their SQL did not fit the "
+            "DW Schema."
+        ),
     }
 
 
@@ -2894,10 +2960,15 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "suggest_kpis",
-        "After reading a Source System's schema, profiles and documents, propose KPIs. They "
-        "are created as AI-labelled drafts with your rationale; a name that already exists "
-        "is skipped and existing KPIs are never changed. Never put sample values or "
-        "personal data in the text.",
+        "After reading a Source System's schema, profiles and documents, propose KPIs for that "
+        "one scope. Call it first without suggestions to read every KPI already there, in "
+        "every review state. They are created as suggestions with your rationale and the "
+        "tables they are based on, waiting in the Suggested tab for an owner or editor to "
+        "accept or reject; a name that already exists in the same scope (rejected included) "
+        "is skipped, one based on a table outside the Source System is dropped, and existing "
+        "KPIs are never changed. Without a system_id only cross-system KPIs count (two or more "
+        "Source Systems, or the DW model, with formula SQL once it exists). "
+        "Never put sample values or personal data in the text.",
         _SuggestKpis,
         "write",
         Action.EDIT_KPI,
@@ -3195,6 +3266,11 @@ class ToolRegistry:
         self._services = services
         self._source_query_seconds = source_query_seconds
         self._tools = {tool.name: tool for tool in tools}
+
+    @property
+    def services(self) -> ToolServices:
+        """The services the tools call (as the requesting user)."""
+        return self._services
 
     def bind(
         self,

@@ -10587,7 +10587,7 @@
           "kpis"
         ],
         "summary": "List Kpis",
-        "description": "The Workspace's KPIs (any member), ordered by name. Without a filter, all of them.\n404 for a Source System that is not in the Workspace; 422 `invalid_filter` if both\nfilters are given.",
+        "description": "The Workspace's KPIs, ordered by name. Without a filter, all of them. Any member\nreads the KPIs tab; `review=all` (owners and editors) adds the suggested and rejected\nKPIs. 404 for a Source System that is not in the Workspace; 422 `invalid_filter` if\nboth scopes are given.",
         "operationId": "listKpis",
         "parameters": [
           {
@@ -10630,6 +10630,34 @@
               "title": "Data Warehouse"
             },
             "description": "Only the Data Warehouse's KPIs (those under no Source System)."
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "catalog",
+                "all"
+              ],
+              "type": "string",
+              "description": "`catalog`: the KPIs tab (live and accepted KPIs); `all`: suggested and rejected ones too (owners and editors).",
+              "default": "catalog",
+              "title": "Review"
+            },
+            "description": "`catalog`: the KPIs tab (live and accepted KPIs); `all`: suggested and rejected ones too (owners and editors)."
+          },
+          {
+            "name": "rule_suggestions",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "With `review=all`: add the open and the rejected rule-based suggestions to the first page (the Data Warehouse page).",
+              "default": false,
+              "title": "Rule Suggestions"
+            },
+            "description": "With `review=all`: add the open and the rejected rule-based suggestions to the first page (the Data Warehouse page)."
           },
           {
             "name": "limit",
@@ -10821,7 +10849,7 @@
           "kpis"
         ],
         "summary": "Accept Suggestion",
-        "description": "Accept a suggestion (owners and editors): it becomes a draft Data Warehouse KPI with\n`origin` `rule`, its formula SQL and links. 404 if no such suggestion is open.",
+        "description": "Accept a suggestion, or a rejected one after all (owners and editors): it becomes a\ndraft Data Warehouse KPI with `origin` `rule`, review state `accepted`, its formula SQL\nand links, and any dismissal is cleared. 404 if no such suggestion is open.",
         "operationId": "acceptKpiSuggestion",
         "parameters": [
           {
@@ -10885,7 +10913,7 @@
           "kpis"
         ],
         "summary": "Dismiss Suggestion",
-        "description": "Hide a suggestion for good (owners and editors). 404 if there is no such suggestion.",
+        "description": "Reject a suggestion (owners and editors): rule runs never propose it again and it is\nlisted as rejected and the decision is audited. 404 if there is no such suggestion;\n409 `invalid_review_state` if it was accepted and its KPI is in the KPIs tab.",
         "operationId": "dismissKpiSuggestion",
         "parameters": [
           {
@@ -10942,7 +10970,7 @@
           "kpis"
         ],
         "summary": "Get Kpi",
-        "description": "Open a KPI (any member).",
+        "description": "Open a KPI (any member; a suggested or rejected one only owners and editors).",
         "operationId": "getKpi",
         "parameters": [
           {
@@ -11004,7 +11032,7 @@
           "kpis"
         ],
         "summary": "Update Kpi",
-        "description": "Edit a KPI or move it between `draft`, `in_review` and `approved` (owners and\neditors); fields left out stay as they are. 409 `version_conflict` if `version` is\nstale; 422 `invalid_kpi`.",
+        "description": "Edit a KPI or move it between `draft`, `in_review` and `approved` (owners and\neditors); fields left out stay as they are. 409 `version_conflict` if `version` is\nstale, 409 `invalid_review_state` for a suggested or rejected KPI (accept it first); 422\n`invalid_kpi`.",
         "operationId": "updateKpi",
         "parameters": [
           {
@@ -11076,7 +11104,7 @@
           "kpis"
         ],
         "summary": "Delete Kpi",
-        "description": "Delete a KPI (owners and editors).",
+        "description": "Delete a KPI (owners and editors). One added by hand is deleted; one that came from\nan AI suggestion moves to `rejected` instead (an accepted one as removed).",
         "operationId": "deleteKpi",
         "parameters": [
           {
@@ -11103,6 +11131,134 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/accept": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Accept Kpi",
+        "description": "Accept an AI-suggested KPI, or a rejected one after all (owners and editors): it\njoins the KPIs tab as `accepted`. 409 `invalid_review_state` otherwise.",
+        "operationId": "acceptKpi",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "kpi_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kpi Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Kpi"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/reject": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Reject Kpi",
+        "description": "Reject an AI-suggested KPI (owners and editors): it moves to `rejected`. 409\n`invalid_review_state` unless it is suggested.",
+        "operationId": "rejectKpi",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "kpi_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kpi Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Kpi"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error",
@@ -11195,7 +11351,7 @@
           "kpis"
         ],
         "summary": "Set Links",
-        "description": "Replace the DW columns a KPI uses (owners and editors); each becomes a `kpi` lineage\nedge. Changing the links of an approved KPI returns it to draft. 404 `not_set_up`\nwithout a Data Warehouse; 409 `version_conflict` if `version` is stale; 422\n`invalid_kpi_link`.",
+        "description": "Replace the DW columns a KPI uses (owners and editors); each becomes a `kpi` lineage\nedge. Changing the links of an approved KPI returns it to draft. 404 `not_set_up`\nwithout a Data Warehouse; 409 `version_conflict` if `version` is stale, 409\n`invalid_review_state` for a suggested or rejected KPI; 422\n`invalid_kpi_link`.",
         "operationId": "setKpiLinks",
         "parameters": [
           {
@@ -17370,6 +17526,238 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/kpi-suggestions": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Start Kpi Suggestions",
+        "description": "Suggest KPIs for this Source System with the AI, as a background job (owners and\neditors). The AI reads this system only and sees every KPI under it in every review\nstate; suggestions land in the Suggested tab. 409 `kpi_suggestions_running` while a job\nruns for this system already.",
+        "operationId": "startKpiSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Get Kpi Suggestions",
+        "description": "The newest KPI suggestion job of this Source System, with its outcome once it has\nsucceeded (owners and editors).",
+        "operationId": "getKpiSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestKpiSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/kpi-suggestions": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Start Dw Kpi Suggestions",
+        "description": "Suggest cross-system KPIs for the Data Warehouse with the AI, as a background job\n(owners and editors): only KPIs that need two or more Source Systems or the DW model. The\nAI sees every KPI in the Workspace in every review state; suggestions land in the Data\nWarehouse's Suggested tab. 409 `kpi_suggestions_unavailable` until the Workspace has two\nSource Systems or a DW model; 409 `kpi_suggestions_running` while a job runs already.",
+        "operationId": "startDwKpiSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Get Dw Kpi Suggestions",
+        "description": "The newest cross-system KPI suggestion job, with its outcome once it has succeeded,\nand whether one may start (owners and editors).",
+        "operationId": "getDwKpiSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestDwKpiSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/documentation-pack": {
       "get": {
         "tags": [
@@ -17849,6 +18237,7 @@
           "job.cancel_any",
           "installation.list_workspaces",
           "kpi.edit",
+          "kpi.view_review",
           "layer.approve",
           "score.manage_settings",
           "workspace.require_distinct_approver",
@@ -23876,6 +24265,14 @@
             "title": "Rationale",
             "description": "Why the AI suggested the KPI; null unless `origin` is `ai`."
           },
+          "based_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Based On",
+            "description": "The tables an AI suggestion is based on: under a Source System its tables (`schema.table`); under the Data Warehouse tables of two or more Source Systems (`SYSTEM.schema.table`) or of the DW model (`core.table`, `mart.table`). Empty for other KPIs."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -23883,7 +24280,84 @@
               "in_review",
               "approved"
             ],
-            "title": "Status"
+            "title": "Status",
+            "description": "The sign-off, apart from the review state."
+          },
+          "review_state": {
+            "type": "string",
+            "enum": [
+              "live",
+              "suggested",
+              "accepted",
+              "rejected"
+            ],
+            "title": "Review State",
+            "description": "`live`: added by hand or by a rule; `suggested`: an AI suggestion waiting for a decision; `accepted`: a suggestion someone accepted; `rejected`: one someone rejected or, accepted, later deleted. Only `live` and `accepted` KPIs (the KPIs tab) count elsewhere."
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "added",
+                  "rejected",
+                  "removed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision",
+            "description": "`added` for a live KPI, else how the suggestion was decided; null while suggested."
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By",
+            "description": "Who added the KPI or decided on the suggestion; null if unknown."
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "link_count": {
+            "type": "integer",
+            "title": "Link Count",
+            "description": "How many DW columns the KPI links to."
+          },
+          "feasibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "computable",
+                  "needs_mapping",
+                  "needs_data"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feasibility",
+            "description": "Whether it can be computed from the Data Warehouse now; null when the KPI has no links (not checked yet)."
           },
           "version": {
             "type": "integer",
@@ -23917,7 +24391,14 @@
           "targets",
           "origin",
           "rationale",
+          "based_on",
           "status",
+          "review_state",
+          "decision",
+          "decided_by",
+          "decided_at",
+          "link_count",
+          "feasibility",
           "version",
           "created_at",
           "updated_at"
@@ -24038,6 +24519,24 @@
             ],
             "title": "Next Cursor",
             "description": "The `cursor` of the next page; null on the last."
+          },
+          "rule_suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/KpiSuggestion"
+            },
+            "type": "array",
+            "title": "Rule Suggestions",
+            "description": "The open rule-based suggestions; only on the first page, and only when `rule_suggestions` is asked for.",
+            "default": []
+          },
+          "rejected_rule_suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedKpiSuggestion"
+            },
+            "type": "array",
+            "title": "Rejected Rule Suggestions",
+            "description": "The rejected rule-based suggestions, likewise.",
+            "default": []
           }
         },
         "type": "object",
@@ -24146,6 +24645,14 @@
             "title": "Column Ids",
             "description": "The DW columns the KPI will link to."
           },
+          "column_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Column Labels",
+            "description": "Those columns as `layer.table.column`."
+          },
           "feasibility": {
             "type": "string",
             "enum": [
@@ -24168,9 +24675,108 @@
           "layer",
           "table_name",
           "column_ids",
+          "column_labels",
           "feasibility"
         ],
         "title": "KpiSuggestion"
+      },
+      "KpiSuggestionJob": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "paused",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why the job failed; null otherwise."
+          },
+          "created": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created",
+            "description": "New suggested KPIs; null until the job has succeeded. Zero is a normal outcome: nothing differs from the KPIs already there."
+          },
+          "dropped": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropped",
+            "description": "Suggestions dropped because of the tables they were based on: outside the Source System or, for the Data Warehouse, one Source System's only; null until the job has succeeded."
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped",
+            "description": "Suggestions skipped because a KPI of that name exists there (any review state); null until the job has succeeded."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "error",
+          "created",
+          "dropped",
+          "skipped",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "KpiSuggestionJob"
       },
       "KpiSuggestions": {
         "properties": {
@@ -24187,6 +24793,64 @@
           "items"
         ],
         "title": "KpiSuggestions"
+      },
+      "LatestDwKpiSuggestionJob": {
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiSuggestionJob"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest job; null if none ran yet."
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "description": "Whether a job may start: the Workspace has at least two Source Systems or a DW model."
+          },
+          "source_systems": {
+            "type": "integer",
+            "title": "Source Systems",
+            "description": "The Workspace's Source Systems, deleted ones not."
+          },
+          "dw_model": {
+            "type": "boolean",
+            "title": "Dw Model",
+            "description": "Whether the DW model exists (Core or Mart has tables)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "available",
+          "source_systems",
+          "dw_model"
+        ],
+        "title": "LatestDwKpiSuggestionJob"
+      },
+      "LatestKpiSuggestionJob": {
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiSuggestionJob"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest job; null if none ran yet."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "title": "LatestKpiSuggestionJob"
       },
       "LayerApproval": {
         "properties": {
@@ -28657,6 +29321,123 @@
           "status"
         ],
         "title": "ReindexStarted"
+      },
+      "RejectedKpiSuggestion": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Stable across renames and a measure moving from Core to Mart; send it to accept or dismiss the suggestion."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "avg",
+              "count_distinct",
+              "ratio",
+              "mom_growth",
+              "yoy_growth"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "definition": {
+            "type": "string",
+            "title": "Definition"
+          },
+          "formula_text": {
+            "type": "string",
+            "title": "Formula Text"
+          },
+          "formula_sql": {
+            "type": "string",
+            "title": "Formula Sql",
+            "description": "Written against the DW Schema."
+          },
+          "aggregation": {
+            "type": "string",
+            "title": "Aggregation"
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "core",
+              "mart"
+            ],
+            "title": "Layer",
+            "description": "The Layer of the fact it reads."
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "column_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Column Ids",
+            "description": "The DW columns the KPI will link to."
+          },
+          "column_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Column Labels",
+            "description": "Those columns as `layer.table.column`."
+          },
+          "feasibility": {
+            "type": "string",
+            "enum": [
+              "computable",
+              "needs_mapping",
+              "needs_data"
+            ],
+            "title": "Feasibility"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By",
+            "description": "Who rejected it; null if unknown."
+          },
+          "decided_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Decided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "name",
+          "definition",
+          "formula_text",
+          "formula_sql",
+          "aggregation",
+          "layer",
+          "table_name",
+          "column_ids",
+          "column_labels",
+          "feasibility",
+          "decided_by",
+          "decided_at"
+        ],
+        "title": "RejectedKpiSuggestion"
       },
       "Relationship": {
         "properties": {
