@@ -32,7 +32,7 @@ from dawam.modules.warehouse import (
 from dawam.platform.errors import ApiError
 
 from .score_feed import touch_kpi_links
-from .tables import MAX_LINKS, KpiLinkRecord, KpiRecord
+from .tables import CATALOG_STATES, MAX_LINKS, KpiLinkRecord, KpiRecord
 
 WRITING = (exp.DML, exp.DDL, exp.Into, exp.Lock, exp.Command, exp.Copy)
 """Nodes that write or lock, which a SELECT can still hide: a data-modifying CTE
@@ -166,6 +166,12 @@ def drop_links(db: Session, kpi_id: uuid.UUID) -> None:
     clear_kpi_edges(db, kpi_id)
 
 
+def restore_links(db: Session, kpi_id: uuid.UUID) -> None:
+    """Write the lineage edges of the links stored for ``kpi_id`` again (a KPI back in the
+    KPIs tab); ``drop_links`` cleared them, the links themselves stayed."""
+    replace_kpi_edges(db, kpi_id, link_ids(db, kpi_id))
+
+
 def described(db: Session, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> list[SchemaColumn]:
     return describe_columns(db, workspace_id, link_ids(db, kpi_id))
 
@@ -173,12 +179,15 @@ def described(db: Session, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> list[S
 def kpi_names(
     db: Session, workspace_id: uuid.UUID, kpi_ids: Sequence[uuid.UUID]
 ) -> dict[uuid.UUID, str]:
-    """The name of each given id that is a KPI of the Workspace (others are left out)."""
+    """The name of each given id that is a KPI of the Workspace in the KPIs tab (live or
+    accepted; others are left out)."""
     if not kpi_ids:
         return {}
     rows = db.execute(
         sa.select(KpiRecord.id, KpiRecord.name).where(
-            KpiRecord.id.in_(kpi_ids), KpiRecord.workspace_id == workspace_id
+            KpiRecord.id.in_(kpi_ids),
+            KpiRecord.workspace_id == workspace_id,
+            KpiRecord.review_state.in_(CATALOG_STATES),
         )
     )
     return {kpi_id: name for kpi_id, name in rows}

@@ -548,7 +548,7 @@ There are 35 tools.
 | `propose_changes` | Propose descriptions, tags, sensitivity flags, classifications, SCD hints for source tables/columns, and accept/reject inferred relationships → **Change Set** |
 | `propose_check_fix` | Propose the exact changes that fix a failed score check → Change Set |
 | `propose_kpi_links` | Propose KPI → DW column links and formula SQL → Change Set |
-| `suggest_kpis` | Create KPIs as AI-labelled **drafts** with a rationale (existing KPIs are never changed) |
+| `suggest_kpis` | Create **suggested** KPIs with a rationale, waiting in the Suggested tab for an owner or editor to accept or reject (existing KPIs are never changed) |
 | `generate_dw_schema` | Generate or regenerate the DW's Core and Mart Layers (Kimball facts and dimensions) from staging tables, source schemas, KPIs and documents → one Change Set (runs as a job) |
 | `draft_mappings` | Draft branches, column mappings and lookups for Core/Mart tables from the Layer below → one Change Set |
 | `generate_file` | Save a file: Markdown the model writes (gaps report, KPI docs, documentation) or an export (`ddl`, `mapping_sheet`, `data_dictionary`). If the file exists, returns a diff and overwrites only with `replace=true` after the user agrees |

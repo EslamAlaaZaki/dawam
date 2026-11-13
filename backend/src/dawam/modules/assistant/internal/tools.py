@@ -1192,7 +1192,8 @@ def _not_found(what: str) -> ApiError:
 
 def _get_object(ctx: ToolContext, args: _GetObject) -> Any:
     if args.kind == "kpi":
-        return ctx.services.kpis.get(ctx.user, ctx.workspace_id, args.id)
+        # Suggested and rejected KPIs are not in the catalog the assistant reads.
+        return ctx.services.kpis.get(ctx.user, ctx.workspace_id, args.id, catalog_only=True)
     system_id, content = _source_tables(ctx, args.system_id)
     if args.kind == "table":
         for table in content.tables:
@@ -1994,8 +1995,9 @@ def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
             for kpi in result.created
         ],
         "skipped": result.skipped,
-        "note": "Created as AI-labelled drafts. Names that already exist were skipped; "
-        "existing KPIs are never changed.",
+        "note": "Created as suggestions in the KPIs folder's Suggested tab, for an owner or "
+        "editor to accept or reject. Names that already exist there (rejected ones included) "
+        "were skipped; existing KPIs are never changed.",
     }
 
 
@@ -2895,9 +2897,10 @@ TOOLS: tuple[Tool, ...] = (
     Tool(
         "suggest_kpis",
         "After reading a Source System's schema, profiles and documents, propose KPIs. They "
-        "are created as AI-labelled drafts with your rationale; a name that already exists "
-        "is skipped and existing KPIs are never changed. Never put sample values or "
-        "personal data in the text.",
+        "are created as suggestions with your rationale, waiting in the Suggested tab for an "
+        "owner or editor to accept or reject; a name that already exists in the same scope "
+        "(rejected included) is skipped and existing KPIs are never changed. Never put "
+        "sample values or personal data in the text.",
         _SuggestKpis,
         "write",
         Action.EDIT_KPI,

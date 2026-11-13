@@ -175,7 +175,7 @@ function MatchedRules({
 }
 
 /** Who decided and when, with an initials avatar: "Accepted by Ada · 1/6/2026". */
-function DecidedBy({
+export function DecidedBy({
   verb,
   by,
   at,

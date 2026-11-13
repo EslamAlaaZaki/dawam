@@ -16,15 +16,19 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.warehouse import DesignKpi, touch_score
 
-from .tables import KpiLinkRecord, KpiRecord
+from .tables import CATALOG_STATES, KpiLinkRecord, KpiRecord
 
 
 def kpis_for_score(db: Session, workspace_id: uuid.UUID) -> list[DesignKpi]:
-    """The Workspace's KPIs with the DW columns each links to."""
+    """The Workspace's KPIs in the KPIs tab (live and accepted) with the DW columns each
+    links to."""
     kpis = list(
         db.execute(
             sa.select(KpiRecord.id, KpiRecord.name, KpiRecord.definition)
-            .where(KpiRecord.workspace_id == workspace_id)
+            .where(
+                KpiRecord.workspace_id == workspace_id,
+                KpiRecord.review_state.in_(CATALOG_STATES),
+            )
             .order_by(sa.func.lower(KpiRecord.name), KpiRecord.id)
         )
     )
@@ -32,7 +36,7 @@ def kpis_for_score(db: Session, workspace_id: uuid.UUID) -> list[DesignKpi]:
     for kpi_id, column_id in db.execute(
         sa.select(KpiLinkRecord.kpi_id, KpiLinkRecord.dw_column_id)
         .join(KpiRecord, KpiRecord.id == KpiLinkRecord.kpi_id)
-        .where(KpiRecord.workspace_id == workspace_id)
+        .where(KpiRecord.workspace_id == workspace_id, KpiRecord.review_state.in_(CATALOG_STATES))
     ):
         links[kpi_id].append(column_id)
     return [DesignKpi(i, name, definition, tuple(links.get(i, ()))) for i, name, definition in kpis]

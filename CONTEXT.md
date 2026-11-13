@@ -98,6 +98,10 @@ _Avoid_: Join (a join belongs to a Mapping Branch), FK mapping
 A business metric with an agreed definition and formula, entered by a user or suggested by the AI (and labelled as AI-generated). Belongs to a Source System, or to the Data Warehouse when it spans systems.
 _Avoid_: Metric, measure (a measure is a DW Schema column)
 
+**KPI review state**:
+Whether a KPI counts, apart from its status (draft, in review, approved): **live** (added by hand), **suggested** (an AI suggestion waiting for an owner or editor), **accepted** or **rejected** (rejected, or accepted and later deleted: "removed"). Only live and accepted KPIs, the **KPIs tab**, count anywhere else.
+_Avoid_: KPI status (that is the sign-off), draft suggestion
+
 ### Working with the AI
 
 **Conversation**:

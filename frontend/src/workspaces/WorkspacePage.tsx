@@ -348,6 +348,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               title={
                 kpiSystem ? `KPIs of ${kpiSystem.name}` : "Data Warehouse KPIs"
               }
+              description={
+                kpiSystem
+                  ? `Business metrics based on ${kpiSystem.name}: what they mean and how they are calculated.`
+                  : "Business metrics that span systems: what they mean and how they are calculated."
+              }
               hideTitle={kpiSystem != null}
             />
           ) : folder.id === "document-index" ? (
