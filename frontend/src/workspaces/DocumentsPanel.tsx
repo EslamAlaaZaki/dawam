@@ -45,11 +45,6 @@ import {
   TableRow,
 } from "../components/ui/table";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
-import {
   EmptyState,
   ErrorText,
   Hint,
@@ -120,12 +115,7 @@ function StatusCell({ file }: { file: WorkspaceFile }) {
   const caption = failed || file.index_note || textStatus;
   return (
     <div className="flex flex-col items-start gap-1">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Badge variant={variant}>{label}</Badge>
-        </TooltipTrigger>
-        <TooltipContent>{textStatus}</TooltipContent>
-      </Tooltip>
+      <Badge variant={variant}>{label}</Badge>
       <span
         className={`text-xs ${failed ? "text-danger-strong" : "text-muted-foreground"}`}
       >
@@ -297,27 +287,17 @@ function FileRow({
   return (
     <TableRow>
       <TableCell className={monoClasses}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <a
-              href={fileDownloadUrl(workspaceId, file.id)}
-              download={file.name}
-              className={`${linkClasses} block truncate`}
-            >
-              {file.name}
-            </a>
-          </TooltipTrigger>
-          <TooltipContent className={monoClasses}>{file.name}</TooltipContent>
-        </Tooltip>
+        <a
+          href={fileDownloadUrl(workspaceId, file.id)}
+          download={file.name}
+          className={`${linkClasses} block truncate`}
+        >
+          {file.name}
+        </a>
         {replace.isError && <ErrorText>{replace.error.message}</ErrorText>}
       </TableCell>
       <TableCell>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge>{typeLabel(file.mime)}</Badge>
-          </TooltipTrigger>
-          <TooltipContent className={monoClasses}>{file.mime}</TooltipContent>
-        </Tooltip>
+        <Badge>{typeLabel(file.mime)}</Badge>
       </TableCell>
       <TableCell>
         <StatusCell file={file} />

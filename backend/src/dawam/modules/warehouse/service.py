@@ -243,9 +243,9 @@ class DataWarehouseService:
         workspace_id: uuid.UUID,
         *,
         target_platform: TargetPlatform,
-        layer_schemas: LayerSchemas = LayerSchemas(),  # noqa: B008  (immutable)
-        naming_rules: NamingRules = NamingRules(),  # noqa: B008
-        date_dimension: DateDimension = DateDimension(),  # noqa: B008
+        layer_schemas: LayerSchemas = LayerSchemas(),
+        naming_rules: NamingRules = NamingRules(),
+        date_dimension: DateDimension = DateDimension(),
     ) -> DataWarehouse:
         """Set the Data Warehouse up (editors and owners). 409 ``already_set_up`` if it is."""
         self._workspaces.authorize(user, Action.SET_UP_DATA_WAREHOUSE, workspace_id)
