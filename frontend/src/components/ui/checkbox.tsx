@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Minus } from "lucide-react";
 import { Checkbox as CheckboxPrimitive } from "radix-ui";
 import type { ComponentProps } from "react";
 
@@ -11,7 +11,7 @@ function Checkbox({ className, ...props }: ComponentProps<typeof CheckboxPrimiti
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        "peer size-4 shrink-0 rounded-sm border border-control-edge bg-background disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
+        "group peer size-4 shrink-0 rounded-sm border border-control-edge bg-background disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:text-primary-foreground",
         className,
       )}
       {...props}
@@ -20,7 +20,8 @@ function Checkbox({ className, ...props }: ComponentProps<typeof CheckboxPrimiti
         data-slot="checkbox-indicator"
         className="grid place-content-center"
       >
-        <Check className="size-3" strokeWidth={3} />
+        <Check className="size-3 group-data-[state=indeterminate]:hidden" strokeWidth={3} />
+        <Minus className="hidden size-3 group-data-[state=indeterminate]:block" strokeWidth={3} />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   );

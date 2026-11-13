@@ -1,6 +1,6 @@
 "use client";
 
-import { Info, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
@@ -44,11 +44,6 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
 import { KpiFields, readKpiFields } from "./KpiForm";
@@ -75,6 +70,8 @@ import {
   labelClasses,
   linkButtonClasses,
   monoClasses,
+  InfoTip,
+  TipItems,
 } from "./parts";
 
 const STATUS_VARIANTS = { draft: "neutral", in_review: "warning", approved: "success" } as const;
@@ -169,40 +166,6 @@ function FeasibilityBadge({ feasibility }: { feasibility: KpiFeasibility }) {
 }
 
 const Dash = () => <span className="text-subtle-foreground">—</span>;
-
-/** An ⓘ button whose tooltip explains a column (hover or keyboard focus; Escape closes). */
-function InfoTip({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={`What is ${label.toLowerCase()}?`}
-          className="ms-1 inline-grid size-4 cursor-help place-items-center rounded-full align-middle text-subtle-foreground hover:text-primary focus-visible:text-primary"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <Info aria-hidden className="size-3.5" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent className="flex flex-col gap-1.5 border border-border bg-surface-raised p-3 leading-normal text-foreground shadow-overlay">
-        {children}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function TipItems({ items }: { items: [ReactNode, string][] }) {
-  return (
-    <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-      {items.map(([badge, text]) => (
-        <li key={text}>
-          <span className="me-1.5">{badge}</span>
-          {text}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 const TIPS = {
   "Documented under": (

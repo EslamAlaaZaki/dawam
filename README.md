@@ -47,7 +47,7 @@ sync, arrives as a reviewable **Change Set**.
 | You want to… | How DAWAM helps |
 |--------------|-----------------|
 | **Understand an undocumented source system** | Connect to the database (or import its schema from files), profile the data, discover undeclared relationships, and let the AI draft table descriptions, labels and a gaps report. |
-| **Find personal data before it reaches the warehouse** | Scan column names and sampled values with Arabic and English PII rules (Saudi-focused, PDPL-aware), review the findings, and follow PII through lineage into the warehouse. |
+| **Find personal data before it reaches the warehouse** | Scan column names and sampled values with Arabic and English PII rules (Saudi-focused, PDPL-aware), let the AI review the metadata (never values) to suggest more, review the findings, and follow PII through lineage into the warehouse. |
 | **Define what the business needs** | Build a KPI catalog per source system or for the whole warehouse, with AI-suggested KPIs based on the source analysis. |
 | **Design a Kimball warehouse** | Generate staging automatically, have the AI propose Core and Mart models (facts, dimensions, grain, SCD types) from your sources and KPIs, then edit everything. |
 | **Replace mapping spreadsheets** | Maintain validated source-to-target mappings per layer, always linked to real columns. |

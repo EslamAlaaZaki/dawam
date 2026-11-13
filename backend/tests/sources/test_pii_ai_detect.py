@@ -11,8 +11,13 @@ from __future__ import annotations
 import json
 
 import pytest
+import sqlalchemy as sa
+from fastapi import FastAPI
 
 from dawam.modules.llm import Reply, ToolCall
+from dawam.modules.sources import pii_ai_service
+from dawam.modules.sources.internal import pii as pii_internal
+from dawam.modules.sources.tables import SrcTableRecord
 from tests.llm.test_roles_budgets import register, use_models
 from tests.roles import RoleClients
 from tests.sources import test_extraction
@@ -299,6 +304,47 @@ def test_an_ai_finding_sends_a_rejected_column_back_by_the_reopen_rule(
     fake_llm.script(answer({**item, "confidence": 0.9}))
     detect(roles, system, customer)
     assert "email" in tab(roles, system, "suggested")
+
+
+def test_no_present_tables_means_no_model_call_and_a_succeeded_job(
+    roles: RoleClients, model, fake_llm, app: FastAPI, monkeypatch
+):
+    system, tables = imported(roles, "sales,customer,id,integer\nsales,customer,email,text\n")
+    review = pii_ai_service.PiiAiDetectService._review
+
+    def table_removed_meanwhile(self, db, system_id, table_ids, rules):
+        # The table is gone between queueing the job and running it.
+        db.execute(sa.update(SrcTableRecord).values(status="source_removed"))
+        return review(self, db, system_id, table_ids, rules)
+
+    monkeypatch.setattr(pii_ai_service.PiiAiDetectService, "_review", table_removed_meanwhile)
+    fake_llm.script(answer())
+    before = findings(roles, system)  # the name scan's findings from the import
+
+    started = detect(roles, system, [tables["customer"]])
+
+    ai = job(roles, started["ai_job_id"])
+    assert ai["status"] == "succeeded"
+    assert "No tables to review." in ai["log"]
+    assert chats(fake_llm) == []
+    assert findings(roles, system) == before  # the AI job added nothing
+
+
+def test_a_wide_selection_is_queried_in_chunks_and_the_reopen_rule_holds(
+    roles: RoleClients, model, fake_llm, monkeypatch
+):
+    monkeypatch.setattr(pii_internal, "ID_CHUNK", 1)  # every query splits at one id
+    system, tables = imported(roles, "sales,customer,id,integer\nsales,customer,email,text\n")
+    email = tab(roles, system, "suggested")["email"]
+    assert decide(roles, system, email["id"], "reject").status_code == 200
+    customer = [tables["customer"]]
+    item = {"column": "c1", "rule": "email", "evidence": "the AI"}
+
+    fake_llm.script(answer({**item, "confidence": 0.7}))
+    detect(roles, system, customer)
+
+    back = tab(roles, system, "suggested")
+    assert {r["source"] for r in back["email"]["rules"]} == {"name", "ai"}
 
 
 # -- Documents ---------------------------------------------------------------------------
