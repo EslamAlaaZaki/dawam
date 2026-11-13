@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import type { Job } from "../api/jobs";
 import type { Me } from "../api/queries";
 import type { PiiColumn } from "../api/pii";
 import type { SourceSchema } from "../api/snapshots";
@@ -150,6 +151,12 @@ function column(id: string, name: string, extra: Partial<PiiColumn> = {}): PiiCo
 
 const ACCEPTED = column("c1", "national_id", {
   rules: [
+    rule("f7", "national_id", {
+      source: "ai",
+      confidence: 0.97,
+      status: "accepted",
+      evidence: "The comment says it holds the citizen's ID.",
+    }),
     rule("f1", "national_id", { status: "accepted" }),
     rule("f2", "saudi_national_id", {
       source: "value",
@@ -197,9 +204,40 @@ const TAB_ITEMS: Record<string, PiiColumn[]> = {
 interface Requests {
   scans: unknown[];
   decisions: { path: string; body: unknown }[];
+  /** How many times the folder was read. */
+  folderReads: number;
+  /** The Workspace's jobs, as `GET .../jobs` answers now. */
+  jobs: Job[];
+  /** Whether the system has a Connection (`can_profile`). */
+  connected: boolean;
 }
 
-const fresh = (): Requests => ({ scans: [], decisions: [] });
+const fresh = (): Requests => ({
+  scans: [],
+  decisions: [],
+  folderReads: 0,
+  jobs: [],
+  connected: true,
+});
+
+function job(id: string, type: string, status: Job["status"]): Job {
+  return {
+    id,
+    workspace_id: WORKSPACE_ID,
+    type,
+    title: type,
+    status,
+    progress: 0,
+    log: "",
+    error: null,
+    question: null,
+    plan: null,
+    created_by: ADA.id,
+    created_at: "2026-01-05T10:00:00Z",
+    started_at: null,
+    finished_at: null,
+  };
+}
 
 function backend(ws: Workspace, requests: Requests) {
   return (r: ApiRequest) => {
@@ -220,18 +258,24 @@ function backend(ws: Workspace, requests: Requests) {
           dw_modeling: [],
         });
       case `GET ${API}/jobs`:
-        return json({ items: [], next_cursor: null });
+        return json({ items: requests.jobs, next_cursor: null });
       case `GET ${SYSTEM}/schema`:
         return json(SCHEMA);
       case `GET ${SYSTEM}/pii-columns`:
+        requests.folderReads += 1;
         return json({
           items: TAB_ITEMS[r.query.tab ?? "pii"],
           counts: { pii: 3, suggested: 1, accepted: 2, rejected: 1 },
-          can_profile: true,
+          can_profile: requests.connected,
         });
       case `POST ${SYSTEM}/pii-scans`:
         requests.scans.push(r.body);
-        return json({ job_id: "j1", status: "queued" }, 202);
+        return json(
+          requests.connected
+            ? { job_id: "j1", status: "queued", ai_job_id: "j2", ai_status: "queued" }
+            : { job_id: null, status: null, ai_job_id: "j2", ai_status: "queued" },
+          202,
+        );
     }
     const decision = key.match(/^POST .*\/pii-columns\/(c\d)\/([a-z-]+)$/);
     if (decision) {
@@ -387,7 +431,7 @@ describe("the PII folder", () => {
       screen.getByText("Read only. Owners and Editors review and change PII."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("tab")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Scan values" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Detect PII" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add PII column" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Remove PII/ })).toBeNull();
   });
@@ -407,11 +451,11 @@ describe("the PII folder", () => {
     const requests = fresh();
     renderApp(backend(OWNER, requests), FOLDER);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Scan values" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findAllByRole("checkbox")).toHaveLength(2);
     expect(within(dialog).queryByText("crm.v_active")).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Start scan" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
 
     await waitFor(() =>
       expect(requests.scans).toEqual([{ table_ids: ["t1", "t2"], sample_size: 1000 }]),
@@ -422,10 +466,10 @@ describe("the PII folder", () => {
     const requests = fresh();
     renderApp(backend(OWNER, requests), FOLDER);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Scan values" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(await within(dialog).findByRole("checkbox", { name: "crm.complaints" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Start scan" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
 
     await waitFor(() => expect(requests.scans).toEqual([{ table_ids: ["t1"], sample_size: 1000 }]));
   });
@@ -436,7 +480,7 @@ describe("the PII folder", () => {
 
     expect(await rowOf("national_id")).toBeInTheDocument();
     expect(screen.getByText("Read only. This Workspace is archived.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Scan values" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Detect PII" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add PII column" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Remove PII/ })).toBeNull();
     openTab(/Suggested/);
@@ -446,4 +490,99 @@ describe("the PII folder", () => {
     openTab(/Rejected/);
     expect(within(await rowOf("phone")).queryByRole("button", { name: "Accept" })).toBeNull();
   });
+});
+
+describe("Detect PII", () => {
+  it("groups a column's matched rules by source: Name, Values, AI, then Manual", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
+
+    const row = await rowOf("national_id");
+    const groups = within(row).getAllByRole("listitem", { name: / rules$/ });
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
+      "Name rules",
+      "Values rules",
+      "AI rules",
+    ]);
+    expect(groups[2]).toHaveTextContent("national_id");
+    expect(groups[2]).toHaveTextContent("97%");
+    expect(groups[0]).toHaveTextContent("92%");
+    expect(await rowOf("notes")).toHaveTextContent("ManualAdded by hand");
+  });
+
+  it("filters the PII tab by the AI source", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
+
+    await rowOf("national_id");
+    const filters = screen.getByRole("group", { name: "Filter by source" });
+    const ai = within(filters).getByRole("button", { name: /^AI/ });
+    expect(ai).toHaveTextContent("1");
+    fireEvent.click(ai);
+
+    expect(screen.getAllByText("national_id").length).toBeGreaterThan(0);
+    expect(screen.queryByText("notes")).toBeNull();
+    expect(screen.queryByText("iban")).toBeNull();
+  });
+
+  it("explains the value scan and the AI review in the dialog", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByRole("heading", { name: "Detect PII" })).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("Sampled values are never stored.");
+    expect(dialog).toHaveTextContent(
+      "The AI then reviews the chosen tables' names, types and Documents, never their values, and suggests PII columns with a confidence; it may find none.",
+    );
+    expect(dialog).not.toHaveTextContent("value scan is skipped");
+    expect(within(dialog).getByRole("button", { name: "Start detection" })).toBeInTheDocument();
+  });
+
+  it("says the value scan is skipped without a Connection and starts the AI only", async () => {
+    const requests = { ...fresh(), connected: false };
+    renderApp(backend(OWNER, requests), FOLDER);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(
+      "This system has no Connection, so the value scan is skipped.",
+    );
+    await within(dialog).findAllByRole("checkbox");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
+
+    expect(await screen.findByText(/AI detection started \(no Connection/)).toBeInTheDocument();
+  });
+
+  it("says both jobs started", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findAllByRole("checkbox");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
+
+    expect(
+      await screen.findByText(/Value scan and AI detection started/),
+    ).toBeInTheDocument();
+  });
+
+  it("reads the folder again when each of the two jobs finishes", async () => {
+    const requests = fresh();
+    renderApp(backend(OWNER, requests), FOLDER);
+    fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findAllByRole("checkbox");
+    // The value scan is done before the AI detection.
+    requests.jobs = [job("j1", "pii_scan", "succeeded"), job("j2", "pii_ai_detect", "running")];
+    const before = requests.folderReads;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
+
+    await waitFor(() => expect(requests.folderReads).toBeGreaterThan(before));
+    const afterValueScan = requests.folderReads;
+    requests.jobs = [job("j1", "pii_scan", "succeeded"), job("j2", "pii_ai_detect", "succeeded")];
+
+    await waitFor(() => expect(requests.folderReads).toBeGreaterThan(afterValueScan), {
+      timeout: 6000,
+    });
+  }, 15000);
 });

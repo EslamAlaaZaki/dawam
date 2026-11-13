@@ -409,6 +409,7 @@ class SourceQueryService:
                     sa.select(PiiFindingRecord.id).where(
                         PiiFindingRecord.src_column_id == column_id,
                         PiiFindingRecord.rule == VALUE_AT_QUERY,
+                        PiiFindingRecord.source == "value",
                     )
                 )
                 if known is not None:

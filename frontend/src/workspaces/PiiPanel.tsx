@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, TriangleAlert } from "lucide-react";
+import { Info, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { isActive, useJobs } from "../api/jobs";
@@ -61,19 +61,20 @@ const TABS: readonly { tab: PiiTab; label: string; empty: string }[] = [
   {
     tab: "suggested",
     label: "Suggested",
-    empty: "Nothing to review. Scan the values to look for more.",
+    empty: "Nothing to review. Detect PII to look for more.",
   },
   { tab: "accepted", label: "Accepted", empty: "No accepted columns." },
   { tab: "rejected", label: "Rejected", empty: "No rejected columns." },
 ];
 
 /** The source filter of the PII tab: a column matches if any of its rules has it. */
-type SourceFilter = "all" | "name" | "value" | "manual";
+type SourceFilter = "all" | "name" | "value" | "ai" | "manual";
 
 const SOURCE_FILTERS: { source: SourceFilter; label: string }[] = [
   { source: "all", label: "All" },
   { source: "name", label: "Name scan" },
   { source: "value", label: "Value scan" },
+  { source: "ai", label: "AI" },
   { source: "manual", label: "Manual" },
 ];
 
@@ -86,7 +87,22 @@ const matchesSource = (column: PiiColumn, source: SourceFilter) =>
 const SOURCE_LABELS: Record<PiiRuleMatch["source"], string> = {
   name: "Name",
   value: "Values",
+  ai: "AI",
 };
+
+/** The Matched rules header's ⓘ tooltip: each source tag and what it means. */
+const MATCHED_RULES_TIP: readonly [string, string][] = [
+  ["Name", "The column name matches a rule."],
+  ["Values", "Sampled values pass a rule's check. Values are never stored."],
+  [
+    "AI",
+    "The AI suggests it from names, types, comments and Documents, never values.",
+  ],
+  ["Manual", "Added by hand."],
+];
+
+/** The order the Matched rules cell groups a column's rules in; Manual comes last. */
+const SOURCE_ORDER: readonly PiiRuleMatch["source"][] = ["name", "value", "ai"];
 
 const DECISION_VERBS = {
   accepted: "Accepted by",
@@ -126,8 +142,9 @@ function ColumnCell({ column, note }: { column: PiiColumn; note?: ReactNode }) {
 }
 
 /**
- * Every rule that matched the column, most confident first: where it comes from, the rule
- * (mono tag), its confidence and, unless `compact`, its evidence (full text in a tooltip).
+ * Every rule that matched the column, grouped by where it comes from (Name, Values, AI, then
+ * Manual), most confident first in each group: the rule (mono tag), its confidence and,
+ * unless `compact`, its evidence (full text in a tooltip).
  */
 function MatchedRules({
   column,
@@ -136,37 +153,51 @@ function MatchedRules({
   column: PiiColumn;
   compact?: boolean;
 }) {
+  const groups = SOURCE_ORDER.map((source) => ({
+    source,
+    rules: column.rules.filter((r) => r.source === source),
+  })).filter((group) => group.rules.length > 0);
   return (
     <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-      {column.rules.map((rule) => (
-        <li key={rule.id} className="flex flex-col gap-0.5">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="w-12 text-xs text-muted-foreground">
-              {SOURCE_LABELS[rule.source]}
-            </span>
-            <Badge variant="info" className={monoClasses}>
-              {rule.rule}
-            </Badge>
-            <Confidence ratio={rule.confidence} />
-          </span>
-          {!compact && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  tabIndex={0}
-                  className="max-w-80 truncate text-xs text-muted-foreground"
-                >
-                  {rule.evidence}
+      {groups.map((group) => (
+        <li
+          key={group.source}
+          aria-label={`${SOURCE_LABELS[group.source]} rules`}
+          className="flex items-start gap-2"
+        >
+          <Badge className="w-14 shrink-0 justify-center">
+            {SOURCE_LABELS[group.source]}
+          </Badge>
+          <ul className="m-0 flex min-w-0 list-none flex-col gap-1.5 p-0">
+            {group.rules.map((rule) => (
+              <li key={rule.id} className="flex flex-col gap-0.5">
+                <span className="flex flex-wrap items-center gap-2">
+                  <Badge variant="info" className={monoClasses}>
+                    {rule.rule}
+                  </Badge>
+                  <Confidence ratio={rule.confidence} />
                 </span>
-              </TooltipTrigger>
-              <TooltipContent>{rule.evidence}</TooltipContent>
-            </Tooltip>
-          )}
+                {!compact && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        tabIndex={0}
+                        className="max-w-80 truncate text-xs text-muted-foreground"
+                      >
+                        {rule.evidence}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{rule.evidence}</TooltipContent>
+                  </Tooltip>
+                )}
+              </li>
+            ))}
+          </ul>
         </li>
       ))}
       {column.manual && (
         <li className="flex items-center gap-2">
-          <span className="w-12 text-xs text-muted-foreground">Manual</span>
+          <Badge className="w-14 shrink-0 justify-center">Manual</Badge>
           <span className="text-xs text-muted-foreground">Added by hand</span>
         </li>
       )}
@@ -315,9 +346,15 @@ export function PiiPanel({
   const jobs = useJobs(workspace.id);
   const queryClient = useQueryClient();
 
-  const startedId = scan.data?.job_id;
-  const started = jobs.data?.items.find((job) => job.id === startedId);
-  const finished = started != null && !isActive(started);
+  // Detect PII starts a value scan (with a Connection) and an AI detection: the folder is
+  // read again as each of them finishes.
+  const startedIds = [scan.data?.job_id, scan.data?.ai_job_id].filter(
+    (id): id is string => id != null,
+  );
+  const finished = (jobs.data?.items ?? [])
+    .filter((job) => startedIds.includes(job.id) && !isActive(job))
+    .map((job) => job.id)
+    .join(" ");
   useEffect(() => {
     if (finished) {
       void queryClient.invalidateQueries({
@@ -398,7 +435,7 @@ export function PiiPanel({
               disabled={scan.isPending}
               onClick={() => setScanOpen(true)}
             >
-              Scan values
+              Detect PII
             </Button>
             {tab === "pii" && (
               <Button
@@ -424,15 +461,18 @@ export function PiiPanel({
         <ScanDialog
           workspace={workspace}
           system={system}
+          hasConnection={page?.can_profile ?? true}
           pending={scan.isPending}
           error={scan.error}
           onClose={() => setScanOpen(false)}
           onStart={(tableIds) =>
             scan.mutate(tableIds, {
-              onSuccess: () => {
+              onSuccess: (started) => {
                 setScanOpen(false);
                 toast.success(
-                  "Scan started. Follow it under Background jobs; new findings appear here when it finishes.",
+                  started.job_id
+                    ? "Value scan and AI detection started. Follow them under Background jobs; new findings appear here as each finishes."
+                    : "AI detection started (no Connection, so no value scan). Follow it under Background jobs; new findings appear here when it finishes.",
                 );
               },
             })
@@ -530,7 +570,43 @@ export function PiiPanel({
                 <TableHead>Column</TableHead>
                 {shownTab === "pii" && <TableHead>Type</TableHead>}
                 <TableHead>Category</TableHead>
-                <TableHead>Matched rules</TableHead>
+                <TableHead>
+                  <span className="inline-flex items-center gap-1">
+                    Matched rules
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="What are matched rules?"
+                          className="ms-1 inline-grid size-4 cursor-help place-items-center rounded-full align-middle text-subtle-foreground hover:text-primary focus-visible:text-primary"
+                        >
+                          <Info aria-hidden className="size-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="flex max-w-xs flex-col gap-1.5 border border-border bg-surface-raised p-3 leading-normal font-normal text-foreground shadow-overlay">
+                        <p className="m-0">
+                          <span className="font-semibold">Matched rules</span>:
+                          what flagged the column as PII. Each rule shows its
+                          own confidence.
+                        </p>
+                        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                          {MATCHED_RULES_TIP.map(([source, text]) => (
+                            <li key={source}>
+                              <Badge className="me-1.5">{source}</Badge>
+                              {text}
+                            </li>
+                          ))}
+                          <li>
+                            <Badge variant="info" className={cn(monoClasses, "me-1.5")}>
+                              rule
+                            </Badge>
+                            The rule that matched, such as national_id or iban.
+                          </li>
+                        </ul>
+                      </TooltipContent>
+                    </Tooltip>
+                  </span>
+                </TableHead>
                 {shownTab !== "suggested" && <TableHead>Decided</TableHead>}
                 {(canReview || shownTab !== "pii") && (
                   <TableHead>

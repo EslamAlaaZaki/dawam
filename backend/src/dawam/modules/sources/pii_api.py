@@ -73,8 +73,9 @@ class PiiRuleMatch(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    source: Literal["name", "value"] = Field(
-        description="`name`: a name scan; `value`: a value scan or a query's values."
+    source: Literal["name", "value", "ai"] = Field(
+        description="`name`: a name scan; `value`: a value scan or a query's values; `ai`: "
+        "the AI PII detection (metadata only)."
     )
     rule: str = Field(description="`national_id`, `saudi_national_id`, `custom:<name>`, ...")
     category: PiiCategory
