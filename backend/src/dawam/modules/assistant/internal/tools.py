@@ -2966,9 +2966,9 @@ TOOLS: tuple[Tool, ...] = (
         "tables they are based on, waiting in the Suggested tab for an owner or editor to "
         "accept or reject; a name that already exists in the same scope (rejected included) "
         "is skipped, one based on a table outside the Source System is dropped, and existing "
-        "KPIs are never changed. Under the Data Warehouse (no system_id) only cross-system KPIs "
-        "count: based on two or more Source Systems' tables or the DW model, with formula SQL "
-        "once the DW model exists. Never put sample values or personal data in the text.",
+        "KPIs are never changed. Without a system_id only cross-system KPIs count (two or more "
+        "Source Systems, or the DW model, with formula SQL once it exists). "
+        "Never put sample values or personal data in the text.",
         _SuggestKpis,
         "write",
         Action.EDIT_KPI,
