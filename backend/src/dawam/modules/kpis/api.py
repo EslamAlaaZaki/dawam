@@ -342,7 +342,8 @@ def dismiss_suggestion(
     workspace_id: uuid.UUID, body: SuggestionKeyRequest, user: CurrentUser, kpis: KpiServiceDep
 ) -> Response:
     """Reject a suggestion (owners and editors): rule runs never propose it again and it is
-    listed as rejected. 404 if there is no such suggestion."""
+    listed as rejected and the decision is audited. 404 if there is no such suggestion;
+    409 `invalid_review_state` if it was accepted and its KPI is in the KPIs tab."""
     kpis.dismiss_suggestion(user, workspace_id, body.key)
     return Response(status_code=204)
 

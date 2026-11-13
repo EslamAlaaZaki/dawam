@@ -565,25 +565,68 @@ class KpiService:
             return _views(db, workspace_id, [record])[0]
 
     def dismiss_suggestion(self, user: User, workspace_id: uuid.UUID, key: str) -> None:
-        """Hide a rule-based suggestion for good (owners and editors); dismissing one that
-        is already hidden is fine. 404 if there is no such suggestion."""
+        """Reject a rule-based suggestion (owners and editors): it is hidden for good and
+        audited like any review decision; rejecting one that is already rejected is fine.
+        404 if there is no such suggestion, 409 ``invalid_review_state`` if it was accepted
+        and its KPI is in the KPIs tab."""
         self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
         with Session(self._engine) as db, db.begin():
             schema = read_schema(db, workspace_id)
-            known = schema is not None and any(
-                s.key == key for s in suggest(schema, read_mapping_state(db, workspace_id))
-            )
-            if not known:
-                raise ApiError(404, "not_found", "Suggestion not found.")
-            if db.get(KpiSuggestionDismissalRecord, (workspace_id, key)) is None:
-                db.add(
-                    KpiSuggestionDismissalRecord(
-                        workspace_id=workspace_id,
-                        key=key,
-                        dismissed_by=user.id,
-                        dismissed_at=self._clock(),
-                    )
+            found = None
+            if schema is not None:
+                found = next(
+                    (
+                        s
+                        for s in suggest(schema, read_mapping_state(db, workspace_id))
+                        if s.key == key
+                    ),
+                    None,
                 )
+            if found is None:
+                raise ApiError(404, "not_found", "Suggestion not found.")
+            state = db.scalar(
+                sa.select(KpiRecord.review_state).where(
+                    KpiRecord.workspace_id == workspace_id,
+                    KpiRecord.suggestion_key == key,
+                    KpiRecord.review_state.in_(CATALOG_STATES),
+                )
+            )
+            if state is not None:
+                raise ApiError(
+                    409,
+                    "invalid_review_state",
+                    "This suggestion is already a KPI in the KPIs tab; delete the KPI instead.",
+                    {"review_state": state},
+                )
+            if db.get(KpiSuggestionDismissalRecord, (workspace_id, key)) is not None:
+                return
+            now = self._clock()
+            db.add(
+                KpiSuggestionDismissalRecord(
+                    workspace_id=workspace_id, key=key, dismissed_by=user.id, dismissed_at=now
+                )
+            )
+            record_audit(
+                db,
+                workspace_id=workspace_id,
+                actor_id=user.id,
+                entity_type="kpi_suggestion",
+                entity_id=key,
+                old={"review_state": "suggested"},
+                new={"review_state": "rejected", "name": found.name},
+                at=now,
+            )
+            record_activity(
+                db,
+                workspace_id=workspace_id,
+                actor_id=user.id,
+                verb="kpi.rejected",
+                object_type="kpi_suggestion",
+                object_id=key,
+                object_label=found.name,
+                details={"origin": "rule"},
+                at=now,
+            )
 
     def feasibility(self, user: User, workspace_id: uuid.UUID, kpi_id: uuid.UUID) -> KpiFeasibility:
         """Whether a KPI (a rule or an AI suggestion, or any other) can be computed (any

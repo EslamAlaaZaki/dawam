@@ -10913,7 +10913,7 @@
           "kpis"
         ],
         "summary": "Dismiss Suggestion",
-        "description": "Reject a suggestion (owners and editors): rule runs never propose it again and it is\nlisted as rejected. 404 if there is no such suggestion.",
+        "description": "Reject a suggestion (owners and editors): rule runs never propose it again and it is\nlisted as rejected and the decision is audited. 404 if there is no such suggestion;\n409 `invalid_review_state` if it was accepted and its KPI is in the KPIs tab.",
         "operationId": "dismissKpiSuggestion",
         "parameters": [
           {

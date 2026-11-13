@@ -2981,7 +2981,8 @@ export interface paths {
         /**
          * Dismiss Suggestion
          * @description Reject a suggestion (owners and editors): rule runs never propose it again and it is
-         *     listed as rejected. 404 if there is no such suggestion.
+         *     listed as rejected and the decision is audited. 404 if there is no such suggestion;
+         *     409 `invalid_review_state` if it was accepted and its KPI is in the KPIs tab.
          */
         post: operations["dismissKpiSuggestion"];
         delete?: never;

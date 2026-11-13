@@ -5,6 +5,7 @@ the suggestion dismissed."""
 
 from __future__ import annotations
 
+from dawam.modules.audit import AuditService
 from tests.kpis import test_kpi_suggestions as suggestions
 from tests.kpis.test_kpi_suggestions import suggestions_path
 from tests.kpis.test_kpis import error_code, kpis_path
@@ -147,3 +148,23 @@ def test_a_renamed_accepted_rule_kpi_does_not_bring_its_suggestion_back(
 
     assert renamed.status_code == 200, renamed.text
     assert NAME not in open_names(roles)
+
+
+def test_rejecting_is_audited_once_and_refused_for_a_suggestion_already_a_kpi(
+    roles: RoleClients, loan_model, app
+):
+    key = open_names(roles)[NAME]["key"]
+
+    assert post(roles, "dismiss", key).status_code == 204
+    assert post(roles, "dismiss", key).status_code == 204  # already rejected: not audited twice
+
+    [entry] = AuditService(app.state.engine).list(
+        roles.workspace_id, entity_type="kpi_suggestion", entity_id=key
+    )
+    assert entry.new == {"review_state": "rejected", "name": NAME}
+    # accepted after all: it is a KPI in the KPIs tab now, so it cannot be rejected
+    assert post(roles, "accept", key).status_code == 201
+    refused = post(roles, "dismiss", key)
+    assert refused.status_code == 409
+    assert error_code(refused) == "invalid_review_state"
+    assert page(roles)["rejected_rule_suggestions"] == []
