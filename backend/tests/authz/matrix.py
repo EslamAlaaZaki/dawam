@@ -507,6 +507,15 @@ def dw_table_id(roles: RoleClients) -> str:
     return response.json()["id"]
 
 
+def dw_model_table(roles: RoleClients) -> str:
+    """A Core table as ``core.table`` (``dw_table_id`` adds one unless there is one), for a
+    cross-system AI KPI suggestion to be based on."""
+    dw_table_id(roles)
+    path = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse/tables"
+    listed = roles.client("owner").get(path, params={"layer": "core"}).json()["items"]
+    return f"core.{listed[0]['name']}"
+
+
 def dw_column_id(roles: RoleClients) -> str:
     """A measure of that fact."""
     table = dw_table_id(roles)
@@ -761,6 +770,7 @@ def suggested_kpi(roles: RoleClients) -> None:
     clock = state.services.clock
     workspaces = WorkspaceService(state.engine, clock=clock)
     roles.client("owner")  # the owner is a member from now on
+    based_on = dw_model_table(roles)  # a Data Warehouse suggestion is cross-system
     KpiService(
         state.engine,
         workspaces=workspaces,
@@ -769,7 +779,13 @@ def suggested_kpi(roles: RoleClients) -> None:
     ).suggest(
         roles.user("owner"),
         roles.workspace_id,
-        [KpiSuggestion(name="A suggested KPI", rationale="The ledger points to it.")],
+        [
+            KpiSuggestion(
+                name="A suggested KPI",
+                rationale="The ledger points to it.",
+                based_on=(based_on,),
+            )
+        ],
     )
 
 

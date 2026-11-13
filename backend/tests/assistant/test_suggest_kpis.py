@@ -13,7 +13,7 @@ from dawam.modules.llm import FakeAdapter, Reply
 from tests.assistant import test_chat
 from tests.assistant.test_chat import add_kpi, add_system, ask, conversation, tool, tool_names
 from tests.assistant.test_source_tools import payload
-from tests.authz.matrix import snapshot_id, system_id
+from tests.authz.matrix import dw_model_table, snapshot_id, system_id
 from tests.roles import RoleClients
 
 model = test_chat.model
@@ -36,6 +36,9 @@ def suggest(
     role: str = "editor",
     **arguments: Any,
 ) -> tuple[str, str]:
+    if "system_id" not in arguments:  # the Data Warehouse's are cross-system
+        model_table = dw_model_table(roles)
+        items = [{"based_on": [model_table], **item} for item in items]
     fake_llm.calls.clear()
     call = tool("suggest_kpis", suggestions=items, **arguments)
     fake_llm.script(Reply(tool_calls=(call,)), Reply(text="done"))

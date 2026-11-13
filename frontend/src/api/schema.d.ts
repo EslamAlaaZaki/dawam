@@ -4770,6 +4770,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/kpi-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dw Kpi Suggestions
+         * @description The newest cross-system KPI suggestion job, with its outcome once it has succeeded,
+         *     and whether one may start (owners and editors).
+         */
+        get: operations["getDwKpiSuggestions"];
+        put?: never;
+        /**
+         * Start Dw Kpi Suggestions
+         * @description Suggest cross-system KPIs for the Data Warehouse with the AI, as a background job
+         *     (owners and editors): only KPIs that need two or more Source Systems or the DW model. The
+         *     AI sees every KPI in the Workspace in every review state; suggestions land in the Data
+         *     Warehouse's Suggested tab. 409 `kpi_suggestions_unavailable` until the Workspace has two
+         *     Source Systems or a DW model; 409 `kpi_suggestions_running` while a job runs already.
+         */
+        post: operations["startDwKpiSuggestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/documentation-pack": {
         parameters: {
             query?: never;
@@ -7645,7 +7674,7 @@ export interface components {
             rationale: string | null;
             /**
              * Based On
-             * @description The source tables (`schema.table`) an AI suggestion is based on, all of its Source System; empty for other KPIs.
+             * @description The tables an AI suggestion is based on: under a Source System its tables (`schema.table`); under the Data Warehouse tables of two or more Source Systems (`SYSTEM.schema.table`) or of the DW model (`core.table`, `mart.table`). Empty for other KPIs.
              */
             based_on: string[];
             /**
@@ -7859,7 +7888,7 @@ export interface components {
             created: number | null;
             /**
              * Dropped
-             * @description Suggestions dropped because they were based on tables outside the Source System; null until the job has succeeded.
+             * @description Suggestions dropped because of the tables they were based on: outside the Source System or, for the Data Warehouse, one Source System's only; null until the job has succeeded.
              */
             dropped: number | null;
             /**
@@ -7879,6 +7908,26 @@ export interface components {
         KpiSuggestions: {
             /** Items */
             items: components["schemas"]["KpiSuggestion"][];
+        };
+        /** LatestDwKpiSuggestionJob */
+        LatestDwKpiSuggestionJob: {
+            /** @description The newest job; null if none ran yet. */
+            job: components["schemas"]["KpiSuggestionJob"] | null;
+            /**
+             * Available
+             * @description Whether a job may start: the Workspace has at least two Source Systems or a DW model.
+             */
+            available: boolean;
+            /**
+             * Source Systems
+             * @description The Workspace's Source Systems, deleted ones not.
+             */
+            source_systems: number;
+            /**
+             * Dw Model
+             * @description Whether the DW model exists (Core or Mart has tables).
+             */
+            dw_model: boolean;
         };
         /** LatestKpiSuggestionJob */
         LatestKpiSuggestionJob: {
@@ -23915,6 +23964,86 @@ export interface operations {
             path: {
                 workspace_id: string;
                 system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KpiSuggestionJob"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDwKpiSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LatestDwKpiSuggestionJob"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startDwKpiSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
             };
             cookie?: never;
         };

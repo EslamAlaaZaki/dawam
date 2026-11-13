@@ -12,7 +12,11 @@ Public interface. Other modules import only what is re-exported here:
   lineage, the score, exports and the assistant's reads. ``suggest`` creates the AI's
   suggestions as ``suggested`` KPIs (``origin`` ``ai``, with a ``rationale``),
   create-only: it skips names of the same scope in any review state, redacts values the
-  PII validators match, and audits each KPI as ``via=ai``. ``accept`` / ``reject`` decide
+  PII validators match, and audits each KPI as ``via=ai``. Under the Data Warehouse a
+  suggestion must be cross-system (based on tables of two or more Source Systems, or on DW
+  model tables) and, once the DW model exists, keeps formula SQL that fits it, linked to the
+  columns it reads; ``cross_system_readiness`` (``CrossSystemReadiness``) tells whether a
+  Workspace may have cross-system KPIs suggested. ``accept`` / ``reject`` decide
   on them; ``delete`` moves a KPI that came from a suggestion to rejected ("removed").
   Formula SQL is one SELECT query validated with sqlglot against the Core and Mart tables of
   the Data Warehouse (only parsed before it is set up). ``links`` / ``set_links`` read and
@@ -64,6 +68,7 @@ from .platform_change import kpi_formulas_check, plan_kpi_transpile
 from .propagation import KpiPlan, KpiPropagationHandler, plan_kpi_propagation
 from .score_feed import kpis_for_score
 from .service import (
+    CrossSystemReadiness,
     Kpi,
     KpiFeasibility,
     KpiLink,
@@ -78,6 +83,7 @@ from .service import (
 from .suggestions import RuleSuggestion
 
 __all__ = [
+    "CrossSystemReadiness",
     "Kpi",
     "KpiFeasibility",
     "KpiLink",

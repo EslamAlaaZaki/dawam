@@ -527,8 +527,17 @@ class _KpiIdea(BaseModel):
     based_on: list[Annotated[str, StringConstraints(max_length=300)]] = Field(
         default_factory=list,
         max_length=20,
-        description="The source tables the KPI uses, as schema.table. Under a Source System "
-        "each must be one of its tables, or the suggestion is dropped.",
+        description="The tables the KPI uses. Under a Source System: schema.table, each one "
+        "of its tables. Under the Data Warehouse: Source System tables as SYSTEM.schema.table "
+        "(the System Code first) and DW model tables as core.table or mart.table, spanning two "
+        "or more Source Systems or including a DW model table. Otherwise it is dropped.",
+    )
+    formula_sql: str = Field(
+        default="",
+        max_length=20000,
+        description="Under the Data Warehouse once its model exists: one SELECT against the "
+        "Core and Mart tables. It is validated; SQL that does not fit leaves the KPI words "
+        "only. Leave empty otherwise.",
     )
 
 
@@ -538,6 +547,18 @@ KPI_SUGGESTION_RULES = (
     "review state: live, suggested, accepted or rejected). Give each the source tables it is "
     "based on (schema.table, tables of this Source System only): a suggestion based on any "
     "other table is dropped. Suggesting nothing is a fine outcome when nothing differs."
+)
+
+CROSS_SYSTEM_KPI_RULES = (
+    "Suggest only cross-system KPIs: ones that need two or more Source Systems, or the Data "
+    "Warehouse model. Never a single-system KPI (those belong on that system's page) and never "
+    "a repeat or rewording of a KPI already listed (in any review state: live, suggested, "
+    "accepted or rejected, under any Source System or the Data Warehouse). Give each the "
+    "tables it is based on: Source System tables as SYSTEM.schema.table (the System Code "
+    "first) and DW model tables as core.table or mart.table. A suggestion whose tables come "
+    "from only one Source System, with no DW model table, is dropped. When the DW model "
+    "exists, give each its formula_sql: one SELECT against the Core and Mart tables. "
+    "Suggesting nothing is a fine outcome when nothing differs."
 )
 
 
@@ -1996,14 +2017,19 @@ def _update_file(ctx: ToolContext, args: _UpdateFile) -> Any:
 
 def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
     if args.suggestions is None:  # first phase: what is there already, in every state
-        existing = ctx.services.kpis.every_state(ctx.user, ctx.workspace_id, args.system_id)
+        # The Data Warehouse's are cross-system: they must differ from every KPI in the
+        # Workspace.
+        existing = ctx.services.kpis.every_state(
+            ctx.user, ctx.workspace_id, args.system_id, workspace_wide=args.system_id is None
+        )
+        rules = KPI_SUGGESTION_RULES if args.system_id else CROSS_SYSTEM_KPI_RULES
         return {
             "existing_kpis": [
                 {"name": k.name, "definition": k.definition, "review_state": k.review_state}
                 for k in existing
             ],
-            "note": KPI_SUGGESTION_RULES + " Call suggest_kpis again with your suggestions "
-            "and the same system_id.",
+            "note": rules + " Call suggest_kpis again with your suggestions and the same "
+            "system_id.",
         }
     result = ctx.services.kpis.suggest(
         ctx.user,
@@ -2025,10 +2051,17 @@ def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
         ],
         "skipped": result.skipped,
         "dropped": result.dropped,
+        **({"without_sql": result.without_sql} if result.without_sql else {}),
         "note": "Created as suggestions in the KPIs folder's Suggested tab, for an owner or "
         "editor to accept or reject. Names that already exist there (rejected ones included) "
-        "were skipped; existing KPIs are never changed. Dropped ones were based on no table, or "
-        "on a table outside the Source System.",
+        "were skipped; existing KPIs are never changed. "
+        + (
+            "Dropped ones were based on no table, or on a table outside the Source System."
+            if args.system_id
+            else "Dropped ones were based on an unknown table, or on one Source System's "
+            "tables only. Those without_sql were created words only: their SQL did not fit the "
+            "DW Schema."
+        ),
     }
 
 
@@ -2933,7 +2966,9 @@ TOOLS: tuple[Tool, ...] = (
         "tables they are based on, waiting in the Suggested tab for an owner or editor to "
         "accept or reject; a name that already exists in the same scope (rejected included) "
         "is skipped, one based on a table outside the Source System is dropped, and existing "
-        "KPIs are never changed. Never put sample values or personal data in the text.",
+        "KPIs are never changed. Under the Data Warehouse (no system_id) only cross-system KPIs "
+        "count: based on two or more Source Systems' tables or the DW model, with formula SQL "
+        "once the DW model exists. Never put sample values or personal data in the text.",
         _SuggestKpis,
         "write",
         Action.EDIT_KPI,

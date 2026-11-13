@@ -13,7 +13,11 @@ from sqlalchemy.orm import Session
 from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
-from dawam.modules.sources import SourceSystemService, source_table_names
+from dawam.modules.sources import (
+    SourceSystemService,
+    source_table_names,
+    workspace_source_table_names,
+)
 from dawam.modules.warehouse import (
     DwSchema,
     SchemaColumn,
@@ -213,8 +217,12 @@ class KpiSuggestion:
     unit: str = ""
     aggregation: str = ""
     based_on: Sequence[str] = ()
-    """The source tables (``schema.table``) it uses; under a Source System every one must be
-    a table of that system."""
+    """The tables it uses. Under a Source System: ``schema.table``, each a table of that
+    system. Under the Data Warehouse: Source System tables as ``SYSTEM.schema.table`` (its
+    System Code first) and DW model tables as ``core.table`` or ``mart.table``, spanning two
+    or more Source Systems or including a DW model table."""
+    formula_sql: str = ""
+    """Under the Data Warehouse once its model exists: the formula against the DW Schema."""
 
 
 @dataclass(frozen=True)
@@ -223,12 +231,75 @@ class SuggestedKpis:
     skipped: list[str]
     """Names of suggestions left out because a KPI of that name already exists."""
     dropped: list[str] = field(default_factory=list)
-    """Names of suggestions left out because they are based on no table, or on a table
-    outside the Source System."""
+    """Names of suggestions left out because of the tables they are based on: none, one
+    outside the Source System or, under the Data Warehouse, only one Source System's."""
+    without_sql: list[str] = field(default_factory=list)
+    """Names of Data Warehouse suggestions created without their formula SQL (words only)
+    because it did not fit the DW Schema."""
+
+
+@dataclass(frozen=True)
+class CrossSystemReadiness:
+    """Whether a Workspace can have cross-system KPIs suggested (spec story 75)."""
+
+    source_systems: int
+    """Its Source Systems (deleted ones not counted)."""
+    dw_model: bool
+    """Whether the DW model exists: Core or Mart has tables."""
+
+    @property
+    def ready(self) -> bool:
+        return self.source_systems >= 2 or self.dw_model
 
 
 def _name_key(name: str) -> str:
     return " ".join(name.lower().split())
+
+
+def _dw_model(schema: DwSchema | None) -> DwSchema | None:
+    """The DW Schema when the DW model exists (Core or Mart has tables)."""
+    return schema if schema is not None and schema.tables else None
+
+
+def _dw_table_names(schema: DwSchema | None) -> dict[str, str]:
+    """The DW model's tables as ``core.table`` / ``mart.table`` (the Layer's schema name), keyed
+    in lower case by that name and by the Layer's own name."""
+    if schema is None:
+        return {}
+    names: dict[str, str] = {}
+    for table in schema.tables:
+        shown = f"{schema.layer_schemas.get(table.layer, table.layer)}.{table.name}"
+        names[shown.lower()] = shown
+        names[f"{table.layer}.{table.name}".lower()] = shown
+    return names
+
+
+def _cross_system(
+    wanted: Sequence[str],
+    sources: Mapping[str, tuple[str, uuid.UUID]],
+    dw_tables: Mapping[str, str],
+) -> list[str] | None:
+    """The tables a Data Warehouse suggestion is based on, as stored; ``None`` (drop it) unless
+    every one is a Source System or DW model table and together they span two or more Source
+    Systems or include a DW model table."""
+    found: list[str] = []
+    systems: set[uuid.UUID] = set()
+    uses_model = False
+    for name in (t.strip() for t in wanted):
+        if not name:
+            continue
+        if name.lower() in dw_tables:
+            found.append(dw_tables[name.lower()])
+            uses_model = True
+        elif name.lower() in sources:
+            shown, system_id = sources[name.lower()]
+            found.append(shown)
+            systems.add(system_id)
+        else:
+            return None
+    if not uses_model and len(systems) < 2:
+        return None
+    return list(dict.fromkeys(found))
 
 
 def _decision(record: KpiRecord) -> tuple[str | None, uuid.UUID | None, datetime | None]:
@@ -423,7 +494,13 @@ class KpiService:
         rationale, status draft) waiting for an owner or editor to accept or reject them,
         under a Source System or the Data Warehouse. Under a Source System each suggestion
         must be based on its tables: one based on no table, or on a table (``schema.table``,
-        ignoring case) that is not a present table of that system, is dropped. Create-only: a
+        ignoring case) that is not a present table of that system, is dropped. Under the Data
+        Warehouse a suggestion is cross-system: its tables (Source System tables as
+        ``SYSTEM.schema.table``, DW model tables as ``core.table`` or ``mart.table``) must all
+        exist and span two or more Source Systems or include a DW model table, or it is
+        dropped. Once the DW model exists its formula SQL is kept when it fits the DW Schema
+        (``validate_formula``), linked to the DW columns it reads (no lineage edges until it
+        is accepted); SQL that does not fit leaves it words only (``without_sql``). Create-only: a
         suggestion whose name matches a KPI of the same scope in any review state (rejected
         included; ignoring case and spaces), or an earlier suggestion, is skipped; no KPI is
         ever updated or deleted. One audit entry ``via=ai`` per KPI. Every text is checked
@@ -446,24 +523,42 @@ class KpiService:
                 )
             }
             tables = source_table_names(db, source_system_id) if source_system_id else {}
+            model = _dw_model(read_schema(db, workspace_id)) if source_system_id is None else None
+            everywhere = (
+                workspace_source_table_names(db, workspace_id) if source_system_id is None else {}
+            )
+            dw_tables = _dw_table_names(model)
             created: list[KpiRecord] = []
+            links: dict[uuid.UUID, list[uuid.UUID]] = {}
             skipped: list[str] = []
             dropped: list[str] = []
+            without_sql: list[str] = []
             for suggestion in suggestions:
                 name = _clean(
                     redact_text(suggestion.name), "name", "name", NAME_MAX_LENGTH, required=True
                 )
-                based_on: list[str] = []
+                based_on: list[str] | None
                 if source_system_id is not None:
                     wanted = [t.strip().lower() for t in suggestion.based_on if t.strip()]
-                    if not wanted or any(t not in tables for t in wanted):
-                        dropped.append(name)
-                        continue
-                    based_on = list(dict.fromkeys(tables[t] for t in wanted))
+                    based_on = (
+                        list(dict.fromkeys(tables[t] for t in wanted))
+                        if wanted and all(t in tables for t in wanted)
+                        else None
+                    )
+                else:
+                    based_on = _cross_system(suggestion.based_on, everywhere, dw_tables)
+                if based_on is None:
+                    dropped.append(name)
+                    continue
                 if _name_key(name) in taken:
                     skipped.append(name)
                     continue
                 taken.add(_name_key(name))
+                sql, columns = None, []
+                if model is not None and suggestion.formula_sql.strip():
+                    sql, columns = _suggested_formula(db, workspace_id, model, suggestion)
+                    if sql is None:
+                        without_sql.append(name)
                 texts = {
                     field: _clean(redact_text(value), label, field, limit)
                     for field, value in (
@@ -482,7 +577,7 @@ class KpiService:
                     owner="",
                     refresh_frequency="",
                     targets=[],
-                    formula_sql=None,
+                    formula_sql=sql,
                     origin="ai",
                     rationale=_clean(
                         redact_text(suggestion.rationale), "rationale", "rationale", TEXT_MAX_LENGTH
@@ -499,6 +594,13 @@ class KpiService:
                 )
                 db.add(record)
                 created.append(record)
+                links[record.id] = columns
+            db.flush()
+            for record in created:
+                # Stored for Feasibility; lineage edges only once accepted (``_decide``).
+                db.add_all(
+                    KpiLinkRecord(kpi_id=record.id, dw_column_id=i) for i in links[record.id]
+                )
             db.flush()
             for record in created:
                 record_audit(
@@ -514,21 +616,51 @@ class KpiService:
                         "rationale": record.rationale,
                         "based_on": record.based_on,
                         "review_state": "suggested",
+                        **(
+                            {"links": sorted(str(i) for i in links[record.id])}
+                            if links[record.id]
+                            else {}
+                        ),
                     },
                     at=now,
                     via="ai",
                 )
                 self._record_activity(db, user, "kpi.created", record, details={"via": "ai"})
             return SuggestedKpis(
-                created=[_view(r) for r in created], skipped=skipped, dropped=dropped
+                created=_views(db, workspace_id, created),
+                skipped=skipped,
+                dropped=dropped,
+                without_sql=without_sql,
             )
 
+    def cross_system_readiness(self, user: User, workspace_id: uuid.UUID) -> CrossSystemReadiness:
+        """Whether cross-system KPIs can be suggested (any member): at least two Source
+        Systems (deleted ones not counted), or the DW model exists (Core or Mart has tables)."""
+        self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
+        systems = 0
+        cursor: str | None = None
+        while True:
+            page = self._systems.list(user, workspace_id, limit=MAX_PAGE_SIZE, cursor=cursor)
+            systems += len(page.items)
+            if page.next_cursor is None:
+                break
+            cursor = page.next_cursor
+        with Session(self._engine) as db:
+            model = _dw_model(read_schema(db, workspace_id))
+        return CrossSystemReadiness(source_systems=systems, dw_model=model is not None)
+
     def every_state(
-        self, user: User, workspace_id: uuid.UUID, source_system_id: uuid.UUID | None
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        source_system_id: uuid.UUID | None,
+        *,
+        workspace_wide: bool = False,
     ) -> list[Kpi]:
-        """Every KPI of one scope (a Source System, or ``None``: the Data Warehouse) in every
-        review state, by name: what the AI is shown so it suggests only different ones
-        (owners and editors, ``kpi.view_review``)."""
+        """Every KPI of one scope (a Source System, or ``None``: the Data Warehouse) or, with
+        ``workspace_wide``, of the whole Workspace, in every review state, by name: what the
+        AI is shown so it suggests only different ones (owners and editors,
+        ``kpi.view_review``)."""
         kpis: list[Kpi] = []
         cursor: str | None = None
         while True:
@@ -536,7 +668,7 @@ class KpiService:
                 user,
                 workspace_id,
                 source_system_id=source_system_id,
-                data_warehouse=source_system_id is None,
+                data_warehouse=source_system_id is None and not workspace_wide,
                 review="all",
                 limit=MAX_PAGE_SIZE,
                 cursor=cursor,
@@ -1257,6 +1389,26 @@ def _revoke_approval(
         and record.formula_sql != before["formula_sql"]
     ):
         record.status = "draft"
+
+
+def _suggested_formula(
+    db: Session, workspace_id: uuid.UUID, model: DwSchema, suggestion: KpiSuggestion
+) -> tuple[str | None, list[uuid.UUID]]:
+    """An AI suggestion's formula SQL, redacted, if it fits the DW model, and the DW columns
+    it reads as its links (none if they cannot be links, e.g. a Core column a Mart column is
+    mapped from); ``(None, [])`` if the SQL does not fit."""
+    try:
+        sql = _clean_sql(redact_text(suggestion.formula_sql))
+        if sql is None:
+            return None, []
+        validate_formula(model, sql)
+    except ApiError:
+        return None, []
+    columns = sorted(formula_columns(model, sql) or ())
+    try:
+        return sql, [c.id for c in check_links(db, workspace_id, columns)]
+    except ApiError:
+        return sql, []
 
 
 def _clean_sql(value: str | None) -> str | None:

@@ -69,8 +69,10 @@ class KpiRecord(Base):
     based_on: Mapped[list[str]] = mapped_column(
         JSONB, default=list, server_default=sa.text("'[]'::jsonb")
     )
-    """The source tables (``schema.table``) an AI suggestion is based on, each a table of
-    the KPI's Source System (checked when it is suggested); empty for any other KPI."""
+    """The tables an AI suggestion is based on (checked when it is suggested): under a Source
+    System its tables (``schema.table``); under the Data Warehouse tables of two or more
+    Source Systems (``SYSTEM.schema.table``) or of the DW model (``core.table``); empty for
+    any other KPI."""
     status: Mapped[str] = mapped_column(sa.String(16))
     """The sign-off: ``draft``, ``in_review`` or ``approved``."""
     review_state: Mapped[str] = mapped_column(sa.String(16), default="live", server_default="live")

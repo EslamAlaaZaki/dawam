@@ -16,7 +16,7 @@ from dawam.modules.audit import AuditService
 from dawam.modules.kpis import KpiService, KpiSuggestion, kpi_names, kpis_for_score
 from dawam.modules.sources import SourceSystemService
 from dawam.modules.workspaces import WorkspaceService
-from tests.authz.matrix import snapshot_id
+from tests.authz.matrix import dw_model_table, snapshot_id
 from tests.authz.matrix import system_id as extracted_system
 from tests.kpis.test_kpi_links import column, dw, put_links, table
 from tests.kpis.test_kpis import created, error_code, kpis_path
@@ -47,9 +47,9 @@ def suggested(
     roles: RoleClients, app: FastAPI, *names: str, system_id: str | None = None
 ) -> list[dict]:
     """The AI's suggestions, as ``suggest_kpis`` makes them (under a Source System, based
-    on its table ``TABLE``)."""
+    on its table ``TABLE``; under the Data Warehouse, on a DW model table)."""
     editor = roles.client("editor")  # a member from now on
-    based_on = (TABLE,) if system_id else ()
+    based_on = (TABLE,) if system_id else (dw_model_table(roles),)
     result = service(app).suggest(
         roles.user("editor"),
         roles.workspace_id,

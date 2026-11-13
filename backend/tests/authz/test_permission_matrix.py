@@ -65,6 +65,13 @@ def _second_owner(roles: RoleClients) -> None:
     assert response.status_code == 200, response.text
 
 
+def _two_systems(roles: RoleClients) -> None:
+    """A second Source System, so cross-system KPIs may be suggested."""
+    system_id(roles)
+    path = f"/api/v1/workspaces/{roles.workspace_id}/systems"
+    roles.client("owner").post(path, json={"name": "CRM", "code": "crm"})  # 409 if there
+
+
 def _archive(roles: RoleClients) -> None:
     """Archives the Workspace (as the owner), for rows that act on an archived one."""
     state = roles.app.state
@@ -1945,6 +1952,21 @@ ROWS: list[Row] = [
         "GET",
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/kpi-suggestions",
         "Edit KPIs (the latest KPI suggestion job)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    # Cross-system KPI suggestions for the Data Warehouse (story 75), once the Workspace has
+    # two Source Systems or a DW model.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/kpi-suggestions",
+        "Edit KPIs (suggest cross-system KPIs with the AI)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=_two_systems,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/kpi-suggestions",
+        "Edit KPIs (the latest cross-system KPI suggestion job)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
     ),
     # Relationship inference (stories 58, 59): owners and editors run it (needs a Snapshot)
