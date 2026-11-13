@@ -359,10 +359,16 @@ describe("documenting a KPI", () => {
     fireEvent.change(within(form).getByLabelText("Name"), {
       target: { value: "Net interest margin" },
     });
-    fireEvent.change(within(form).getByLabelText("Unit"), { target: { value: "%" } });
-    fireEvent.change(within(form).getByLabelText("Targets"), {
-      target: { value: "FY2027: 3.2%\n\nFY2028: 3.4%" },
-    });
+    fireEvent.change(within(form).getByLabelText(/^Unit/), { target: { value: "%" } });
+    fireEvent.change(within(form).getByLabelText("Target label"), { target: { value: "FY2027" } });
+    fireEvent.change(within(form).getByLabelText("Target value"), { target: { value: "3.2%" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Add target" }));
+    // The second row is left empty, so it is ignored; the third is filled.
+    fireEvent.click(within(form).getByRole("button", { name: "Add target" }));
+    const labels = within(form).getAllByLabelText("Target label");
+    const values = within(form).getAllByLabelText("Target value");
+    fireEvent.change(labels[2]!, { target: { value: "FY2028" } });
+    fireEvent.change(values[2]!, { target: { value: "3.4%" } });
     fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
 
     expect(await screen.findByText("Net interest margin added.")).toBeInTheDocument();
@@ -404,16 +410,98 @@ describe("documenting a KPI", () => {
     });
   });
 
-  it("refuses a target that is not `label: value` without asking the server", async () => {
+  it("refuses a target with only a label or a value without asking the server", async () => {
     const requests = renderApp(backend("editor", { system: [], dw: [] }), SYSTEM_FOLDER);
 
     const form = await openAddKpi();
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "X" } });
-    fireEvent.change(within(form).getByLabelText("Targets"), { target: { value: "95%" } });
+    fireEvent.change(within(form).getByLabelText("Target label"), { target: { value: "FY2027" } });
     fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent('"95%" is not');
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Each target needs both a label and a value.",
+    );
     expect(requests.some((r) => r.method === "POST")).toBe(false);
+  });
+
+  it("shows the folder, the sections and the optional marks", async () => {
+    renderApp(backend("editor", { system: [], dw: [] }), SYSTEM_FOLDER);
+
+    const form = await openAddKpi();
+    expect(form).toHaveTextContent("Documented under");
+    expect(form).toHaveTextContent(CBS.name);
+    for (const heading of ["What it measures", "How it is calculated", "Ownership", "Targets"]) {
+      expect(within(form).getByRole("heading", { name: new RegExp(heading) })).toBeInTheDocument();
+    }
+    expect(within(form).getByLabelText(/^Aggregation/)).toBeInTheDocument();
+    expect(within(form).getAllByLabelText("Target label")).toHaveLength(1);
+    expect(within(form).queryByLabelText("Status")).not.toBeInTheDocument();
+  });
+
+  it("offers the known values with Other… last, and the units grouped", async () => {
+    renderApp(backend("editor", { system: [], dw: [] }), SYSTEM_FOLDER);
+
+    const form = await openAddKpi();
+    const names = (label: RegExp) =>
+      within(within(form).getByLabelText(label))
+        .getAllByRole("option")
+        .map((o) => o.textContent);
+    expect(names(/^Aggregation/)).toEqual([
+      "Choose…", "Sum", "Average", "Count", "Count distinct", "Minimum", "Maximum", "Ratio",
+      "Percentage", "Growth (period over period)", "Other…",
+    ]);
+    expect(names(/^Unit/).slice(0, 6)).toEqual(["Choose…", "SAR", "USD", "EUR", "EGP", "%"]);
+    expect(names(/^Unit/).at(-1)).toBe("Other…");
+    expect(names(/^Refresh frequency/)).toEqual([
+      "Choose…", "Real time", "Hourly", "Daily", "Weekly", "Monthly", "Quarterly", "Yearly",
+      "On demand", "Other…",
+    ]);
+  });
+
+  it("saves an Other… value, and blocks an empty one", async () => {
+    const requests = renderApp(
+      backend("editor", { system: [], dw: [] }, (r) =>
+        r.method === "POST" && r.path === KPIS ? json(NIM, 201) : undefined,
+      ),
+      SYSTEM_FOLDER,
+    );
+
+    const form = await openAddKpi();
+    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "X" } });
+    expect(within(form).queryByLabelText("Other aggregation")).not.toBeInTheDocument();
+    fireEvent.change(within(form).getByLabelText(/^Aggregation/), { target: { value: "__other" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Type the aggregation, or choose one from the list.",
+    );
+    expect(requests.some((r) => r.method === "POST")).toBe(false);
+
+    fireEvent.change(within(form).getByLabelText("Other aggregation"), {
+      target: { value: "Median" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Add KPI" }));
+    await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
+    expect(requests.find((r) => r.method === "POST")?.body).toMatchObject({ aggregation: "Median" });
+  });
+
+  it("suggests the owners already on the page", async () => {
+    renderApp(backend("editor", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
+
+    const form = await openAddKpi();
+    const owner = within(form).getByLabelText(/^Owner/);
+    const list = document.getElementById(owner.getAttribute("list") ?? "");
+    expect([...(list?.querySelectorAll("option") ?? [])].map((o) => o.getAttribute("value"))).toEqual(
+      ["CFO office"],
+    );
+  });
+
+  it("removes a target row", async () => {
+    renderApp(backend("editor", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
+
+    const form = await openEditKpi();
+    expect(within(form).getByLabelText("Target label")).toHaveValue("FY2027");
+    fireEvent.click(within(form).getByRole("button", { name: "Remove target" }));
+    expect(within(form).queryByLabelText("Target label")).not.toBeInTheDocument();
   });
 });
 
@@ -435,6 +523,18 @@ describe("editing a KPI", () => {
       path: `${KPIS}/${NIM.id}`,
       body: { version: 1, status: "in_review", name: "Net interest margin" },
     });
+  });
+
+  it("opens a stored value outside the lists under Other…", async () => {
+    renderApp(backend("editor", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
+
+    const form = await openEditKpi();
+    // NIM stores "ratio" and "monthly", which are not the list's exact spellings.
+    expect(within(form).getByLabelText(/^Aggregation/)).toHaveValue("__other");
+    expect(within(form).getByLabelText("Other aggregation")).toHaveValue("ratio");
+    expect(within(form).getByLabelText(/^Unit/)).toHaveValue("%");
+    expect(within(form).getByLabelText("Other refresh frequency")).toHaveValue("monthly");
+    expect(within(form).getByLabelText("Status")).toBeInTheDocument();
   });
 
   it("tells the editor when someone else changed the KPI first", async () => {

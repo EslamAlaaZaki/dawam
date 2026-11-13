@@ -354,6 +354,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
                   : "Business metrics that span systems: what they mean and how they are calculated."
               }
               hideTitle={kpiSystem != null}
+              systemName={kpiSystem?.name}
             />
           ) : folder.id === "document-index" ? (
             <IndexStatusPanel workspace={workspace.data} />

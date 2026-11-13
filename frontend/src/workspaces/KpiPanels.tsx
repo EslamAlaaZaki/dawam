@@ -16,7 +16,6 @@ import {
   type KpiFeasibility,
   type KpiScope,
   type KpiStatus,
-  type KpiTarget,
 } from "../api/kpis";
 import { useMembers } from "../api/members";
 import { allows, type Workspace } from "../api/workspaces";
@@ -42,7 +41,6 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Textarea } from "../components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
@@ -50,6 +48,7 @@ import {
 } from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
+import { KpiFields, readKpiFields } from "./KpiForm";
 import { DecidedBy } from "./PiiPanel";
 import {
   DetailList,
@@ -67,128 +66,6 @@ import {
 const STATUS_VARIANTS = { draft: "neutral", in_review: "warning", approved: "success" } as const;
 
 const STATUSES = Object.keys(KPI_STATUS_LABELS) as KpiStatus[];
-const TARGETS_HINT = "One per line, as `label: value` (e.g. `FY2027: 95%`).";
-
-/** Targets as editable text: `label: value` per line. */
-function targetsToText(targets: readonly KpiTarget[]): string {
-  return targets.map((t) => `${t.label}: ${t.value}`).join("\n");
-}
-
-/** The targets typed in, or an error message naming the line that is not `label: value`. */
-function parseTargets(text: string): KpiTarget[] | string {
-  const targets: KpiTarget[] = [];
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") {
-      continue;
-    }
-    const at = line.indexOf(":");
-    const label = at < 0 ? "" : line.slice(0, at).trim();
-    const value = at < 0 ? "" : line.slice(at + 1).trim();
-    if (!label || !value) {
-      return `Write each target as "label: value"; "${line.trim()}" is not.`;
-    }
-    targets.push({ label, value });
-  }
-  return targets;
-}
-
-interface Fields {
-  name: string;
-  definition: string;
-  formula_text: string;
-  formula_sql: string | null;
-  unit: string;
-  aggregation: string;
-  owner: string;
-  refresh_frequency: string;
-  targets: KpiTarget[];
-}
-
-/** The form's fields, or an error message for the first one that is wrong. */
-function readFields(data: FormData): Fields | string {
-  const get = (name: string) => String(data.get(name) ?? "");
-  const targets = parseTargets(get("targets"));
-  if (typeof targets === "string") {
-    return targets;
-  }
-  return {
-    name: get("name"),
-    definition: get("definition"),
-    formula_text: get("formula_text"),
-    formula_sql: get("formula_sql").trim() === "" ? null : get("formula_sql"),
-    unit: get("unit"),
-    aggregation: get("aggregation"),
-    owner: get("owner"),
-    refresh_frequency: get("refresh_frequency"),
-    targets,
-  };
-}
-
-function KpiFields({ initial }: { initial?: Kpi }) {
-  return (
-    <>
-      <label className={labelClasses}>
-        Name
-        <Input name="name" required maxLength={200} defaultValue={initial?.name} />
-      </label>
-      <label className={labelClasses}>
-        Business definition
-        <Textarea name="definition" rows={3} maxLength={4000} defaultValue={initial?.definition} />
-      </label>
-      <label className={labelClasses}>
-        Formula in words
-        <Textarea
-          name="formula_text"
-          rows={2}
-          maxLength={4000}
-          defaultValue={initial?.formula_text}
-        />
-      </label>
-      <label className={labelClasses}>
-        Formula SQL
-        <Textarea
-          name="formula_sql"
-          rows={3}
-          maxLength={20000}
-          defaultValue={initial?.formula_sql ?? ""}
-          aria-describedby="kpi-sql-hint"
-        />
-      </label>
-      <Hint id="kpi-sql-hint">
-        Optional. Written against the DW Schema, so it can wait until the Data Warehouse exists.
-      </Hint>
-      <label className={labelClasses}>
-        Unit
-        <Input name="unit" maxLength={50} defaultValue={initial?.unit} />
-      </label>
-      <label className={labelClasses}>
-        Aggregation
-        <Input name="aggregation" maxLength={50} defaultValue={initial?.aggregation} />
-      </label>
-      <label className={labelClasses}>
-        Owner
-        <Input name="owner" maxLength={200} defaultValue={initial?.owner} />
-      </label>
-      <label className={labelClasses}>
-        Refresh frequency
-        <Input name="refresh_frequency" maxLength={100} defaultValue={initial?.refresh_frequency} />
-      </label>
-      <label className={labelClasses}>
-        Targets
-        <Textarea
-          name="targets"
-          rows={3}
-          defaultValue={targetsToText(initial?.targets ?? [])}
-          aria-describedby="kpi-targets-hint"
-        />
-      </label>
-      <Hint id="kpi-targets-hint">
-        {TARGETS_HINT}
-      </Hint>
-    </>
-  );
-}
-
 const CONFLICT_MESSAGE =
   "Someone else changed this KPI since you opened it. The latest version is loaded: check your edits, then save again.";
 
@@ -515,6 +392,7 @@ export function KpiCatalog({
   title,
   description,
   hideTitle = false,
+  systemName = "Data Warehouse",
 }: {
   workspace: Workspace;
   scope: KpiScope;
@@ -523,6 +401,8 @@ export function KpiCatalog({
   description?: string;
   /** Keep the title for screen readers only: the breadcrumb already names the page. */
   hideTitle?: boolean;
+  /** The Source System the KPIs are documented under; "Data Warehouse" when omitted. */
+  systemName?: string;
 }) {
   const canEdit = allows(workspace, "kpi.edit");
   // Owners and editors see every tab, archived too; they change KPIs only while active.
@@ -544,6 +424,11 @@ export function KpiCatalog({
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const all = kpis.data ?? [];
+  // The owners already in use, offered as suggestions in the form.
+  const owners = useMemo(
+    () => [...new Set((kpis.data ?? []).map((k) => k.owner.trim()).filter(Boolean))].sort(),
+    [kpis.data],
+  );
   const count = (t: KpiTab) => all.filter((k) => inTab(k, t)).length;
   const catalog = all.filter((k) => inTab(k, "kpis"));
   const inShownTab = all.filter((k) => inTab(k, shownTab));
@@ -796,6 +681,8 @@ export function KpiCatalog({
         <AddKpiDialog
           workspaceId={workspace.id}
           scope={scope}
+          documentedUnder={systemName}
+          owners={owners}
           open={adding}
           onOpenChange={setAdding}
         />
@@ -804,6 +691,8 @@ export function KpiCatalog({
         <EditKpiDialog
           workspaceId={workspace.id}
           kpi={editing}
+          documentedUnder={systemName}
+          owners={owners}
           reload={() => void kpis.refetch()}
           open
           onOpenChange={(open) => !open && setEditingId(null)}
@@ -972,11 +861,15 @@ function KpiDetails({
 function AddKpiDialog({
   workspaceId,
   scope,
+  documentedUnder,
+  owners,
   open,
   onOpenChange,
 }: {
   workspaceId: string;
   scope: KpiScope;
+  documentedUnder: string;
+  owners: readonly string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -984,7 +877,7 @@ function AddKpiDialog({
   const [problem, setProblem] = useState<string | null>(null);
 
   function onSubmit(form: FormData) {
-    const fields = readFields(form);
+    const fields = readKpiFields(form);
     if (typeof fields === "string") {
       setProblem(fields);
       return;
@@ -1011,6 +904,7 @@ function AddKpiDialog({
         }
         onOpenChange(next);
       }}
+      wide
       title="Add KPI"
       description="Document a KPI: what it means and how it is calculated."
       submitLabel="Add KPI"
@@ -1018,7 +912,7 @@ function AddKpiDialog({
       pending={create.isPending}
       error={problem ? new Error(problem) : create.error}
     >
-      <KpiFields />
+      <KpiFields documentedUnder={documentedUnder} owners={owners} />
     </EntityFormDialog>
   );
 }
@@ -1070,12 +964,16 @@ function DeleteKpiDialog({
 function EditKpiDialog({
   workspaceId,
   kpi,
+  documentedUnder,
+  owners,
   reload,
   open,
   onOpenChange,
 }: {
   workspaceId: string;
   kpi: Kpi;
+  documentedUnder: string;
+  owners: readonly string[];
   reload: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1086,7 +984,7 @@ function EditKpiDialog({
     update.error instanceof ApiError && update.error.code === "version_conflict";
 
   function onSubmit(form: FormData) {
-    const fields = readFields(form);
+    const fields = readKpiFields(form);
     if (typeof fields === "string") {
       setProblem(fields);
       return;
@@ -1120,6 +1018,7 @@ function EditKpiDialog({
         }
         onOpenChange(next);
       }}
+      wide
       title="Edit KPI"
       description={kpi.name}
       submitLabel="Save"
@@ -1133,17 +1032,18 @@ function EditKpiDialog({
             : update.error
       }
     >
-      <label className={labelClasses}>
-        Status
-        <NativeSelect name="status" defaultValue={kpi.status}>
-          {STATUSES.map((status) => (
-            <option key={status} value={status}>
-              {KPI_STATUS_LABELS[status]}
-            </option>
-          ))}
-        </NativeSelect>
-      </label>
-      <KpiFields initial={kpi} />
+      <KpiFields initial={kpi} documentedUnder={documentedUnder} owners={owners}>
+        <label className={labelClasses}>
+          Status
+          <NativeSelect name="status" defaultValue={kpi.status}>
+            {STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {KPI_STATUS_LABELS[status]}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+      </KpiFields>
     </EntityFormDialog>
   );
 }
