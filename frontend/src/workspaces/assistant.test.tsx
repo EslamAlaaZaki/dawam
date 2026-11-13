@@ -954,6 +954,9 @@ describe("the assistant's chat panel", () => {
     await openAssistant();
 
     fireEvent.click(
+      await screen.findByRole("button", { name: /^Sharing/ }),
+    );
+    fireEvent.click(
       await screen.findByRole("switch", { name: /Share with the Workspace/ }),
     );
 
