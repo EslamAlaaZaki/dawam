@@ -19,7 +19,7 @@ from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
 from .service import Kpi as KpiView
-from .service import KpiService, KpiTarget
+from .service import KpiService, KpiTarget, RejectedRuleSuggestion
 from .suggestions import RuleSuggestion
 from .tables import (
     AGGREGATION_MAX_LENGTH,
@@ -133,9 +133,48 @@ class Kpi(BaseModel):
     updated_at: datetime
 
 
+SuggestionKind = Literal["sum", "avg", "count_distinct", "ratio", "mom_growth", "yoy_growth"]
+
+
+class KpiSuggestion(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str = Field(
+        description="Stable across renames and a measure moving from Core to Mart; send it to "
+        "accept or dismiss the suggestion."
+    )
+    kind: SuggestionKind
+    name: str
+    definition: str
+    formula_text: str
+    formula_sql: str = Field(description="Written against the DW Schema.")
+    aggregation: str
+    layer: Literal["core", "mart"] = Field(description="The Layer of the fact it reads.")
+    table_name: str
+    column_ids: list[uuid.UUID] = Field(description="The DW columns the KPI will link to.")
+    feasibility: Feasibility
+
+
+class RejectedKpiSuggestion(KpiSuggestion):
+    decided_by: uuid.UUID | None = Field(description="Who rejected it; null if unknown.")
+    decided_at: datetime
+
+
+class KpiSuggestions(BaseModel):
+    items: list[KpiSuggestion]
+
+
 class KpiPage(BaseModel):
     items: list[Kpi]
     next_cursor: str | None = Field(description="The `cursor` of the next page; null on the last.")
+    rule_suggestions: list[KpiSuggestion] = Field(
+        default=[],
+        description="The open rule-based suggestions; only on the first page, and only when "
+        "`rule_suggestions` is asked for.",
+    )
+    rejected_rule_suggestions: list[RejectedKpiSuggestion] = Field(
+        default=[], description="The rejected rule-based suggestions, likewise."
+    )
 
 
 class CreateKpiRequest(BaseModel):
@@ -179,6 +218,14 @@ def _targets(targets: list[Target]) -> list[KpiTarget]:
     return [KpiTarget(label=t.label, value=t.value) for t in targets]
 
 
+def _rejected(rejected: RejectedRuleSuggestion) -> RejectedKpiSuggestion:
+    return RejectedKpiSuggestion(
+        **KpiSuggestion.model_validate(rejected.suggestion).model_dump(),
+        decided_by=rejected.decided_by,
+        decided_at=rejected.decided_at,
+    )
+
+
 @router.get("", operation_id="listKpis")
 def list_kpis(
     workspace_id: uuid.UUID,
@@ -197,6 +244,13 @@ def list_kpis(
             "and rejected ones too (owners and editors)."
         ),
     ] = "catalog",
+    rule_suggestions: Annotated[
+        bool,
+        Query(
+            description="With `review=all`: add the open and the rejected rule-based "
+            "suggestions to the first page (the Data Warehouse page)."
+        ),
+    ] = False,
     limit: PageLimit = DEFAULT_PAGE_SIZE,
     cursor: PageCursor = None,
 ) -> KpiPage:
@@ -210,10 +264,16 @@ def list_kpis(
         source_system_id=source_system_id,
         data_warehouse=data_warehouse,
         review=review,
+        rule_suggestions=rule_suggestions,
         limit=limit,
         cursor=cursor,
     )
-    return KpiPage(items=[_out(k) for k in page.items], next_cursor=page.next_cursor)
+    return KpiPage(
+        items=[_out(k) for k in page.items],
+        next_cursor=page.next_cursor,
+        rule_suggestions=[_suggestion(s) for s in page.rule_suggestions],
+        rejected_rule_suggestions=[_rejected(r) for r in page.rejected_rule_suggestions],
+    )
 
 
 @router.post("", operation_id="createKpi", status_code=201)
@@ -241,32 +301,6 @@ def create_kpi(
     )
 
 
-SuggestionKind = Literal["sum", "avg", "count_distinct", "ratio", "mom_growth", "yoy_growth"]
-
-
-class KpiSuggestion(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    key: str = Field(
-        description="Stable across renames and a measure moving from Core to Mart; send it to "
-        "accept or dismiss the suggestion."
-    )
-    kind: SuggestionKind
-    name: str
-    definition: str
-    formula_text: str
-    formula_sql: str = Field(description="Written against the DW Schema.")
-    aggregation: str
-    layer: Literal["core", "mart"] = Field(description="The Layer of the fact it reads.")
-    table_name: str
-    column_ids: list[uuid.UUID] = Field(description="The DW columns the KPI will link to.")
-    feasibility: Feasibility
-
-
-class KpiSuggestions(BaseModel):
-    items: list[KpiSuggestion]
-
-
 class SuggestionKeyRequest(BaseModel):
     key: str = Field(min_length=1, max_length=200)
 
@@ -291,8 +325,9 @@ def list_suggestions(
 def accept_suggestion(
     workspace_id: uuid.UUID, body: SuggestionKeyRequest, user: CurrentUser, kpis: KpiServiceDep
 ) -> Kpi:
-    """Accept a suggestion (owners and editors): it becomes a draft Data Warehouse KPI with
-    `origin` `rule`, its formula SQL and links. 404 if no such suggestion is open."""
+    """Accept a suggestion, or a rejected one after all (owners and editors): it becomes a
+    draft Data Warehouse KPI with `origin` `rule`, review state `accepted`, its formula SQL
+    and links, and any dismissal is cleared. 404 if no such suggestion is open."""
     return _out(kpis.accept_suggestion(user, workspace_id, body.key))
 
 
@@ -305,7 +340,8 @@ def accept_suggestion(
 def dismiss_suggestion(
     workspace_id: uuid.UUID, body: SuggestionKeyRequest, user: CurrentUser, kpis: KpiServiceDep
 ) -> Response:
-    """Hide a suggestion for good (owners and editors). 404 if there is no such suggestion."""
+    """Reject a suggestion (owners and editors): rule runs never propose it again and it is
+    listed as rejected. 404 if there is no such suggestion."""
     kpis.dismiss_suggestion(user, workspace_id, body.key)
     return Response(status_code=204)
 
