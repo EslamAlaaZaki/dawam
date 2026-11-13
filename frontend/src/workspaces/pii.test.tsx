@@ -455,7 +455,7 @@ describe("the PII folder", () => {
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findAllByRole("checkbox")).toHaveLength(2);
     expect(within(dialog).queryByText("crm.v_active")).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Start detection/ }));
 
     await waitFor(() =>
       expect(requests.scans).toEqual([{ table_ids: ["t1", "t2"], sample_size: 1000 }]),
@@ -469,7 +469,7 @@ describe("the PII folder", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(await within(dialog).findByRole("checkbox", { name: "crm.complaints" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Start detection/ }));
 
     await waitFor(() => expect(requests.scans).toEqual([{ table_ids: ["t1"], sample_size: 1000 }]));
   });
@@ -523,34 +523,59 @@ describe("Detect PII", () => {
     expect(screen.queryByText("iban")).toBeNull();
   });
 
-  it("explains the value scan and the AI review in the dialog", async () => {
+  it("shows the value scan and the AI review as two rows, both running with a Connection", async () => {
     renderApp(backend(OWNER, fresh()), FOLDER);
 
     fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).getByRole("heading", { name: "Detect PII" })).toBeInTheDocument();
-    expect(dialog).toHaveTextContent("Sampled values are never stored.");
-    expect(dialog).toHaveTextContent(
-      "The AI then reviews the chosen tables' names, types and Documents, never their values, and suggests PII columns with a confidence; it may find none.",
-    );
-    expect(dialog).not.toHaveTextContent("value scan is skipped");
-    expect(within(dialog).getByRole("button", { name: "Start detection" })).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("Find PII in the tables you choose. These jobs start together:");
+    expect(dialog).toHaveTextContent("Value scan");
+    expect(dialog).toHaveTextContent("AI review");
+    expect(within(dialog).getAllByText("Runs")).toHaveLength(2);
+    expect(within(dialog).queryByText("Skipped")).toBeNull();
+    expect(dialog).toHaveTextContent("Values are never stored.");
+    expect(dialog).toHaveTextContent("never their values");
   });
 
-  it("says the value scan is skipped without a Connection and starts the AI only", async () => {
+  it("marks the value scan Skipped without a Connection and starts the AI only", async () => {
     const requests = { ...fresh(), connected: false };
     renderApp(backend(OWNER, requests), FOLDER);
 
     fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
     const dialog = await screen.findByRole("dialog");
-    expect(dialog).toHaveTextContent(
-      "This system has no Connection, so the value scan is skipped.",
-    );
+    expect(within(dialog).getAllByText("Runs")).toHaveLength(1);
+    expect(within(dialog).getByText("Skipped")).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("This system has no Connection, so no rows can be sampled.");
     await within(dialog).findAllByRole("checkbox");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Start detection/ }));
 
     expect(await screen.findByText(/AI detection started \(no Connection/)).toBeInTheDocument();
+  });
+
+  it("counts the selected tables and updates the button when ticking a table or a schema", async () => {
+    renderApp(backend(OWNER, fresh()), FOLDER);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findAllByRole("checkbox");
+    expect(dialog).toHaveTextContent("2 of 2 tables selected");
+    expect(within(dialog).getByRole("button", { name: "Start detection · 2 tables" })).toBeEnabled();
+
+    const schemaBox = within(dialog).getByRole("checkbox", { name: "Schema crm" });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "crm.contacts" }));
+    expect(dialog).toHaveTextContent("1 of 2 tables selected");
+    expect(schemaBox).toHaveAttribute("data-state", "indeterminate");
+    expect(within(dialog).getByRole("button", { name: "Start detection · 1 table" })).toBeEnabled();
+
+    fireEvent.click(schemaBox);
+    expect(dialog).toHaveTextContent("2 of 2 tables selected");
+    expect(schemaBox).toHaveAttribute("data-state", "checked");
+
+    fireEvent.click(schemaBox);
+    expect(dialog).toHaveTextContent("0 of 2 tables selected");
+    expect(within(dialog).getByRole("button", { name: "Start detection" })).toBeDisabled();
   });
 
   it("says both jobs started", async () => {
@@ -559,7 +584,7 @@ describe("Detect PII", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
     const dialog = await screen.findByRole("dialog");
     await within(dialog).findAllByRole("checkbox");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Start detection/ }));
 
     expect(
       await screen.findByText(/Value scan and AI detection started/),
@@ -575,7 +600,7 @@ describe("Detect PII", () => {
     // The value scan is done before the AI detection.
     requests.jobs = [job("j1", "pii_scan", "succeeded"), job("j2", "pii_ai_detect", "running")];
     const before = requests.folderReads;
-    fireEvent.click(within(dialog).getByRole("button", { name: "Start detection" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Start detection/ }));
 
     await waitFor(() => expect(requests.folderReads).toBeGreaterThan(before));
     const afterValueScan = requests.folderReads;
