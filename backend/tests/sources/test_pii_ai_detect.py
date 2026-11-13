@@ -319,6 +319,7 @@ def test_no_present_tables_means_no_model_call_and_a_succeeded_job(
 
     monkeypatch.setattr(pii_ai_service.PiiAiDetectService, "_review", table_removed_meanwhile)
     fake_llm.script(answer())
+    before = findings(roles, system)  # the name scan's findings from the import
 
     started = detect(roles, system, [tables["customer"]])
 
@@ -326,7 +327,7 @@ def test_no_present_tables_means_no_model_call_and_a_succeeded_job(
     assert ai["status"] == "succeeded"
     assert "No tables to review." in ai["log"]
     assert chats(fake_llm) == []
-    assert findings(roles, system) == []
+    assert findings(roles, system) == before  # the AI job added nothing
 
 
 def test_a_wide_selection_is_queried_in_chunks_and_the_reopen_rule_holds(
