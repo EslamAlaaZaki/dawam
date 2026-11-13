@@ -81,7 +81,7 @@ function textsFor(scope: KpiSuggestionScope, name: string): Texts {
     ),
     failed: "Suggesting cross-system KPIs failed",
     dropped: (n) =>
-      ` ${plural(n, "more was", "more were")} dropped: ${n === 1 ? "it" : "they"} used only one Source System.`,
+      ` ${n} ${n === 1 ? "more was" : "more were"} dropped: ${n === 1 ? "it used" : "they used"} only one Source System or named tables that don't exist.`,
     busy: "Cross-system KPIs are already being suggested.",
   };
 }

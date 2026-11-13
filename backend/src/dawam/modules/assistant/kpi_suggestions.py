@@ -359,9 +359,10 @@ class KpiSuggestionJobs:
             raise ApiError(
                 409,
                 "kpi_suggestions_unavailable",
-                "Cross-system KPIs need at least two Source Systems or a Data Warehouse model.",
+                "Couldn't suggest KPIs: the Workspace no longer has two Source Systems or a "
+                "Data Warehouse model.",
             )
-        systems = self._services.systems.list(user, workspace_id, limit=MAX_LISTED_TABLES).items
+        systems =self._services.systems.list(user, workspace_id, limit=MAX_LISTED_TABLES).items
         existing = self._services.kpis.every_state(user, workspace_id, None, workspace_wide=True)
         schema = (
             self._services.kpis.link_candidates(user, workspace_id).schema

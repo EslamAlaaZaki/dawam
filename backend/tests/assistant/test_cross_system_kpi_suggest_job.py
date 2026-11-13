@@ -11,6 +11,7 @@ and the model is the scripted fake provider.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from typing import Any
 
 from dawam.modules.assistant import KPI_SUGGEST_JOB
@@ -136,6 +137,30 @@ def test_it_is_unavailable_until_there_are_two_source_systems_or_a_dw_model(role
     assert roles.client("owner").delete(f"{systems_path(roles)}/{second}").status_code == 204
     assert editor.get(path(roles)).json()["source_systems"] == 1
     assert editor.post(path(roles)).status_code == 409
+
+
+def test_a_job_whose_workspace_lost_its_readiness_fails_with_a_clear_message(
+    roles, model, fake_llm: FakeAdapter, monkeypatch
+):
+    crm(roles)
+    real = KpiService.cross_system_readiness
+    checks: list[int] = []
+
+    def readiness(self, user, workspace_id):
+        checks.append(1)
+        value = real(self, user, workspace_id)
+        # ready when the job is started, not ready by the time its task is built
+        return value if len(checks) == 1 else replace(value, source_systems=1)
+
+    monkeypatch.setattr(KpiService, "cross_system_readiness", readiness)
+
+    job = run(roles)
+
+    assert job["status"] == "failed"
+    assert job["error"] == (
+        "Couldn't suggest KPIs: the Workspace no longer has two Source Systems or a "
+        "Data Warehouse model."
+    )
 
 
 def test_a_dw_model_alone_makes_it_available(roles, model, fake_llm: FakeAdapter):
