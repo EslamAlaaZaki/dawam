@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator, Sequence
 from datetime import datetime
 
 import sqlalchemy as sa
@@ -139,6 +139,31 @@ def reopens(finding: PiiFindingRecord | None, confidence: float) -> bool:
     )
 
 
+# The most ids one ``IN (...)`` carries, so a very wide selection stays under the database's
+# parameter limit.
+ID_CHUNK = 5000
+
+
+def id_chunks(ids: Sequence[uuid.UUID]) -> Iterator[Sequence[uuid.UUID]]:
+    """``ids`` in slices of ``ID_CHUNK``."""
+    for start in range(0, len(ids), ID_CHUNK):
+        yield ids[start : start + ID_CHUNK]
+
+
+def rejected_column_ids(db: Session, column_ids: Iterable[uuid.UUID]) -> set[uuid.UUID]:
+    """The columns among ``column_ids`` that have a rejected finding."""
+    ids = list(set(column_ids))
+    return {
+        cid
+        for chunk in id_chunks(ids)
+        for cid in db.scalars(
+            sa.select(PiiFindingRecord.src_column_id)
+            .where(PiiFindingRecord.src_column_id.in_(chunk), PiiFindingRecord.status == "rejected")
+            .distinct()
+        )
+    }
+
+
 def reopen_rejected(db: Session, column_ids: Iterable[uuid.UUID]) -> None:
     """Send the rejected findings of ``column_ids`` back to the review queue, together: a
     column is reviewed as a whole. Who rejected them and when stay, so the queue can say
@@ -160,11 +185,11 @@ def reopen_rejected(db: Session, column_ids: Iterable[uuid.UUID]) -> None:
         )
     )
     wanted = [i for i in ids if i not in accepted]
-    for start in range(0, len(wanted), 5000):
+    for chunk in id_chunks(wanted):
         db.execute(
             sa.update(PiiFindingRecord)
             .where(
-                PiiFindingRecord.src_column_id.in_(wanted[start : start + 5000]),
+                PiiFindingRecord.src_column_id.in_(chunk),
                 PiiFindingRecord.status == "rejected",
             )
             .values(status="suggested", removed=False)
@@ -182,12 +207,15 @@ def upsert_finding(
     confidence: float,
     evidence: str,
     at: datetime,
+    rejected_columns: set[uuid.UUID] | None = None,
 ) -> bool:
     """Record what a value scan or the AI detection (``source``) found for ``rule`` on a
     column, writing only that source's row: a new row is ``suggested``; an existing one keeps
     its status unless ``reopens`` sends the column back to review, its confidence rises to
     the higher one and its evidence changes only while it waits for review. Returns whether
-    the row is new."""
+    the row is new. A caller writing many findings passes ``rejected_columns`` (from
+    ``rejected_column_ids``) so the rejected state is not read again per finding; a reopen
+    removes the column from it."""
     existing = db.scalars(
         sa.select(PiiFindingRecord)
         .where(
@@ -197,16 +225,11 @@ def upsert_finding(
         )
         .with_for_update()
     ).first()
-    rejected = db.scalar(
-        sa.select(sa.func.count())
-        .select_from(PiiFindingRecord)
-        .where(
-            PiiFindingRecord.src_column_id == column_id,
-            PiiFindingRecord.status == "rejected",
-        )
-    )
-    if rejected and reopens(existing, confidence):
+    if rejected_columns is None:
+        rejected_columns = rejected_column_ids(db, [column_id])
+    if column_id in rejected_columns and reopens(existing, confidence):
         reopen_rejected(db, [column_id])
+        rejected_columns.discard(column_id)
         if existing is not None:
             db.refresh(existing)
     if existing is None:

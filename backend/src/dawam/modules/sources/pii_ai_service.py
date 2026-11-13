@@ -48,7 +48,7 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import VALIDATORS, redact_text
 
-from .internal.pii import load_rule_set, upsert_finding
+from .internal.pii import id_chunks, load_rule_set, rejected_column_ids, upsert_finding
 from .internal.pii_rules import RULES, RuleSet
 from .internal.pii_scan import REVIEW_THRESHOLD
 from .tables import (
@@ -209,6 +209,9 @@ class PiiAiDetectService:
                 raise PiiAiError("The Source System no longer exists.")
             workspace_id = system.workspace_id
             review = self._review(db, system_id, table_ids, load_rule_set(db, workspace_id))
+        if not review.tables:
+            ctx.log("No tables to review.")
+            return
         try:
             gateway = self._roles.gateway_for_role(
                 MODEL_ROLE, workspace_id=workspace_id, user_id=user_id
@@ -237,14 +240,17 @@ class PiiAiDetectService:
         new = updated = 0
         now = self._clock()
         with Session(self._engine) as db, db.begin():
-            present = set(
-                db.scalars(
+            wanted = list({a.column_id for a in accepted})
+            present = {
+                cid
+                for chunk in id_chunks(wanted)
+                for cid in db.scalars(
                     sa.select(SrcColumnRecord.id).where(
-                        SrcColumnRecord.id.in_([a.column_id for a in accepted]),
-                        SrcColumnRecord.status == "present",
+                        SrcColumnRecord.id.in_(chunk), SrcColumnRecord.status == "present"
                     )
                 )
-            )
+            }
+            rejected = rejected_column_ids(db, present)
             for finding in accepted:
                 if finding.column_id not in present:  # gone while the model thought
                     dropped += 1
@@ -258,6 +264,7 @@ class PiiAiDetectService:
                     confidence=finding.confidence,
                     evidence=finding.evidence,
                     at=now,
+                    rejected_columns=rejected,
                 )
                 new += created
                 updated += not created
@@ -295,10 +302,14 @@ class PiiAiDetectService:
             columns.setdefault(column.table_id, []).append(column)
         column_ids = [c.id for cs in columns.values() for c in cs]
         findings: dict[uuid.UUID, list[dict[str, Any]]] = {}
-        for finding in db.scalars(
-            sa.select(PiiFindingRecord)
-            .where(PiiFindingRecord.src_column_id.in_(column_ids))
-            .order_by(PiiFindingRecord.source, PiiFindingRecord.rule)
+        for finding in (
+            f
+            for chunk in id_chunks(column_ids)
+            for f in db.scalars(
+                sa.select(PiiFindingRecord)
+                .where(PiiFindingRecord.src_column_id.in_(chunk))
+                .order_by(PiiFindingRecord.source, PiiFindingRecord.rule)
+            )
         ):
             findings.setdefault(finding.src_column_id, []).append(
                 {
