@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, TriangleAlert } from "lucide-react";
+import { Info, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { isActive, useJobs } from "../api/jobs";
@@ -154,9 +154,9 @@ function MatchedRules({
           aria-label={`${SOURCE_LABELS[group.source]} rules`}
           className="flex items-start gap-2"
         >
-          <span className="w-12 shrink-0 text-xs text-muted-foreground">
+          <Badge className="w-14 shrink-0 justify-center">
             {SOURCE_LABELS[group.source]}
-          </span>
+          </Badge>
           <ul className="m-0 flex min-w-0 list-none flex-col gap-1.5 p-0">
             {group.rules.map((rule) => (
               <li key={rule.id} className="flex flex-col gap-0.5">
@@ -186,7 +186,7 @@ function MatchedRules({
       ))}
       {column.manual && (
         <li className="flex items-center gap-2">
-          <span className="w-12 text-xs text-muted-foreground">Manual</span>
+          <Badge className="w-14 shrink-0 justify-center">Manual</Badge>
           <span className="text-xs text-muted-foreground">Added by hand</span>
         </li>
       )}
@@ -559,7 +559,29 @@ export function PiiPanel({
                 <TableHead>Column</TableHead>
                 {shownTab === "pii" && <TableHead>Type</TableHead>}
                 <TableHead>Category</TableHead>
-                <TableHead>Matched rules</TableHead>
+                <TableHead>
+                  <span className="inline-flex items-center gap-1">
+                    Matched rules
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="About matched rules"
+                          className="inline-flex rounded-sm text-subtle-foreground hover:text-foreground"
+                        >
+                          <Info aria-hidden className="size-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-80">
+                        Where each match comes from. Name: the column name
+                        matches a rule. Values: sampled values pass a rule&apos;s
+                        check. AI: the AI suggests it from names, types,
+                        comments and Documents, never values. Manual: added by
+                        hand. Each rule shows its own confidence.
+                      </TooltipContent>
+                    </Tooltip>
+                  </span>
+                </TableHead>
                 {shownTab !== "suggested" && <TableHead>Decided</TableHead>}
                 {(canReview || shownTab !== "pii") && (
                   <TableHead>
