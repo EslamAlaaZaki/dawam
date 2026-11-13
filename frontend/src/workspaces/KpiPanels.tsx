@@ -625,7 +625,7 @@ export function KpiCatalog({
           <StatCard
             label="With formula SQL"
             value={catalog.filter((k) => k.formula_sql).length}
-            sub={`of ${catalog.length} linked to the DW`}
+            sub={`of ${catalog.length} KPIs`}
           />
           {canSee && <StatCard label="To review" value={count("suggested")} sub="AI suggestions" />}
           {canSee && (

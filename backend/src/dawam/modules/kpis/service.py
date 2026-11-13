@@ -259,6 +259,10 @@ def _not_found() -> ApiError:
     return ApiError(404, "not_found", "KPI not found.")
 
 
+def _not_in_catalog(record: KpiRecord, message: str) -> ApiError:
+    return ApiError(409, "invalid_review_state", message, {"review_state": record.review_state})
+
+
 def _invalid(message: str, field: str) -> ApiError:
     return ApiError(422, "invalid_kpi", message, {"field": field})
 
@@ -568,7 +572,7 @@ class KpiService:
         or the formula names what the DW Schema lacks."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
-            record = self._load(db, workspace_id, kpi_id)
+            record = self._load_visible(db, user, workspace_id, kpi_id)
             schema = read_schema(db, workspace_id)
             if schema is None:
                 return KpiFeasibility(NEEDS_DATA, [])
@@ -650,14 +654,7 @@ class KpiService:
         reads). 404 if it is not in ``workspace_id``."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
-            record = self._load(db, workspace_id, kpi_id)
-            if record.review_state not in CATALOG_STATES:
-                if catalog_only:
-                    raise _not_found()
-                try:
-                    self._workspaces.authorize(user, Action.VIEW_KPI_REVIEW, workspace_id)
-                except ApiError:
-                    raise _not_found() from None
+            record = self._load_visible(db, user, workspace_id, kpi_id, catalog_only=catalog_only)
             return _views(db, workspace_id, [record])[0]
 
     def update(
@@ -673,10 +670,13 @@ class KpiService:
         ``definition``, ``formula_text``, ``formula_sql`` (``None`` clears it), ``unit``,
         ``aggregation``, ``owner``, ``refresh_frequency``, ``targets`` (a list of
         ``KpiTarget``) and ``status``); the others stay. A stale ``version`` is 409
-        ``version_conflict``."""
+        ``version_conflict``; a suggested or rejected KPI is 409 ``invalid_review_state``
+        (accept it first)."""
         self._workspaces.authorize(user, Action.EDIT_KPI, workspace_id)
         with Session(self._engine) as db, db.begin():
             record = self._load(db, workspace_id, kpi_id, lock=True)
+            if record.review_state not in CATALOG_STATES:
+                raise _not_in_catalog(record, "Accept this KPI before editing it.")
             if record.version != version:
                 raise ApiError(
                     409,
@@ -826,7 +826,7 @@ class KpiService:
         """The DW columns a KPI uses (any member), by Layer, table and position."""
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         with Session(self._engine) as db:
-            record = self._load(db, workspace_id, kpi_id)
+            record = self._load_visible(db, user, workspace_id, kpi_id)
             return KpiLinks(
                 record.version, [_link_view(c) for c in described(db, workspace_id, kpi_id)]
             )
@@ -856,12 +856,7 @@ class KpiService:
                     {"current_version": record.version},
                 )
             if record.review_state not in CATALOG_STATES:
-                raise ApiError(
-                    409,
-                    "invalid_review_state",
-                    "Accept this KPI before linking it to DW columns.",
-                    {"review_state": record.review_state},
-                )
+                raise _not_in_catalog(record, "Accept this KPI before linking it to DW columns.")
             columns = check_links(db, workspace_id, dw_column_ids)
             change = self._apply_links(db, user, record, columns)
             return KpiLinks(
@@ -949,6 +944,28 @@ class KpiService:
         )
         self._record_activity(db, user, "kpi.edited", record, details={"fields": ["links"]})
         return True
+
+    def _load_visible(
+        self,
+        db: Session,
+        user: User,
+        workspace_id: uuid.UUID,
+        kpi_id: uuid.UUID,
+        *,
+        catalog_only: bool = False,
+    ) -> KpiRecord:
+        """The KPI, if ``user`` may read it: one in the KPIs tab for any member, a suggested
+        or rejected one only with ``kpi.view_review`` and never with ``catalog_only``; else
+        404, as if it did not exist."""
+        record = self._load(db, workspace_id, kpi_id)
+        if record.review_state not in CATALOG_STATES:
+            if catalog_only:
+                raise _not_found()
+            try:
+                self._workspaces.authorize(user, Action.VIEW_KPI_REVIEW, workspace_id)
+            except ApiError:
+                raise _not_found() from None
+        return record
 
     def _load(
         self, db: Session, workspace_id: uuid.UUID, kpi_id: uuid.UUID, *, lock: bool = False

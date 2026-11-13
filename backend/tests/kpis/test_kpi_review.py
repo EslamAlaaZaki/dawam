@@ -270,3 +270,31 @@ def test_exports_and_the_assistant_read_only_the_kpis_tab(roles, app):
     assert [k.name for k in kpis.list(owner, roles.workspace_id).items] == ["Revenue"]
     with pytest.raises(Exception, match="not found"):
         kpis.get(owner, roles.workspace_id, uuid.UUID(waiting["id"]), catalog_only=True)
+
+
+def test_a_viewer_cannot_read_a_suggested_kpis_links_or_feasibility(roles, app):
+    [kpi] = suggested(roles, app, "Churn")
+    decide(roles, kpi, "reject")
+
+    for part in ("links", "feasibility"):
+        path = f"{kpis_path(roles)}/{kpi['id']}/{part}"
+        assert roles.client("viewer").get(path).status_code == 404
+        assert roles.client("editor").get(path).status_code == 200
+
+
+def test_a_suggested_or_rejected_kpi_cannot_be_edited_until_accepted(roles, app):
+    waiting, rejected = suggested(roles, app, "Waiting", "Rejected")
+    rejected = decide(roles, rejected, "reject").json()
+
+    for kpi in (waiting, rejected):
+        response = roles.client("editor").patch(
+            f"{kpis_path(roles)}/{kpi['id']}",
+            json={"version": kpi["version"], "name": "Renamed", "status": "approved"},
+        )
+        assert response.status_code == 409 and error_code(response) == "invalid_review_state"
+
+    accepted = decide(roles, waiting, "accept").json()
+    edited = roles.client("editor").patch(
+        f"{kpis_path(roles)}/{waiting['id']}", json={"version": accepted["version"], "unit": "%"}
+    )
+    assert edited.status_code == 200, edited.text

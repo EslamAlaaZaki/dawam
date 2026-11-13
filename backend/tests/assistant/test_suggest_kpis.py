@@ -103,13 +103,14 @@ def test_each_kpi_gets_one_audit_entry_via_ai(roles, model, fake_llm, app: FastA
     assert all(e.new and e.new["origin"] == "ai" and e.new["rationale"] for e in entries)
 
 
-def test_ai_kpis_can_be_edited_and_deleted_by_an_editor(roles, model, fake_llm):
+def test_accepted_ai_kpis_can_be_edited_and_deleted_by_an_editor(roles, model, fake_llm):
     suggest(roles, fake_llm, [idea("Churn")])
     [kpi] = kpis(roles)
     path = f"/api/v1/workspaces/{roles.workspace_id}/kpis/{kpi['id']}"
     editor = roles.client("editor")
+    accepted = editor.post(f"{path}/accept").json()
 
-    edited = editor.patch(path, json={"version": kpi["version"], "unit": "%"})
+    edited = editor.patch(path, json={"version": accepted["version"], "unit": "%"})
 
     assert edited.status_code == 200 and edited.json()["origin"] == "ai"
     assert editor.delete(path).status_code == 204

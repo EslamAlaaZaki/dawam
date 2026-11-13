@@ -356,7 +356,8 @@ def update_kpi(
 ) -> Kpi:
     """Edit a KPI or move it between `draft`, `in_review` and `approved` (owners and
     editors); fields left out stay as they are. 409 `version_conflict` if `version` is
-    stale; 422 `invalid_kpi`."""
+    stale, 409 `invalid_review_state` for a suggested or rejected KPI (accept it first); 422
+    `invalid_kpi`."""
     changes = body.model_dump(exclude_unset=True, exclude={"version"})
     if "targets" in changes and body.targets is not None:
         changes["targets"] = _targets(body.targets)

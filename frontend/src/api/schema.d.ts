@@ -3014,7 +3014,8 @@ export interface paths {
          * Update Kpi
          * @description Edit a KPI or move it between `draft`, `in_review` and `approved` (owners and
          *     editors); fields left out stay as they are. 409 `version_conflict` if `version` is
-         *     stale; 422 `invalid_kpi`.
+         *     stale, 409 `invalid_review_state` for a suggested or rejected KPI (accept it first); 422
+         *     `invalid_kpi`.
          */
         patch: operations["updateKpi"];
         trace?: never;
