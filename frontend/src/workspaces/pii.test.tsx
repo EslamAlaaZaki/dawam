@@ -453,7 +453,10 @@ describe("the PII folder", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Detect PII" }));
     const dialog = await screen.findByRole("dialog");
-    expect(await within(dialog).findAllByRole("checkbox")).toHaveLength(2);
+    await within(dialog).findAllByRole("checkbox");
+    expect(
+      within(dialog).getAllByRole("checkbox", { name: /^crm\./ }),
+    ).toHaveLength(2);
     expect(within(dialog).queryByText("crm.v_active")).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: /^Start detection/ }));
 

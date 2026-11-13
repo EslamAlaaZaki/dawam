@@ -310,14 +310,14 @@ def test_no_present_tables_means_no_model_call_and_a_succeeded_job(
     roles: RoleClients, model, fake_llm, app: FastAPI, monkeypatch
 ):
     system, tables = imported(roles, "sales,customer,id,integer\nsales,customer,email,text\n")
-    review = pii_ai_service.PiiAiService._review
+    review = pii_ai_service.PiiAiDetectService._review
 
     def table_removed_meanwhile(self, db, system_id, table_ids, rules):
         # The table is gone between queueing the job and running it.
         db.execute(sa.update(SrcTableRecord).values(status="source_removed"))
         return review(self, db, system_id, table_ids, rules)
 
-    monkeypatch.setattr(pii_ai_service.PiiAiService, "_review", table_removed_meanwhile)
+    monkeypatch.setattr(pii_ai_service.PiiAiDetectService, "_review", table_removed_meanwhile)
     fake_llm.script(answer())
 
     started = detect(roles, system, [tables["customer"]])
