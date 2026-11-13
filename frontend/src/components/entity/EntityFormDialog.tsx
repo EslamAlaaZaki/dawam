@@ -27,6 +27,7 @@ export function EntityFormDialog({
   onSubmit,
   pending,
   error,
+  wide = false,
   children,
 }: {
   open: boolean;
@@ -37,6 +38,8 @@ export function EntityFormDialog({
   onSubmit: (form: FormData) => void;
   pending?: boolean;
   error?: Error | null;
+  /** A wider popup, for forms with sections. */
+  wide?: boolean;
   children: ReactNode;
 }) {
   const returnFocus = useReturnFocus(open);
@@ -48,7 +51,10 @@ export function EntityFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent onCloseAutoFocus={returnFocus}>
+      <DialogContent
+        onCloseAutoFocus={returnFocus}
+        className={wide ? "w-[min(640px,calc(100%-2rem))]" : undefined}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
