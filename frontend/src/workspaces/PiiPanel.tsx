@@ -90,6 +90,17 @@ const SOURCE_LABELS: Record<PiiRuleMatch["source"], string> = {
   ai: "AI",
 };
 
+/** The Matched rules header's ⓘ tooltip: each source tag and what it means. */
+const MATCHED_RULES_TIP: readonly [string, string][] = [
+  ["Name", "The column name matches a rule."],
+  ["Values", "Sampled values pass a rule's check. Values are never stored."],
+  [
+    "AI",
+    "The AI suggests it from names, types, comments and Documents, never values.",
+  ],
+  ["Manual", "Added by hand."],
+];
+
 /** The order the Matched rules cell groups a column's rules in; Manual comes last. */
 const SOURCE_ORDER: readonly PiiRuleMatch["source"][] = ["name", "value", "ai"];
 
@@ -566,18 +577,32 @@ export function PiiPanel({
                       <TooltipTrigger asChild>
                         <button
                           type="button"
-                          aria-label="About matched rules"
-                          className="inline-flex rounded-sm text-subtle-foreground hover:text-foreground"
+                          aria-label="What are matched rules?"
+                          className="ms-1 inline-grid size-4 cursor-help place-items-center rounded-full align-middle text-subtle-foreground hover:text-primary focus-visible:text-primary"
                         >
-                          <Info aria-hidden className="size-4" />
+                          <Info aria-hidden className="size-3.5" />
                         </button>
                       </TooltipTrigger>
-                      <TooltipContent className="max-w-80">
-                        Where each match comes from. Name: the column name
-                        matches a rule. Values: sampled values pass a rule&apos;s
-                        check. AI: the AI suggests it from names, types,
-                        comments and Documents, never values. Manual: added by
-                        hand. Each rule shows its own confidence.
+                      <TooltipContent className="flex max-w-xs flex-col gap-1.5 border border-border bg-surface-raised p-3 leading-normal font-normal text-foreground shadow-overlay">
+                        <p className="m-0">
+                          <span className="font-semibold">Matched rules</span>:
+                          what flagged the column as PII. Each rule shows its
+                          own confidence.
+                        </p>
+                        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                          {MATCHED_RULES_TIP.map(([source, text]) => (
+                            <li key={source}>
+                              <Badge className="me-1.5">{source}</Badge>
+                              {text}
+                            </li>
+                          ))}
+                          <li>
+                            <Badge variant="info" className={cn(monoClasses, "me-1.5")}>
+                              rule
+                            </Badge>
+                            The rule that matched, such as national_id or iban.
+                          </li>
+                        </ul>
                       </TooltipContent>
                     </Tooltip>
                   </span>
