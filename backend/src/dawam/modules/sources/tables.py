@@ -199,20 +199,21 @@ class SrcColumnRecord(Base):
 
 PII_STATUSES = ("suggested", "accepted", "rejected")
 PII_CATEGORIES = ("direct_identifier", "quasi_identifier", "sensitive", "financial")
-PII_SOURCES = ("name", "value")
+PII_SOURCES = ("name", "value", "ai")
 _PII_STATUS_CHECK = "status IN ('suggested', 'accepted', 'rejected')"
 
 
 class PiiFindingRecord(Base):
-    """A suspected PII column (spec §6.12). One per column and rule; it attaches to the
-    stable Source Column, so a decision survives Snapshots. It never holds a value."""
+    """A suspected PII column (spec §6.12). One per column, rule and source: the name scan,
+    the value scan and the AI PII detection each keep their own row for a rule. It attaches
+    to the stable Source Column, so a decision survives Snapshots. It never holds a value."""
 
     __tablename__ = "pii_findings"
     __table_args__ = (
-        sa.UniqueConstraint("src_column_id", "rule"),
+        sa.UniqueConstraint("src_column_id", "rule", "source"),
         sa.CheckConstraint(_PII_STATUS_CHECK, name="status"),
         sa.CheckConstraint(f"category {_PII_CATEGORY_CHECK}", name="category"),
-        sa.CheckConstraint("source IN ('name', 'value')", name="source"),
+        sa.CheckConstraint("source IN ('name', 'value', 'ai')", name="source"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -229,8 +230,9 @@ class PiiFindingRecord(Base):
     """``suggested`` (in the review queue), ``accepted`` or ``rejected``. A column's findings
     are accepted and rejected together."""
     source: Mapped[str] = mapped_column(sa.String(8), server_default="name")
-    """``name`` (a name scan) or ``value`` (a value scan or a query's values): what the
-    confidence and evidence come from."""
+    """``name`` (a name scan), ``value`` (a value scan or a query's values) or ``ai`` (the
+    AI PII detection, from metadata only): what the confidence and evidence come from. Each
+    source writes and updates only its own rows."""
     confidence_at_rejection: Mapped[float | None] = mapped_column()
     """The confidence when the finding was last rejected: a later scan that raises it above
     this sends the column back to the review queue (spec §6.12)."""

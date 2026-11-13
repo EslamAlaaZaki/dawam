@@ -3,7 +3,7 @@ rejected), who decided and when, and whether a removal rejected it. Existing KPI
 live, or accepted for the AI's (#595).
 
 Revision ID: b3e8d1f4a926
-Revises: a7c3e9d1f520
+Revises: f3b8c1d6a924
 Create Date: 2026-11-13 12:00:00.000000
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b3e8d1f4a926"
-down_revision: str | Sequence[str] | None = "a7c3e9d1f520"
+down_revision: str | Sequence[str] | None = "f3b8c1d6a924"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -88,7 +88,8 @@ class PiiRuleMatch:
 
     id: uuid.UUID
     source: str
-    """``name`` (a name scan) or ``value`` (a value scan or a query's values)."""
+    """``name`` (a name scan), ``value`` (a value scan or a query's values) or ``ai`` (the AI
+    PII detection)."""
     rule: str
     category: str
     confidence: float
@@ -870,7 +871,7 @@ def accepted_pii_columns(db: Session, workspace_id: uuid.UUID) -> list[AcceptedP
                 table=table,
                 column=column.name,
                 category=category,
-                rules=[f.rule for f in own],
+                rules=list(dict.fromkeys(f.rule for f in own)),  # one per rule, any source
                 reviewer_id=reviewer,
                 reviewed_at=reviewed_at,
             )

@@ -37,8 +37,10 @@ from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
 from dawam.modules.sources import (
     EXTRACT_JOB,
     INFER_JOB,
+    PII_AI_JOB,
     PII_SCAN_JOB,
     PROFILE_JOB,
+    PiiAiDetectService,
     PiiScanService,
     ProfilingService,
     RelationshipService,
@@ -48,7 +50,7 @@ from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.config import Settings
 from dawam.platform.storage import create_storage
-from dawam.wiring import change_set_handlers, staging_sync_after_snapshot
+from dawam.wiring import PiiDocuments, change_set_handlers, staging_sync_after_snapshot
 
 JOB_HANDLERS: Mapping[str, JobHandler] = {}
 
@@ -169,6 +171,22 @@ def _service_handlers(
         parser=parser,
         ocr=ocr,
     )
+    options = {"adapters": llm_adapters} if llm_adapters is not None else {}
+    pii_ai = PiiAiDetectService(
+        engine,
+        roles=RoleService(
+            engine,
+            providers=ProviderService(
+                engine,
+                encryption_key=settings.encryption_key.get_secret_value(),
+                clock=clock,
+                **options,
+            ),
+            clock=clock,
+        ),
+        clock=clock,
+        documents=PiiDocuments(documents, engine, settings, clock),
+    )
     runner.on_abandoned(INDEX_JOB, documents.abandon_index)
     runner.on_abandoned(REINDEX_JOB, documents.abandon_reindex)
     assistant = build_assistant_service(
@@ -187,6 +205,7 @@ def _service_handlers(
         EXTRACT_JOB: snapshots.run_extraction,
         PROFILE_JOB: profiling.run_profiling,
         PII_SCAN_JOB: pii_scans.run_scan,
+        PII_AI_JOB: pii_ai.run_detection,
         INFER_JOB: relationships.run_inference,
         INDEX_JOB: documents.run_index,
         REINDEX_JOB: documents.run_reindex,

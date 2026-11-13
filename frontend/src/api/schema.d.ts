@@ -1994,10 +1994,12 @@ export interface paths {
         put?: never;
         /**
          * Start Pii Scan
-         * @description Scan the selected tables' sampled values for PII, as a background job (owners and
-         *     editors; live Connection only). Values are tested in memory and discarded: only the
-         *     match ratio is kept, as the evidence of a `suggested` finding. 409
-         *     `connection_missing` without a Connection; 422 for no tables or a bad sample size.
+         * @description Detect PII in the selected tables (owners and editors), as two background jobs started
+         *     together. The value scan (live Connection only; skipped without one) tests sampled values
+         *     in memory and discards them: only the match ratio is kept. The AI detection reads the
+         *     tables' metadata (names, types, keys, comments, existing findings and the Workspace's
+         *     rules), and Documents when shared, never a data value. Both record `suggested`
+         *     findings. 422 for no tables or a bad sample size.
          */
         post: operations["startPiiScan"];
         delete?: never;
@@ -9608,10 +9610,10 @@ export interface components {
             id: string;
             /**
              * Source
-             * @description `name`: a name scan; `value`: a value scan or a query's values.
+             * @description `name`: a name scan; `value`: a value scan or a query's values; `ai`: the AI PII detection (metadata only).
              * @enum {string}
              */
-            source: "name" | "value";
+            source: "name" | "value" | "ai";
             /**
              * Rule
              * @description `national_id`, `saudi_national_id`, `custom:<name>`, ...
@@ -9669,15 +9671,26 @@ export interface components {
         PiiScanStarted: {
             /**
              * Job Id
-             * Format: uuid
-             * @description The `pii_scan` job: follow its status, progress and log at `GET /jobs/{job_id}`.
+             * @description The `pii_scan` value scan job: follow it at `GET /jobs/{job_id}`. `null` when the system has no Connection: the value scan is skipped.
              */
-            job_id: string;
+            job_id: string | null;
             /**
              * Status
+             * @description The value scan job's status.
+             */
+            status: ("queued" | "running" | "succeeded" | "failed" | "cancelled") | null;
+            /**
+             * Ai Job Id
+             * Format: uuid
+             * @description The `pii_ai_detect` AI PII detection job, started at the same time and independent of the value scan.
+             */
+            ai_job_id: string;
+            /**
+             * Ai Status
+             * @description The AI detection job's status.
              * @enum {string}
              */
-            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            ai_status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
         /** PiiTabCounts */
         PiiTabCounts: {

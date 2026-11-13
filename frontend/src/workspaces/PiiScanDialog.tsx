@@ -19,10 +19,14 @@ import {
 import { Loading } from "../shell/Loading";
 import { Actions, EmptyState, ErrorText, monoClasses } from "./parts";
 
-/** Which tables to scan: every table (not views) of the latest Snapshot, all ticked at first. */
+/**
+ * Detect PII: which tables the value scan and the AI review, every table (not views) of the
+ * latest Snapshot, all ticked at first. Without a Connection only the AI reviews them.
+ */
 export function ScanDialog({
   workspace,
   system,
+  hasConnection,
   pending,
   error,
   onClose,
@@ -30,6 +34,7 @@ export function ScanDialog({
 }: {
   workspace: Workspace;
   system: SourceSystem;
+  hasConnection: boolean;
   pending: boolean;
   error: Error | null;
   onClose: () => void;
@@ -58,13 +63,24 @@ export function ScanDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Scan values</DialogTitle>
+          <DialogTitle>Detect PII</DialogTitle>
           <DialogDescription>
             Samples rows of the tables you choose and tests the values for
             national IDs, IBANs, mobile numbers, emails and dates of birth.
             Sampled values are never stored.
+            <span className="mt-1 block">
+              The AI then reviews the chosen tables&apos; names, types and
+              Documents, never their values, and suggests PII columns with a
+              confidence; it may find none.
+            </span>
           </DialogDescription>
         </DialogHeader>
+        {!hasConnection && (
+          <p className="m-0 text-sm text-muted-foreground">
+            This system has no Connection, so the value scan is skipped. Only
+            the AI reviews the tables.
+          </p>
+        )}
         {schema.isPending && <Loading className="p-0" />}
         {schema.isError && (
           <ErrorText>
@@ -130,7 +146,7 @@ export function ScanDialog({
             disabled={pending || chosen.length === 0}
             onClick={() => onStart(chosen.map((t) => t.id))}
           >
-            Start scan
+            Start detection
           </Button>
         </DialogFooter>
       </DialogContent>
