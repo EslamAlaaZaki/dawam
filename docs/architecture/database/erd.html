@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "a7c3e9d1f520"
+  "b3e8d1f4a926"
  ],
  "modules": [
   {
@@ -7746,7 +7746,7 @@ a.tlink:hover { text-decoration: underline; }
      "in_orm": true,
      "attribute": "status",
      "app_default": null,
-     "description": null,
+     "description": "The sign-off: ``draft``, ``in_review`` or ``approved``.",
      "pk": false,
      "fk": []
     },
@@ -7829,6 +7829,79 @@ a.tlink:hover { text-decoration: underline; }
      "description": "Why the AI suggested the KPI; ``None`` for any other origin.",
      "pk": false,
      "fk": []
+    },
+    {
+     "name": "review_state",
+     "type": "character varying(16)",
+     "nullable": false,
+     "default": "'live'::character varying",
+     "identity": null,
+     "generated": null,
+     "enum": {
+      "source": "CHECK ck_kpis_review_state",
+      "values": [
+       "live",
+       "suggested",
+       "accepted",
+       "rejected"
+      ]
+     },
+     "in_orm": true,
+     "attribute": "review_state",
+     "app_default": "'live'",
+     "description": "``live``: added by hand or by a rule; ``suggested``: an AI suggestion waiting for a\ndecision; ``accepted``: a suggestion someone accepted; ``rejected``: one someone\nrejected, or an accepted one someone deleted (``removed``). Only ``live`` and\n``accepted`` KPIs count elsewhere (the KPIs tab).",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "decided_by",
+     "type": "uuid",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "decided_by",
+     "app_default": null,
+     "description": "Who accepted, rejected or removed the suggestion; ``None`` until someone does.",
+     "pk": false,
+     "fk": [
+      {
+       "table": "users",
+       "column": "id"
+      }
+     ]
+    },
+    {
+     "name": "decided_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "decided_at",
+     "app_default": null,
+     "description": null,
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "removed",
+     "type": "boolean",
+     "nullable": false,
+     "default": "false",
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "removed",
+     "app_default": "False",
+     "description": "A rejected KPI that was accepted and then deleted (\"Removed by\"), not rejected.",
+     "pk": false,
+     "fk": []
     }
    ],
    "primary_key": [
@@ -7839,6 +7912,18 @@ a.tlink:hover { text-decoration: underline; }
      "name": "fk_kpis_created_by_users",
      "columns": [
       "created_by"
+     ],
+     "ref_table": "users",
+     "ref_columns": [
+      "id"
+     ],
+     "on_update": "NO ACTION",
+     "on_delete": "SET NULL"
+    },
+    {
+     "name": "fk_kpis_decided_by_users",
+     "columns": [
+      "decided_by"
      ],
      "ref_table": "users",
      "ref_columns": [
@@ -7882,6 +7967,14 @@ a.tlink:hover { text-decoration: underline; }
      "definition": "CHECK (((origin)::text = ANY ((ARRAY['user'::character varying, 'ai'::character varying, 'rule'::character varying])::text[])))"
     },
     {
+     "name": "ck_kpis_review_state",
+     "kind": "CHECK",
+     "columns": [
+      "review_state"
+     ],
+     "definition": "CHECK (((review_state)::text = ANY ((ARRAY['live'::character varying, 'suggested'::character varying, 'accepted'::character varying, 'rejected'::character varying])::text[])))"
+    },
+    {
      "name": "ck_kpis_status",
      "kind": "CHECK",
      "columns": [
@@ -7896,6 +7989,14 @@ a.tlink:hover { text-decoration: underline; }
       "created_by"
      ],
      "definition": "FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL"
+    },
+    {
+     "name": "fk_kpis_decided_by_users",
+     "kind": "FOREIGN KEY",
+     "columns": [
+      "decided_by"
+     ],
+     "definition": "FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL"
     },
     {
      "name": "fk_kpis_source_system_id_source_systems",
@@ -7952,7 +8053,7 @@ a.tlink:hover { text-decoration: underline; }
    "module": "kpis",
    "orm_class": "KpiRecord",
    "source": "backend/src/dawam/modules/kpis/tables.py",
-   "description": null
+   "description": "A documented KPI (spec §6.13). ``status`` is its sign-off; ``review_state`` is apart\nfrom it and says whether an AI suggestion was accepted or rejected."
   },
   {
    "name": "layer_approvals",
@@ -20597,6 +20698,21 @@ a.tlink:hover { text-decoration: underline; }
    "from_table": "kpis",
    "from_columns": [
     "created_by"
+   ],
+   "to_table": "users",
+   "to_columns": [
+    "id"
+   ],
+   "cardinality": "N:1",
+   "optional": true,
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "name": "fk_kpis_decided_by_users",
+   "from_table": "kpis",
+   "from_columns": [
+    "decided_by"
    ],
    "to_table": "users",
    "to_columns": [

@@ -53,6 +53,9 @@ KpiServiceDep = Annotated[KpiService, Depends(kpi_service)]
 
 KpiStatus = Literal["draft", "in_review", "approved"]
 KpiOrigin = Literal["user", "ai", "rule"]
+KpiReviewState = Literal["live", "suggested", "accepted", "rejected"]
+KpiDecision = Literal["added", "accepted", "rejected", "removed"]
+Feasibility = Literal["computable", "needs_mapping", "needs_data"]
 
 
 def _text(max_length: int):
@@ -105,7 +108,26 @@ class Kpi(BaseModel):
     rationale: str | None = Field(
         description="Why the AI suggested the KPI; null unless `origin` is `ai`."
     )
-    status: KpiStatus
+    status: KpiStatus = Field(description="The sign-off, apart from the review state.")
+    review_state: KpiReviewState = Field(
+        description="`live`: added by hand or by a rule; `suggested`: an AI suggestion "
+        "waiting for a decision; `accepted`: a suggestion someone accepted; `rejected`: one "
+        "someone rejected or, accepted, later deleted. Only `live` and `accepted` KPIs (the "
+        "KPIs tab) count elsewhere."
+    )
+    decision: KpiDecision | None = Field(
+        description="`added` for a live KPI, else how the suggestion was decided; null "
+        "while suggested."
+    )
+    decided_by: uuid.UUID | None = Field(
+        description="Who added the KPI or decided on the suggestion; null if unknown."
+    )
+    decided_at: datetime | None
+    link_count: int = Field(description="How many DW columns the KPI links to.")
+    feasibility: Feasibility | None = Field(
+        description="Whether it can be computed from the Data Warehouse now; null when the "
+        "KPI has no links (not checked yet)."
+    )
     version: int = Field(description="Send it back when editing; a stale one gets 409.")
     created_at: datetime
     updated_at: datetime
@@ -168,17 +190,26 @@ def list_kpis(
     data_warehouse: Annotated[
         bool, Query(description="Only the Data Warehouse's KPIs (those under no Source System).")
     ] = False,
+    review: Annotated[
+        Literal["catalog", "all"],
+        Query(
+            description="`catalog`: the KPIs tab (live and accepted KPIs); `all`: suggested "
+            "and rejected ones too (owners and editors)."
+        ),
+    ] = "catalog",
     limit: PageLimit = DEFAULT_PAGE_SIZE,
     cursor: PageCursor = None,
 ) -> KpiPage:
-    """The Workspace's KPIs (any member), ordered by name. Without a filter, all of them.
-    404 for a Source System that is not in the Workspace; 422 `invalid_filter` if both
-    filters are given."""
+    """The Workspace's KPIs, ordered by name. Without a filter, all of them. Any member
+    reads the KPIs tab; `review=all` (owners and editors) adds the suggested and rejected
+    KPIs. 404 for a Source System that is not in the Workspace; 422 `invalid_filter` if
+    both scopes are given."""
     page = kpis.list(
         user,
         workspace_id,
         source_system_id=source_system_id,
         data_warehouse=data_warehouse,
+        review=review,
         limit=limit,
         cursor=cursor,
     )
@@ -210,7 +241,6 @@ def create_kpi(
     )
 
 
-Feasibility = Literal["computable", "needs_mapping", "needs_data"]
 SuggestionKind = Literal["sum", "avg", "count_distinct", "ratio", "mom_growth", "yoy_growth"]
 
 
@@ -294,8 +324,26 @@ class KpiFeasibility(BaseModel):
 def get_kpi(
     workspace_id: uuid.UUID, kpi_id: uuid.UUID, user: CurrentUser, kpis: KpiServiceDep
 ) -> Kpi:
-    """Open a KPI (any member)."""
+    """Open a KPI (any member; a suggested or rejected one only owners and editors)."""
     return _out(kpis.get(user, workspace_id, kpi_id))
+
+
+@router.post("/{kpi_id}/accept", operation_id="acceptKpi")
+def accept_kpi(
+    workspace_id: uuid.UUID, kpi_id: uuid.UUID, user: CurrentUser, kpis: KpiServiceDep
+) -> Kpi:
+    """Accept an AI-suggested KPI, or a rejected one after all (owners and editors): it
+    joins the KPIs tab as `accepted`. 409 `invalid_review_state` otherwise."""
+    return _out(kpis.accept(user, workspace_id, kpi_id))
+
+
+@router.post("/{kpi_id}/reject", operation_id="rejectKpi")
+def reject_kpi(
+    workspace_id: uuid.UUID, kpi_id: uuid.UUID, user: CurrentUser, kpis: KpiServiceDep
+) -> Kpi:
+    """Reject an AI-suggested KPI (owners and editors): it moves to `rejected`. 409
+    `invalid_review_state` unless it is suggested."""
+    return _out(kpis.reject(user, workspace_id, kpi_id))
 
 
 @router.patch("/{kpi_id}", operation_id="updateKpi")
@@ -362,7 +410,8 @@ def set_links(
 ) -> KpiLinks:
     """Replace the DW columns a KPI uses (owners and editors); each becomes a `kpi` lineage
     edge. Changing the links of an approved KPI returns it to draft. 404 `not_set_up`
-    without a Data Warehouse; 409 `version_conflict` if `version` is stale; 422
+    without a Data Warehouse; 409 `version_conflict` if `version` is stale, 409
+    `invalid_review_state` for a suggested or rejected KPI; 422
     `invalid_kpi_link`."""
     return KpiLinks.model_validate(
         kpis.set_links(
@@ -384,6 +433,7 @@ def get_feasibility(
 def delete_kpi(
     workspace_id: uuid.UUID, kpi_id: uuid.UUID, user: CurrentUser, kpis: KpiServiceDep
 ) -> Response:
-    """Delete a KPI (owners and editors)."""
+    """Delete a KPI (owners and editors). One added by hand is deleted; one that came from
+    an AI suggestion moves to `rejected` instead (an accepted one as removed)."""
     kpis.delete(user, workspace_id, kpi_id)
     return Response(status_code=204)

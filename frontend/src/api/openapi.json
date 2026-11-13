@@ -10587,7 +10587,7 @@
           "kpis"
         ],
         "summary": "List Kpis",
-        "description": "The Workspace's KPIs (any member), ordered by name. Without a filter, all of them.\n404 for a Source System that is not in the Workspace; 422 `invalid_filter` if both\nfilters are given.",
+        "description": "The Workspace's KPIs, ordered by name. Without a filter, all of them. Any member\nreads the KPIs tab; `review=all` (owners and editors) adds the suggested and rejected\nKPIs. 404 for a Source System that is not in the Workspace; 422 `invalid_filter` if\nboth scopes are given.",
         "operationId": "listKpis",
         "parameters": [
           {
@@ -10630,6 +10630,22 @@
               "title": "Data Warehouse"
             },
             "description": "Only the Data Warehouse's KPIs (those under no Source System)."
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "catalog",
+                "all"
+              ],
+              "type": "string",
+              "description": "`catalog`: the KPIs tab (live and accepted KPIs); `all`: suggested and rejected ones too (owners and editors).",
+              "default": "catalog",
+              "title": "Review"
+            },
+            "description": "`catalog`: the KPIs tab (live and accepted KPIs); `all`: suggested and rejected ones too (owners and editors)."
           },
           {
             "name": "limit",
@@ -10942,7 +10958,7 @@
           "kpis"
         ],
         "summary": "Get Kpi",
-        "description": "Open a KPI (any member).",
+        "description": "Open a KPI (any member; a suggested or rejected one only owners and editors).",
         "operationId": "getKpi",
         "parameters": [
           {
@@ -11076,7 +11092,7 @@
           "kpis"
         ],
         "summary": "Delete Kpi",
-        "description": "Delete a KPI (owners and editors).",
+        "description": "Delete a KPI (owners and editors). One added by hand is deleted; one that came from\nan AI suggestion moves to `rejected` instead (an accepted one as removed).",
         "operationId": "deleteKpi",
         "parameters": [
           {
@@ -11103,6 +11119,134 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/accept": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Accept Kpi",
+        "description": "Accept an AI-suggested KPI, or a rejected one after all (owners and editors): it\njoins the KPIs tab as `accepted`. 409 `invalid_review_state` otherwise.",
+        "operationId": "acceptKpi",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "kpi_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kpi Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Kpi"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/reject": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Reject Kpi",
+        "description": "Reject an AI-suggested KPI (owners and editors): it moves to `rejected`. 409\n`invalid_review_state` unless it is suggested.",
+        "operationId": "rejectKpi",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "kpi_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kpi Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Kpi"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error",
@@ -11195,7 +11339,7 @@
           "kpis"
         ],
         "summary": "Set Links",
-        "description": "Replace the DW columns a KPI uses (owners and editors); each becomes a `kpi` lineage\nedge. Changing the links of an approved KPI returns it to draft. 404 `not_set_up`\nwithout a Data Warehouse; 409 `version_conflict` if `version` is stale; 422\n`invalid_kpi_link`.",
+        "description": "Replace the DW columns a KPI uses (owners and editors); each becomes a `kpi` lineage\nedge. Changing the links of an approved KPI returns it to draft. 404 `not_set_up`\nwithout a Data Warehouse; 409 `version_conflict` if `version` is stale, 409\n`invalid_review_state` for a suggested or rejected KPI; 422\n`invalid_kpi_link`.",
         "operationId": "setKpiLinks",
         "parameters": [
           {
@@ -17849,6 +17993,7 @@
           "job.cancel_any",
           "installation.list_workspaces",
           "kpi.edit",
+          "kpi.view_review",
           "layer.approve",
           "score.manage_settings",
           "workspace.require_distinct_approver",
@@ -23883,7 +24028,84 @@
               "in_review",
               "approved"
             ],
-            "title": "Status"
+            "title": "Status",
+            "description": "The sign-off, apart from the review state."
+          },
+          "review_state": {
+            "type": "string",
+            "enum": [
+              "live",
+              "suggested",
+              "accepted",
+              "rejected"
+            ],
+            "title": "Review State",
+            "description": "`live`: added by hand or by a rule; `suggested`: an AI suggestion waiting for a decision; `accepted`: a suggestion someone accepted; `rejected`: one someone rejected or, accepted, later deleted. Only `live` and `accepted` KPIs (the KPIs tab) count elsewhere."
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "added",
+                  "rejected",
+                  "removed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision",
+            "description": "`added` for a live KPI, else how the suggestion was decided; null while suggested."
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By",
+            "description": "Who added the KPI or decided on the suggestion; null if unknown."
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "link_count": {
+            "type": "integer",
+            "title": "Link Count",
+            "description": "How many DW columns the KPI links to."
+          },
+          "feasibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "computable",
+                  "needs_mapping",
+                  "needs_data"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feasibility",
+            "description": "Whether it can be computed from the Data Warehouse now; null when the KPI has no links (not checked yet)."
           },
           "version": {
             "type": "integer",
@@ -23918,6 +24140,12 @@
           "origin",
           "rationale",
           "status",
+          "review_state",
+          "decision",
+          "decided_by",
+          "decided_at",
+          "link_count",
+          "feasibility",
           "version",
           "created_at",
           "updated_at"

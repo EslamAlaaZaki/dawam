@@ -40,6 +40,7 @@ from tests.authz.matrix import (
     snapshot_id,
     source_table_id,
     staging_table_name,
+    suggested_kpi,
     system_id,
     table_id,
     use_fake_llm,
@@ -1363,6 +1364,20 @@ ROWS: list[Row] = [
         json=lambda roles: {"key": _suggestion_key(roles)},
     ),
     Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/accept",
+        "Edit KPIs (accept a suggested one)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=suggested_kpi,
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/reject",
+        "Edit KPIs (reject a suggested one)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=suggested_kpi,
+    ),
+    Row(
         "GET",
         "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/feasibility",
         "Open Workspace content (a KPI's feasibility)",
@@ -2072,6 +2087,24 @@ def test_the_pii_review_tabs_follow_the_matrix(row: Row, role: Role, roles: Role
     response = send(row, role, roles)
 
     assert outcome_of(response.status_code) == row.expect[role], response.text[:300]
+
+
+KPI_REVIEW = Row(
+    "GET",
+    "/api/v1/workspaces/{workspace_id}/kpis",
+    "Review KPIs (read the suggested and rejected KPIs)",
+    workspace(admin=False, owner=True, editor=True, viewer=False),
+    query={"review": "all"},
+)
+"""The KPIs folder's review tabs: the same endpoint as its KPIs tab, asked for every review
+state, so they are checked apart (``kpi.view_review``)."""
+
+
+@pytest.mark.parametrize("role", ROLES)
+def test_the_kpi_review_tabs_follow_the_matrix(role: Role, roles: RoleClients):
+    response = send(KPI_REVIEW, role, roles)
+
+    assert outcome_of(response.status_code) == KPI_REVIEW.expect[role], response.text[:300]
 
 
 @pytest.mark.parametrize("role", ROLES)

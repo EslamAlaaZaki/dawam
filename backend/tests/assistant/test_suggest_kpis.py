@@ -1,5 +1,5 @@
-"""The ``suggest_kpis`` assistant tool (spec §6.13, stories 75, 76): AI-labelled draft KPIs,
-create-only, audited as ``via=ai``. The model is the scripted fake provider."""
+"""The ``suggest_kpis`` assistant tool (spec §6.13, stories 75, 76): suggested KPIs waiting
+for review, create-only, audited as ``via=ai``. The model is the scripted fake provider."""
 
 from __future__ import annotations
 
@@ -22,7 +22,9 @@ IBAN = "SA0380000000608010167519"
 
 
 def kpis(roles: RoleClients) -> list[dict]:
-    response = roles.client("owner").get(f"/api/v1/workspaces/{roles.workspace_id}/kpis")
+    response = roles.client("owner").get(
+        f"/api/v1/workspaces/{roles.workspace_id}/kpis", params={"review": "all"}
+    )
     return response.json()["items"]
 
 
@@ -51,7 +53,7 @@ def idea(name: str, **fields: Any) -> dict[str, Any]:
     }
 
 
-def test_suggestions_become_ai_labelled_drafts_with_a_rationale(roles, model, fake_llm):
+def test_suggestions_wait_in_suggested_with_a_rationale(roles, model, fake_llm):
     system = add_system(roles)
 
     status, seen = suggest(
@@ -62,6 +64,7 @@ def test_suggestions_become_ai_labelled_drafts_with_a_rationale(roles, model, fa
     assert payload(seen)["created"][0]["name"] == "Net interest margin"
     [kpi] = kpis(roles)
     assert kpi["origin"] == "ai" and kpi["status"] == "draft"
+    assert kpi["review_state"] == "suggested"
     assert kpi["rationale"] == "The ledger has interest columns."
     assert kpi["source_system_id"] == system and kpi["unit"] == "%"
 
@@ -110,6 +113,8 @@ def test_ai_kpis_can_be_edited_and_deleted_by_an_editor(roles, model, fake_llm):
 
     assert edited.status_code == 200 and edited.json()["origin"] == "ai"
     assert editor.delete(path).status_code == 204
+    # a deleted suggestion is rejected, not gone, so it never comes back on its own
+    assert editor.get(path).json()["review_state"] == "rejected"
 
 
 def test_model_written_text_is_redacted_with_the_validators(roles, model, fake_llm):

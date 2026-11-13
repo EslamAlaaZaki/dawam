@@ -24,13 +24,23 @@ MAX_TARGETS = 20
 
 STATUSES = ("draft", "in_review", "approved")
 ORIGINS = ("user", "ai", "rule")
+REVIEW_STATES = ("live", "suggested", "accepted", "rejected")
+CATALOG_STATES = ("live", "accepted")
+"""The review states of the KPIs tab: the catalog that DW generation, links, lineage, the
+score, exports and the assistant read; suggested and rejected KPIs are left out."""
 
 
 class KpiRecord(Base):
+    """A documented KPI (spec §6.13). ``status`` is its sign-off; ``review_state`` is apart
+    from it and says whether an AI suggestion was accepted or rejected."""
+
     __tablename__ = "kpis"
     __table_args__ = (
         sa.CheckConstraint("status IN ('draft', 'in_review', 'approved')", name="status"),
         sa.CheckConstraint("origin IN ('user', 'ai', 'rule')", name="origin"),
+        sa.CheckConstraint(
+            "review_state IN ('live', 'suggested', 'accepted', 'rejected')", name="review_state"
+        ),
         sa.Index("ix_kpis_workspace_system", "workspace_id", "source_system_id"),
     )
 
@@ -57,6 +67,19 @@ class KpiRecord(Base):
     rationale: Mapped[str | None] = mapped_column(sa.String(TEXT_MAX_LENGTH))
     """Why the AI suggested the KPI; ``None`` for any other origin."""
     status: Mapped[str] = mapped_column(sa.String(16))
+    """The sign-off: ``draft``, ``in_review`` or ``approved``."""
+    review_state: Mapped[str] = mapped_column(sa.String(16), default="live", server_default="live")
+    """``live``: added by hand or by a rule; ``suggested``: an AI suggestion waiting for a
+    decision; ``accepted``: a suggestion someone accepted; ``rejected``: one someone
+    rejected, or an accepted one someone deleted (``removed``). Only ``live`` and
+    ``accepted`` KPIs count elsewhere (the KPIs tab)."""
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    """Who accepted, rejected or removed the suggestion; ``None`` until someone does."""
+    decided_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    removed: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    """A rejected KPI that was accepted and then deleted ("Removed by"), not rejected."""
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )

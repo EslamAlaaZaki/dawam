@@ -27,8 +27,8 @@ const ADA: Me = {
 };
 
 const PERMISSIONS: Record<WorkspaceRole, Workspace["permissions"]> = {
-  owner: ["kpi.edit", "workspace.view"],
-  editor: ["kpi.edit", "workspace.view"],
+  owner: ["kpi.edit", "kpi.view_review", "workspace.view"],
+  editor: ["kpi.edit", "kpi.view_review", "workspace.view"],
   viewer: ["workspace.view"],
 };
 
@@ -78,6 +78,12 @@ const NIM: Kpi = {
   origin: "user",
   rationale: null,
   status: "draft",
+  review_state: "live",
+  decision: "added",
+  decided_by: ADA.id,
+  decided_at: "2026-01-05T09:00:00Z",
+  link_count: 0,
+  feasibility: null,
   version: 1,
   created_at: "2026-01-05T09:00:00Z",
   updated_at: "2026-01-05T09:00:00Z",
@@ -87,9 +93,36 @@ const AI_KPI: Kpi = {
   ...NIM,
   id: "55555555-5555-4555-8555-555555555555",
   name: "Cost to income",
+  definition: "Operating cost over operating income",
   origin: "ai",
   rationale: "The ledger holds cost and income columns.",
+  review_state: "accepted",
+  decision: "accepted",
 };
+
+const SUGGESTED: Kpi = {
+  ...AI_KPI,
+  id: "66666666-6666-4666-8666-666666666666",
+  name: "Dormant account rate",
+  definition: "Accounts with no transaction in a year",
+  rationale: "accounts.last_txn_date measures dormancy.",
+  owner: "",
+  review_state: "suggested",
+  decision: null,
+  decided_by: null,
+  decided_at: null,
+};
+
+const REJECTED: Kpi = {
+  ...SUGGESTED,
+  id: "77777777-7777-4777-8777-777777777777",
+  name: "Branch cash utilisation",
+  review_state: "rejected",
+  decision: "rejected",
+  decided_by: ADA.id,
+};
+
+const inCatalog = (kpi: Kpi) => kpi.review_state === "live" || kpi.review_state === "accepted";
 
 const SYSTEM_FOLDER = `${PATH}?folder=systems/${CBS.id}/kpis`;
 const DW_FOLDER = `${PATH}?folder=dw/kpis`;
@@ -109,16 +142,21 @@ function backend(
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/progress`:
         return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/members`:
-        return json({ items: [] });
+        return json({ items: [{ user_id: ADA.id, display_name: ADA.display_name }] });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/data-warehouse`:
         return json({ set_up: false });
       case `GET /api/v1/workspaces/${WORKSPACE_ID}/systems`:
         return json({ items: [CBS], next_cursor: null });
-      case `GET ${KPIS}`:
+      case `GET ${KPIS}`: {
+        const items = r.query.data_warehouse === "true" ? kpis.dw : kpis.system;
         return (
           handle(r) ??
-          json({ items: r.query.data_warehouse === "true" ? kpis.dw : kpis.system, next_cursor: null })
+          json({
+            items: r.query.review === "all" ? items : items.filter(inCatalog),
+            next_cursor: null,
+          })
         );
+      }
       default:
         return handle(r);
     }
@@ -145,14 +183,20 @@ async function openEditKpi() {
 
 describe("the KPIs folders", () => {
   it("lists a Source System's KPIs", async () => {
-    renderApp(backend("viewer", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
+    const requests = renderApp(backend("viewer", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
 
     const row = await screen.findByRole("row", { name: /Net interest margin/ });
     expect(row).toHaveTextContent("Draft");
     expect(row).toHaveTextContent("CFO office");
+    expect(row).toHaveTextContent("Manual");
+    expect(row).toHaveTextContent("Words only");
+    await waitFor(() => expect(row).toHaveTextContent("Added by Ada Lovelace"));
     expect(screen.queryByRole("button", { name: "Add KPI" })).not.toBeInTheDocument();
     expect(within(row).queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     expect(screen.getByText("Only owners and editors can document KPIs.")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Suggested/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("To review")).not.toBeInTheDocument();
+    expect(requests.find((r) => r.path === KPIS)?.query.review).toBe("catalog");
   });
 
   it("lists the Data Warehouse's KPIs apart, before it is set up", async () => {
@@ -174,24 +218,107 @@ describe("the KPIs folders", () => {
     expect(await screen.findByText(/No KPIs yet/)).toBeInTheDocument();
   });
 
-  it("labels an AI-suggested KPI in the list and shows its rationale on the KPI page", async () => {
+  it("shows an editor the review tabs with counts and the stat cards", async () => {
+    renderApp(
+      backend("editor", { system: [NIM, AI_KPI, SUGGESTED, REJECTED], dw: [] }),
+      SYSTEM_FOLDER,
+    );
+
+    const kpisTab = await screen.findByRole("tab", { name: /^KPIs/ });
+    await waitFor(() => expect(kpisTab).toHaveTextContent("2"));
+    expect(screen.getByRole("tab", { name: /^Suggested/ })).toHaveTextContent("1");
+    expect(screen.getByRole("tab", { name: /^Accepted/ })).toHaveTextContent("1");
+    expect(screen.getByRole("tab", { name: /^Rejected/ })).toHaveTextContent("1");
+    expect(screen.getByText("To review")).toBeInTheDocument();
+    expect(screen.getByText("1 added by hand")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("row", { name: /Cost to income/ })).toHaveTextContent(
+        "Accepted by Ada Lovelace",
+      ),
+    );
+    expect(screen.queryByRole("row", { name: /Dormant account rate/ })).not.toBeInTheDocument();
+  });
+
+  it("filters by origin and searches the name, definition and owner", async () => {
+    renderApp(backend("editor", { system: [NIM, AI_KPI], dw: [] }), SYSTEM_FOLDER);
+
+    await screen.findByRole("row", { name: /Cost to income/ });
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.queryByRole("row", { name: /Net interest margin/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search KPIs" }), {
+      target: { value: "operating cost" },
+    });
+    expect(screen.getByRole("row", { name: /Cost to income/ })).toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: /Net interest margin/ })).not.toBeInTheDocument();
+  });
+
+  it("accepts a suggestion from the Suggested tab", async () => {
+    const requests = renderApp(
+      backend("editor", { system: [NIM, SUGGESTED], dw: [] }, (r) =>
+        r.method === "POST" && r.path === `${KPIS}/${SUGGESTED.id}/accept`
+          ? json({ ...SUGGESTED, review_state: "accepted", decision: "accepted" })
+          : undefined,
+      ),
+      SYSTEM_FOLDER,
+    );
+
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /^Suggested/ }));
+    const row = await screen.findByRole("row", { name: /Dormant account rate/ });
+    expect(row).toHaveTextContent("accounts.last_txn_date measures dormancy.");
+    expect(screen.getByRole("columnheader", { name: /Feasibility/ })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /Status/ })).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "Accept" }));
+
+    expect(
+      await screen.findByText("Dormant account rate accepted. It is now in KPIs."),
+    ).toBeInTheDocument();
+    expect(requests.some((r) => r.method === "POST" && r.path.endsWith("/accept"))).toBe(true);
+  });
+
+  it("rejects a suggestion, and accepts a rejected one after all", async () => {
+    const requests = renderApp(
+      backend("editor", { system: [SUGGESTED, REJECTED], dw: [] }, (r) =>
+        r.method === "POST" ? json({ ...SUGGESTED, review_state: "rejected" }) : undefined,
+      ),
+      SYSTEM_FOLDER,
+    );
+
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /^Suggested/ }));
+    const row = await screen.findByRole("row", { name: /Dormant account rate/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Reject" }));
+    expect(await screen.findByText("Dormant account rate rejected.")).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^Rejected/ }));
+    const rejected = await screen.findByRole("row", { name: /Branch cash utilisation/ });
+    await waitFor(() => expect(rejected).toHaveTextContent("Rejected by Ada Lovelace"));
+    fireEvent.click(within(rejected).getByRole("button", { name: "Accept after all" }));
+
+    await waitFor(() =>
+      expect(requests.some((r) => r.path === `${KPIS}/${REJECTED.id}/accept`)).toBe(true),
+    );
+    expect(requests.some((r) => r.path === `${KPIS}/${SUGGESTED.id}/reject`)).toBe(true);
+  });
+
+  it("opens an AI KPI's details in a side panel with its rationale and actions", async () => {
     renderApp(backend("editor", { system: [NIM, AI_KPI], dw: [] }), SYSTEM_FOLDER);
 
     const ai = await screen.findByRole("row", { name: /Cost to income/ });
-    expect(ai).toHaveTextContent("AI-generated");
-    expect(screen.getByRole("row", { name: /Net interest margin/ })).not.toHaveTextContent(
-      "AI-generated",
-    );
-    expect(within(ai).getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(ai).toHaveTextContent("AI");
     fireEvent.click(within(ai).getByRole("button", { name: "Cost to income" }));
 
-    const page = await screen.findByRole("dialog", { name: "Cost to income" });
-    expect(within(page).getByLabelText("AI rationale")).toHaveTextContent(
+    const panel = await screen.findByRole("dialog", { name: "Cost to income" });
+    expect(within(panel).getByLabelText("AI rationale")).toHaveTextContent(
       "The ledger holds cost and income columns.",
     );
+    expect(
+      within(panel).getByText("Not yet. The AI proposes it once the Data Warehouse exists."),
+    ).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 
-  it("shows a viewer a KPI read-only", async () => {
+  it("shows a viewer a KPI's details read-only", async () => {
     renderApp(backend("viewer", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
 
     fireEvent.click(await screen.findByRole("button", { name: "Net interest margin" }));
@@ -199,7 +326,18 @@ describe("the KPIs folders", () => {
     const details = await screen.findByRole("dialog", { name: "Net interest margin" });
     expect(within(details).getByText("Interest earned minus interest paid")).toBeInTheDocument();
     expect(within(details).getByText("FY2027: 3.2%")).toBeInTheDocument();
-    expect(within(details).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(within(details).queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+  });
+
+  it("explains a column in a tooltip on keyboard focus", async () => {
+    renderApp(backend("editor", { system: [NIM], dw: [] }), SYSTEM_FOLDER);
+
+    const info = await screen.findByRole("button", { name: "What is formula?" });
+    fireEvent.focus(info);
+
+    expect(
+      (await screen.findAllByText(/Only the formula in words. SQL can be added once/)).length,
+    ).toBeGreaterThan(0);
   });
 });
 
@@ -317,7 +455,26 @@ describe("editing a KPI", () => {
     );
   });
 
-  it("deletes a KPI", async () => {
+  it("says an accepted suggestion moves to Rejected when deleted", async () => {
+    renderApp(
+      backend("editor", { system: [AI_KPI], dw: [] }, (r) =>
+        r.method === "DELETE" ? noContent() : undefined,
+      ),
+      SYSTEM_FOLDER,
+    );
+
+    const row = await screen.findByRole("row", { name: /Cost to income/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete Cost to income?" });
+    expect(dialog).toHaveTextContent(
+      /came from a suggestion. It moves to Rejected as “Removed by you”/,
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete KPI" }));
+
+    expect(await screen.findByText("Cost to income moved to Rejected.")).toBeInTheDocument();
+  });
+
+  it("deletes a KPI added by hand for good", async () => {
     const system = [NIM];
     const requests = renderApp(
       backend("editor", { system, dw: [] }, (r) => {
@@ -332,6 +489,7 @@ describe("editing a KPI", () => {
     const row = await screen.findByRole("row", { name: /Net interest margin/ });
     fireEvent.click(within(row).getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("dialog", { name: "Delete Net interest margin?" });
+    expect(dialog).toHaveTextContent("This KPI was added by hand. It is removed for good.");
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete KPI" }));
 

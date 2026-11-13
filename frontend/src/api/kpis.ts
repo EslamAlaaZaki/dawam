@@ -1,4 +1,4 @@
-// The KPI catalog (spec stories 73, 74).
+// The KPI catalog and its review (spec stories 73-77).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "./client";
@@ -7,6 +7,9 @@ import type { components } from "./schema";
 
 export type Kpi = components["schemas"]["Kpi"];
 export type KpiStatus = Kpi["status"];
+export type KpiReviewState = Kpi["review_state"];
+export type KpiFeasibility = NonNullable<Kpi["feasibility"]>;
+export type KpiLink = components["schemas"]["KpiLink"];
 export type KpiTarget = components["schemas"]["Target"];
 export type CreateKpiRequest = components["schemas"]["CreateKpiRequest"];
 export type UpdateKpiRequest = components["schemas"]["UpdateKpiRequest"];
@@ -24,11 +27,18 @@ export interface KpiScope {
 
 const kpisKey = (workspaceId: string) => ["workspace", workspaceId, "kpis"] as const;
 
-/** Every KPI of the scope, ordered by name (all pages). */
-export function useKpis(workspaceId: string, scope: KpiScope) {
+/**
+ * Every KPI of the scope, ordered by name (all pages): the KPIs tab (live and accepted), or
+ * with `review` "all" the suggested and rejected ones too (owners and editors only).
+ */
+export function useKpis(
+  workspaceId: string,
+  scope: KpiScope,
+  review: "catalog" | "all" = "catalog",
+) {
   const client = useApiClient();
   return useQuery({
-    queryKey: [...kpisKey(workspaceId), scope.systemId ?? "dw"],
+    queryKey: [...kpisKey(workspaceId), scope.systemId ?? "dw", review],
     queryFn: async () => {
       const kpis: Kpi[] = [];
       let cursor: string | undefined;
@@ -40,6 +50,7 @@ export function useKpis(workspaceId: string, scope: KpiScope) {
               path: { workspace_id: workspaceId },
               query: {
                 limit: 100,
+                review,
                 ...(scope.systemId ? { source_system_id: scope.systemId } : { data_warehouse: true }),
                 ...(cursor ? { cursor } : {}),
               },
@@ -109,5 +120,46 @@ export function useDeleteKpi(workspaceId: string, kpiId: string) {
       }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: kpisKey(workspaceId) }),
+  });
+}
+
+/** Accept a suggested (or rejected) KPI, or reject a suggested one; owners and editors. */
+export function useDecideKpi(workspaceId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ kpiId, action }: { kpiId: string; action: "accept" | "reject" }) => {
+      const path =
+        action === "accept"
+          ? "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/accept"
+          : "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/reject";
+      const { data, error, response } = await client.POST(path, {
+        params: { path: { workspace_id: workspaceId, kpi_id: kpiId } },
+      });
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: kpisKey(workspaceId) }),
+  });
+}
+
+/** The DW columns a KPI links to (asked only while `enabled`, e.g. its details are open). */
+export function useKpiLinks(workspaceId: string, kpiId: string, enabled: boolean) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...kpisKey(workspaceId), kpiId, "links"],
+    enabled,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/kpis/{kpi_id}/links",
+        { params: { path: { workspace_id: workspaceId, kpi_id: kpiId } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data.items;
+    },
   });
 }

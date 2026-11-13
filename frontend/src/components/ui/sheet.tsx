@@ -5,7 +5,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "../../lib/utils";
 
-/** A panel sliding in from the left edge (the sidebar's drawer); a Dialog underneath. */
+/** A panel sliding in from an edge (the sidebar's drawer on the left, details on the right); a Dialog underneath. */
 function Sheet(props: ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="sheet" {...props} />;
 }
@@ -18,15 +18,26 @@ function SheetClose(props: ComponentProps<typeof DialogPrimitive.Close>) {
   return <DialogPrimitive.Close data-slot="sheet-close" {...props} />;
 }
 
+function SheetDescription(props: ComponentProps<typeof DialogPrimitive.Description>) {
+  return <DialogPrimitive.Description data-slot="sheet-description" {...props} />;
+}
+
 function SheetTitle(props: ComponentProps<typeof DialogPrimitive.Title>) {
   return <DialogPrimitive.Title data-slot="sheet-title" {...props} />;
 }
 
+const SIDES = {
+  left: "left-0 w-[min(280px,85vw)] border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
+  right:
+    "right-0 w-full max-w-lg border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+} as const;
+
 function SheetContent({
   className,
   children,
+  side = "left",
   ...props
-}: ComponentProps<typeof DialogPrimitive.Content>) {
+}: ComponentProps<typeof DialogPrimitive.Content> & { side?: keyof typeof SIDES }) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay
@@ -36,7 +47,8 @@ function SheetContent({
       <DialogPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "dawam-ui fixed inset-y-0 left-0 z-20 flex w-[min(280px,85vw)] flex-col overflow-y-auto border-r border-border bg-surface shadow-overlay scheme-light outline-none dark:scheme-dark data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:animate-in data-[state=open]:slide-in-from-left",
+          "dawam-ui fixed inset-y-0 z-20 flex flex-col overflow-y-auto border-border bg-surface shadow-overlay scheme-light outline-none dark:scheme-dark data-[state=closed]:animate-out data-[state=open]:animate-in",
+          SIDES[side],
           className,
         )}
         {...props}
@@ -47,4 +59,4 @@ function SheetContent({
   );
 }
 
-export { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger };
+export { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle, SheetTrigger };
