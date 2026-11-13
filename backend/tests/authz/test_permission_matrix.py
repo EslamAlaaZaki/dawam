@@ -1933,6 +1933,20 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         json=lambda roles: {"table_ids": [table_id(roles)]},
     ),
+    # AI KPI suggestions per Source System (story 75): owners and editors start the job and
+    # read its outcome.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/kpi-suggestions",
+        "Edit KPIs (suggest KPIs with the AI)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/kpi-suggestions",
+        "Edit KPIs (the latest KPI suggestion job)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
     # Relationship inference (stories 58, 59): owners and editors run it (needs a Snapshot)
     # and decide; every member reads the relationships.
     Row(

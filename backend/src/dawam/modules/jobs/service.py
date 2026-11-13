@@ -108,6 +108,10 @@ class JobContext(Protocol):
         state is also shown with the job."""
         ...
 
+    def set_result(self, result: Mapping[str, Any]) -> None:
+        """Report the job's outcome as small JSON (e.g. counts), kept after it ends."""
+        ...
+
 
 JobHandler = Callable[[Mapping[str, Any], JobContext], None]
 
@@ -206,6 +210,8 @@ class Job:
     attempt is still the one it claimed (a resumed job is another worker's now)."""
     question: str | None = None
     """What a ``paused`` job asks its creator."""
+    result: dict[str, Any] | None = None
+    """The outcome the handler reported (``JobContext.set_result``), if any."""
 
 
 @dataclass(frozen=True)
@@ -232,6 +238,7 @@ def _view(record: JobRecord) -> Job:
         attempts=record.attempts,
         question=_question(record),
         plan=record.plan,
+        result=record.result,
     )
 
 
@@ -285,6 +292,9 @@ class _Context:
         if isinstance(state.get("plan"), list):
             values["plan"] = state["plan"]
         self._service._update(self._job_id, self._attempt, **values)
+
+    def set_result(self, result: Mapping[str, Any]) -> None:
+        self._service._update(self._job_id, self._attempt, result=dict(result))
 
 
 class JobService:
@@ -349,6 +359,34 @@ class JobService:
             own.add(record)
         self._run_inline(job_id)
         return self._load_view(job_id)
+
+    def latest(
+        self,
+        workspace_id: uuid.UUID,
+        job_type: str,
+        params: Mapping[str, Any],
+        *,
+        db: Session | None = None,
+    ) -> Job | None:
+        """The Workspace's newest job of ``job_type`` whose params contain ``params`` (e.g.
+        one Source System's), or ``None``; in ``db``'s transaction when given. The caller has
+        authorized already."""
+        query = (
+            sa.select(JobRecord)
+            .where(
+                JobRecord.workspace_id == workspace_id,
+                JobRecord.type == job_type,
+                JobRecord.params.contains(dict(params)),
+            )
+            .order_by(JobRecord.created_at.desc(), JobRecord.id.desc())
+            .limit(1)
+        )
+        if db is not None:
+            record = db.scalars(query).first()
+            return _view(record) if record is not None else None
+        with Session(self._engine) as own:
+            record = own.scalars(query).first()
+            return _view(record) if record is not None else None
 
     def cancel_for_workspace(self, db: Session, workspace_id: uuid.UUID, at: datetime) -> None:
         """Cancel the Workspace's queued and running jobs, in ``db``'s transaction (the

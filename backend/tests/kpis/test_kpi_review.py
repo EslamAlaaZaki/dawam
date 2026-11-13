@@ -16,9 +16,20 @@ from dawam.modules.audit import AuditService
 from dawam.modules.kpis import KpiService, KpiSuggestion, kpi_names, kpis_for_score
 from dawam.modules.sources import SourceSystemService
 from dawam.modules.workspaces import WorkspaceService
+from tests.authz.matrix import snapshot_id
+from tests.authz.matrix import system_id as extracted_system
 from tests.kpis.test_kpi_links import column, dw, put_links, table
-from tests.kpis.test_kpis import a_system, created, error_code, kpis_path
+from tests.kpis.test_kpis import created, error_code, kpis_path
 from tests.roles import RoleClients
+
+TABLE = "public.accounts"
+"""The one table of the Source System ``a_system`` extracts."""
+
+
+def a_system(roles: RoleClients) -> str:
+    """A Source System with a Snapshot of ``TABLE``."""
+    snapshot_id(roles)
+    return str(extracted_system(roles))
 
 
 def service(app: FastAPI) -> KpiService:
@@ -35,12 +46,17 @@ def service(app: FastAPI) -> KpiService:
 def suggested(
     roles: RoleClients, app: FastAPI, *names: str, system_id: str | None = None
 ) -> list[dict]:
-    """The AI's suggestions, as ``suggest_kpis`` makes them."""
+    """The AI's suggestions, as ``suggest_kpis`` makes them (under a Source System, based
+    on its table ``TABLE``)."""
     editor = roles.client("editor")  # a member from now on
+    based_on = (TABLE,) if system_id else ()
     result = service(app).suggest(
         roles.user("editor"),
         roles.workspace_id,
-        [KpiSuggestion(name=n, rationale="The ledger points to it.") for n in names],
+        [
+            KpiSuggestion(name=n, rationale="The ledger points to it.", based_on=based_on)
+            for n in names
+        ],
         source_system_id=uuid.UUID(system_id) if system_id else None,
     )
     return [editor.get(f"{kpis_path(roles)}/{k.id}").json() for k in result.created]
@@ -175,7 +191,7 @@ def test_a_suggestion_named_like_any_kpi_of_its_scope_is_skipped_in_every_state(
         roles.user("editor"),
         roles.workspace_id,
         [
-            KpiSuggestion(name=n, rationale="r")
+            KpiSuggestion(name=n, rationale="r", based_on=(TABLE,))
             for n in ("REVENUE", "churn", "cost TO income", "Deposits")
         ],
         source_system_id=uuid.UUID(system),

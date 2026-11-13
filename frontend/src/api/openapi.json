@@ -17526,6 +17526,132 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/kpi-suggestions": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Start Kpi Suggestions",
+        "description": "Suggest KPIs for this Source System with the AI, as a background job (owners and\neditors). The AI reads this system only and sees every KPI under it in every review\nstate; suggestions land in the Suggested tab. 409 `kpi_suggestions_running` while a job\nruns for this system already.",
+        "operationId": "startKpiSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Get Kpi Suggestions",
+        "description": "The newest KPI suggestion job of this Source System, with its outcome once it has\nsucceeded (owners and editors).",
+        "operationId": "getKpiSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestKpiSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/documentation-pack": {
       "get": {
         "tags": [
@@ -24033,6 +24159,14 @@
             "title": "Rationale",
             "description": "Why the AI suggested the KPI; null unless `origin` is `ai`."
           },
+          "based_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Based On",
+            "description": "The source tables (`schema.table`) an AI suggestion is based on, all of its Source System; empty for other KPIs."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -24151,6 +24285,7 @@
           "targets",
           "origin",
           "rationale",
+          "based_on",
           "status",
           "review_state",
           "decision",
@@ -24439,6 +24574,104 @@
         ],
         "title": "KpiSuggestion"
       },
+      "KpiSuggestionJob": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "paused",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why the job failed; null otherwise."
+          },
+          "created": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created",
+            "description": "New suggested KPIs; null until the job has succeeded. Zero is a normal outcome: nothing differs from the KPIs already there."
+          },
+          "dropped": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropped",
+            "description": "Suggestions dropped because they were based on tables outside the Source System; null until the job has succeeded."
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped",
+            "description": "Suggestions skipped because a KPI of that name exists there (any review state); null until the job has succeeded."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "error",
+          "created",
+          "dropped",
+          "skipped",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "KpiSuggestionJob"
+      },
       "KpiSuggestions": {
         "properties": {
           "items": {
@@ -24454,6 +24687,26 @@
           "items"
         ],
         "title": "KpiSuggestions"
+      },
+      "LatestKpiSuggestionJob": {
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiSuggestionJob"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest job; null if none ran yet."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "title": "LatestKpiSuggestionJob"
       },
       "LayerApproval": {
         "properties": {

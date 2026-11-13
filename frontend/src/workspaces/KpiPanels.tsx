@@ -1,6 +1,7 @@
 "use client";
 
 import { Info, Plus, X } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { ApiError } from "../api/client";
@@ -61,6 +62,7 @@ import {
   type KpiRow,
   type SystemFilter,
 } from "./KpiDwParts";
+import { KpiSuggestJob } from "./KpiSuggestJob";
 import { DecidedBy } from "./PiiPanel";
 import {
   DetailList,
@@ -453,7 +455,9 @@ export function KpiCatalog({
     () => new Map((members.data ?? []).map((m) => [m.user_id, m.display_name])),
     [members.data],
   );
-  const [tab, setTab] = useState<KpiTab>("kpis");
+  // A chat's suggested KPIs link here with `tab=suggested`.
+  const linkedTab = useSearchParams().get("tab");
+  const [tab, setTab] = useState<KpiTab>(linkedTab === "suggested" ? "suggested" : "kpis");
   const shownTab: KpiTab = canSee ? tab : "kpis";
   const [origin, setOrigin] = useState<OriginFilter>("all");
   const [systemFilter, setSystemFilter] = useState<SystemFilter>("all");
@@ -543,6 +547,18 @@ export function KpiCatalog({
           </h3>
           {description && <p className="m-0 text-sm text-muted-foreground">{description}</p>}
         </div>
+        {canEdit && canSee && scope.systemId && (
+          <KpiSuggestJob
+            workspaceId={workspace.id}
+            systemId={scope.systemId}
+            kpis={all}
+            disabled={workspace.status !== "active"}
+            onSuggested={() => {
+              setTab("suggested");
+              setOrigin("all");
+            }}
+          />
+        )}
         {canEdit && (
           <Button variant="primary" onClick={() => setAdding(true)}>
             <Plus aria-hidden />
@@ -843,6 +859,17 @@ function KpiDetails({
                 </span>
                 {kpi.rationale}
               </div>
+            )}
+            {kpi.based_on.length > 0 && (
+              <DetailSection label="Based on">
+                <ul className="m-0 flex list-none flex-col gap-1 p-0">
+                  {kpi.based_on.map((table) => (
+                    <li key={table} className={cn(monoClasses, "text-xs")}>
+                      {table}
+                    </li>
+                  ))}
+                </ul>
+              </DetailSection>
             )}
             <DetailSection label="Definition">{kpi.definition || <Dash />}</DetailSection>
             <DetailSection label="Formula in words">{kpi.formula_text || <Dash />}</DetailSection>

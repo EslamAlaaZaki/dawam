@@ -66,6 +66,11 @@ class KpiRecord(Base):
     origin: Mapped[str] = mapped_column(sa.String(8))
     rationale: Mapped[str | None] = mapped_column(sa.String(TEXT_MAX_LENGTH))
     """Why the AI suggested the KPI; ``None`` for any other origin."""
+    based_on: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=sa.text("'[]'::jsonb")
+    )
+    """The source tables (``schema.table``) an AI suggestion is based on, each a table of
+    the KPI's Source System (checked when it is suggested); empty for any other KPI."""
     status: Mapped[str] = mapped_column(sa.String(16))
     """The sign-off: ``draft``, ``in_review`` or ``approved``."""
     review_state: Mapped[str] = mapped_column(sa.String(16), default="live", server_default="live")

@@ -72,6 +72,7 @@ def test_an_editor_documents_a_kpi_under_a_source_system(roles: RoleClients, clo
         "targets": [{"label": "FY2027", "value": "3.2%"}],
         "origin": "user",
         "rationale": None,
+        "based_on": [],
         "status": "draft",
         "review_state": "live",
         "decision": "added",

@@ -524,10 +524,29 @@ class _KpiIdea(BaseModel):
     formula_text: str = Field(default="", max_length=4000, description="The formula in words.")
     unit: str = Field(default="", max_length=50)
     aggregation: str = Field(default="", max_length=50)
+    based_on: list[Annotated[str, StringConstraints(max_length=300)]] = Field(
+        default_factory=list,
+        max_length=20,
+        description="The source tables the KPI uses, as schema.table. Under a Source System "
+        "each must be one of its tables, or the suggestion is dropped.",
+    )
+
+
+KPI_SUGGESTION_RULES = (
+    "Suggest only KPIs this scope's own data can measure by itself, never one that needs "
+    "another Source System, and never a repeat or rewording of a KPI already listed (in any "
+    "review state: live, suggested, accepted or rejected). Give each the source tables it is "
+    "based on (schema.table, tables of this Source System only): a suggestion based on any "
+    "other table is dropped. Suggesting nothing is a fine outcome when nothing differs."
+)
 
 
 class _SuggestKpis(BaseModel):
-    suggestions: list[_KpiIdea] = Field(min_length=1, max_length=20)
+    suggestions: Annotated[list[_KpiIdea], Field(min_length=1, max_length=20)] | None = Field(
+        default=None,
+        description="Leave out first to read every KPI already in the scope; then call again "
+        "with your suggestions.",
+    )
     system_id: uuid.UUID | None = Field(
         default=None,
         description="The Source System the KPIs are documented under; leave out for the "
@@ -1976,6 +1995,16 @@ def _update_file(ctx: ToolContext, args: _UpdateFile) -> Any:
 
 
 def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
+    if args.suggestions is None:  # first phase: what is there already, in every state
+        existing = ctx.services.kpis.every_state(ctx.user, ctx.workspace_id, args.system_id)
+        return {
+            "existing_kpis": [
+                {"name": k.name, "definition": k.definition, "review_state": k.review_state}
+                for k in existing
+            ],
+            "note": KPI_SUGGESTION_RULES + " Call suggest_kpis again with your suggestions "
+            "and the same system_id.",
+        }
     result = ctx.services.kpis.suggest(
         ctx.user,
         ctx.workspace_id,
@@ -1990,14 +2019,16 @@ def _suggest_kpis(ctx: ToolContext, args: _SuggestKpis) -> Any:
                 "name": kpi.name,
                 "status": kpi.status,
                 "origin": kpi.origin,
-                "link": f"?folder={folder}/kpis",
+                "link": f"?folder={folder}/kpis&tab=suggested",
             }
             for kpi in result.created
         ],
         "skipped": result.skipped,
+        "dropped": result.dropped,
         "note": "Created as suggestions in the KPIs folder's Suggested tab, for an owner or "
         "editor to accept or reject. Names that already exist there (rejected ones included) "
-        "were skipped; existing KPIs are never changed.",
+        "were skipped; existing KPIs are never changed. Dropped ones were based on no table, or "
+        "on a table outside the Source System.",
     }
 
 
@@ -2896,11 +2927,13 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "suggest_kpis",
-        "After reading a Source System's schema, profiles and documents, propose KPIs. They "
-        "are created as suggestions with your rationale, waiting in the Suggested tab for an "
-        "owner or editor to accept or reject; a name that already exists in the same scope "
-        "(rejected included) is skipped and existing KPIs are never changed. Never put "
-        "sample values or personal data in the text.",
+        "After reading a Source System's schema, profiles and documents, propose KPIs for that "
+        "one scope. Call it first without suggestions to read every KPI already there, in "
+        "every review state. They are created as suggestions with your rationale and the "
+        "tables they are based on, waiting in the Suggested tab for an owner or editor to "
+        "accept or reject; a name that already exists in the same scope (rejected included) "
+        "is skipped, one based on a table outside the Source System is dropped, and existing "
+        "KPIs are never changed. Never put sample values or personal data in the text.",
         _SuggestKpis,
         "write",
         Action.EDIT_KPI,
@@ -3198,6 +3231,11 @@ class ToolRegistry:
         self._services = services
         self._source_query_seconds = source_query_seconds
         self._tools = {tool.name: tool for tool in tools}
+
+    @property
+    def services(self) -> ToolServices:
+        """The services the tools call (as the requesting user)."""
+        return self._services
 
     def bind(
         self,
