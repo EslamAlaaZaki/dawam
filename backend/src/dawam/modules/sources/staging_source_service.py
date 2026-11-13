@@ -289,3 +289,31 @@ def source_table_names(db: Session, system_id: uuid.UUID) -> dict[str, str]:
         .where(SrcDbSchemaRecord.source_system_id == system_id, SrcTableRecord.status == "present")
     )
     return {f"{schema}.{table}".lower(): f"{schema}.{table}" for schema, table in rows}
+
+
+def workspace_source_table_names(
+    db: Session, workspace_id: uuid.UUID
+) -> dict[str, tuple[str, uuid.UUID]]:
+    """The present tables and views of every present Source System of a Workspace as
+    ``SYSTEM.schema.table`` (its System Code first) with the system's id, keyed by that name
+    in lower case; in the caller's session, no permission check. For checking that a
+    cross-system KPI suggestion is based on tables of two or more systems."""
+    rows = db.execute(
+        sa.select(
+            SourceSystemRecord.id,
+            SourceSystemRecord.code,
+            SrcDbSchemaRecord.name,
+            SrcTableRecord.name,
+        )
+        .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+        .join(SourceSystemRecord, SourceSystemRecord.id == SrcDbSchemaRecord.source_system_id)
+        .where(
+            SourceSystemRecord.workspace_id == workspace_id,
+            SourceSystemRecord.status == "present",
+            SrcTableRecord.status == "present",
+        )
+    )
+    return {
+        f"{code}.{schema}.{table}".lower(): (f"{code}.{schema}.{table}", system_id)
+        for system_id, code, schema, table in rows
+    }

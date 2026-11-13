@@ -1,5 +1,6 @@
-// The Suggest KPIs button of a Source System's KPIs page and the status bar of its job
-// (spec story 75): the AI suggests KPIs for that system only, in the background.
+// The Suggest KPIs button of a Source System's KPIs page, or Suggest cross-system KPIs on the
+// Data Warehouse's, and the status bar of its job (spec story 75): the AI suggests KPIs for
+// that scope only, in the background.
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -11,10 +12,12 @@ import {
   useKpiSuggestionJob,
   useStartKpiSuggestions,
   type KpiSuggestionJob,
+  type KpiSuggestionScope,
 } from "../api/kpiSuggestions";
 import { useSourceSystems } from "../api/systems";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -38,34 +41,88 @@ function markSeen(jobId: string): void {
   }
 }
 
+/** What differs between a Source System's job and the Data Warehouse's (cross-system) one. */
+type Texts = {
+  label: string;
+  running: string;
+  reads: (total: number, rejected: number) => ReactNode;
+  failed: string;
+  dropped: (n: number) => string;
+  busy: string;
+};
+
+function textsFor(scope: KpiSuggestionScope, name: string): Texts {
+  if ("systemId" in scope) {
+    return {
+      label: "Suggest KPIs",
+      running: `Suggesting KPIs for ${name}…`,
+      reads: (total, rejected) => (
+        <>
+          The AI reads the Source Schema, profiles and documents, and the{" "}
+          {plural(total, "KPI", "KPIs")} already here ({rejected} rejected), so it only suggests
+          different ones.
+        </>
+      ),
+      failed: "Suggesting KPIs failed",
+      dropped: (n) =>
+        ` ${plural(n, "more was", "more were")} dropped: based on tables outside ${name}.`,
+      busy: "KPIs are already being suggested for this Source System.",
+    };
+  }
+  return {
+    label: "Suggest cross-system KPIs",
+    running: "Suggesting cross-system KPIs for the Data Warehouse…",
+    reads: (total, rejected) => (
+      <>
+        The AI reads a summary of each Source System, the relationships between them, the DW
+        model and all {plural(total, "KPI", "KPIs")} in the Workspace ({rejected} rejected). It
+        only suggests KPIs that need more than one system or the DW model.
+      </>
+    ),
+    failed: "Suggesting cross-system KPIs failed",
+    dropped: (n) =>
+      ` ${plural(n, "more was", "more were")} dropped: ${n === 1 ? "it" : "they"} used only one Source System.`,
+    busy: "Cross-system KPIs are already being suggested.",
+  };
+}
+
+const sourceSystemCount = (n: number) =>
+  n === 0 ? "no Source Systems" : n === 1 ? "one Source System" : `${n} Source Systems`;
+
 /**
  * For owners and editors: the button (secondary, beside Add KPI) and, under the header, a
  * status bar while the job runs and once it ends: KPIs suggested, none to suggest, or failed.
- * `kpis` is every KPI of the system in every review state; `onSuggested` runs when a job
- * ends with new suggestions, or the page opens on one not dismissed yet (it shows the
- * Suggested tab).
+ * `kpis` is every KPI of the scope in every review state (on the Data Warehouse page, every
+ * KPI of the Workspace); `onSuggested` runs when a job ends with new suggestions, or the page
+ * opens on one not dismissed yet (it shows the Suggested tab). On the Data Warehouse page the
+ * button stays focusable but unavailable, with a tooltip saying why, until the Workspace has
+ * two Source Systems or a DW model.
  */
 export function KpiSuggestJob({
   workspaceId,
-  systemId,
+  scope,
   kpis,
   disabled,
   onSuggested,
 }: {
   workspaceId: string;
-  systemId: string;
+  scope: KpiSuggestionScope;
   kpis: readonly Kpi[];
   /** E.g. an archived Workspace: the button shows but cannot start a job. */
   disabled?: boolean;
   onSuggested: () => void;
 }) {
   const queryClient = useQueryClient();
-  const job = useKpiSuggestionJob(workspaceId, systemId, true);
-  const start = useStartKpiSuggestions(workspaceId, systemId);
+  const state = useKpiSuggestionJob(workspaceId, scope, true);
+  const start = useStartKpiSuggestions(workspaceId, scope);
   const systems = useSourceSystems(workspaceId);
+  const systemId = "systemId" in scope ? scope.systemId : null;
   const name = systems.data?.find((s) => s.id === systemId)?.name ?? "this Source System";
-  const current = job.data ?? null;
+  const texts = textsFor(scope, name);
+  const current = state.data?.job ?? null;
   const running = isRunning(current);
+  // Not until the Workspace has two Source Systems or a DW model (the Data Warehouse only).
+  const unavailable = state.data !== undefined && !state.data.available;
   // The job whose end this page reports: one seen running here (started here, or already
   // running when the page opened), or one that ended since its outcome was last dismissed.
   const [watched, setWatched] = useState<string | null>(null);
@@ -95,39 +152,59 @@ export function KpiSuggestJob({
   const rejected = kpis.filter((k) => k.review_state === "rejected").length;
 
   function onStart() {
+    if (unavailable) {
+      return;
+    }
     start.mutate(undefined, {
       onSuccess: (started) => setWatched(started.job_id),
       onError: (error) =>
         toast.error(
           error instanceof ApiError && error.code === "kpi_suggestions_running"
-            ? "KPIs are already being suggested for this Source System."
+            ? texts.busy
             : `Could not start: ${error.message}`,
         ),
     });
   }
 
+  const button = (
+    <Button
+      variant="secondary"
+      onClick={onStart}
+      disabled={disabled || running || start.isPending}
+      aria-disabled={unavailable || undefined}
+      className={cn(unavailable && "cursor-not-allowed opacity-50")}
+    >
+      {running || start.isPending ? "Suggesting…" : texts.label}
+    </Button>
+  );
+
   return (
     <>
-      <Button
-        variant="secondary"
-        onClick={onStart}
-        disabled={disabled || running || start.isPending}
-      >
-        {running || start.isPending ? "Suggesting…" : "Suggest KPIs"}
-      </Button>
+      {/* One element either way, so the button keeps its focus when the state loads. */}
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        {unavailable && (
+          <TooltipContent className="flex flex-col gap-1.5 border border-border bg-surface-raised p-3 leading-normal text-foreground shadow-overlay">
+            <p className="m-0 font-medium">Not available yet</p>
+            <p className="m-0">
+              Cross-system KPIs need at least two Source Systems or a Data Warehouse model. This
+              Workspace has {sourceSystemCount(state.data?.sourceSystems ?? 0)} and no DW model
+              yet.
+            </p>
+          </TooltipContent>
+        )}
+      </Tooltip>
       {running ? (
         <StatusBar tone="running">
           <Loader2 aria-hidden className="mt-0.5 size-4 shrink-0 text-info motion-safe:animate-spin" />
-          <Message title={`Suggesting KPIs for ${name}…`}>
-            The AI reads the Source Schema, profiles and documents, and the{" "}
-            {plural(kpis.length, "KPI", "KPIs")} already here ({rejected} rejected), so it only
-            suggests different ones. You can leave this page; the job keeps running.
+          <Message title={texts.running}>
+            {texts.reads(kpis.length, rejected)} You can leave this page; the job keeps running.
           </Message>
         </StatusBar>
       ) : ended && ended.job_id !== dismissed ? (
         <Outcome
           job={ended}
-          name={name}
+          texts={texts}
           total={kpis.length}
           onDismiss={() => {
             markSeen(ended.job_id);
@@ -141,21 +218,18 @@ export function KpiSuggestJob({
 
 function Outcome({
   job,
-  name,
+  texts,
   total,
   onDismiss,
 }: {
   job: KpiSuggestionJob;
-  name: string;
+  texts: Texts;
   total: number;
   onDismiss: () => void;
 }) {
   const created = job.created ?? 0;
   const dropped = job.dropped ?? 0;
-  const droppedLine =
-    dropped > 0
-      ? ` ${plural(dropped, "more was", "more were")} dropped: based on tables outside ${name}.`
-      : "";
+  const droppedLine = dropped > 0 ? texts.dropped(dropped) : "";
   const close = (
     <Button
       variant="ghost"
@@ -170,9 +244,7 @@ function Outcome({
   if (job.status !== "succeeded") {
     return (
       <StatusBar tone="failed">
-        <Message title="Suggesting KPIs failed">
-          {job.error || "The job ended before it finished."}
-        </Message>
+        <Message title={texts.failed}>{job.error || "The job ended before it finished."}</Message>
         {close}
       </StatusBar>
     );

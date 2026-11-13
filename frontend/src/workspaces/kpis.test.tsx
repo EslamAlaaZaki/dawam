@@ -976,4 +976,112 @@ describe("suggesting KPIs with the AI", () => {
     expect(within(list).getByText("core.accounts")).toBeInTheDocument();
     expect(within(list).getByText("core.transactions")).toBeInTheDocument();
   });
+
+  describe("cross-system KPIs on the Data Warehouse page", () => {
+    const DW_JOBS = `/api/v1/workspaces/${WORKSPACE_ID}/data-warehouse/kpi-suggestions`;
+    const ready = { available: true, source_systems: 2, dw_model: false };
+
+    /** The DW job endpoints: GET answers `before` until a job starts, then `after`. */
+    function dwJobs(
+      before: KpiSuggestionJob | null,
+      after: KpiSuggestionJob,
+      readiness: object = ready,
+    ) {
+      let started = false;
+      return (r: ApiRequest) => {
+        if (r.path !== DW_JOBS) {
+          return undefined;
+        }
+        if (r.method === "POST") {
+          started = true;
+          return json(job({}), 202);
+        }
+        return json({ job: started ? after : before, ...readiness });
+      };
+    }
+
+    it("is unavailable, still focusable, with a tooltip saying why", async () => {
+      const requests = renderApp(
+        backend(
+          "editor",
+          { system: [], dw: [NIM] },
+          dwJobs(null, job({}), { available: false, source_systems: 1, dw_model: false }),
+        ),
+        DW_FOLDER,
+      );
+
+      const button = await screen.findByRole("button", { name: "Suggest cross-system KPIs" });
+      await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+      expect(button).toBeEnabled();
+      fireEvent.focus(button);
+      expect((await screen.findAllByText("Not available yet")).length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText(
+          "Cross-system KPIs need at least two Source Systems or a Data Warehouse model. This Workspace has one Source System and no DW model yet.",
+        ).length,
+      ).toBeGreaterThan(0);
+      fireEvent.click(button);
+      expect(requests.some((r) => r.method === "POST" && r.path === DW_JOBS)).toBe(false);
+    });
+
+    it("says what the AI reads while it runs", async () => {
+      renderApp(
+        backend("editor", { system: [], dw: [NIM, REJECTED] }, dwJobs(job({}), job({}))),
+        DW_FOLDER,
+      );
+
+      expect(await screen.findByRole("button", { name: "Suggesting…" })).toBeDisabled();
+      const status = await screen.findByText(
+        "Suggesting cross-system KPIs for the Data Warehouse…",
+      );
+      expect(status.closest("[role=status]")).toHaveTextContent(
+        "The AI reads a summary of each Source System, the relationships between them, the DW model and all 2 KPIs in the Workspace (1 rejected). It only suggests KPIs that need more than one system or the DW model.",
+      );
+    });
+
+    it("reports new suggestions and the ones that used only one Source System", async () => {
+      const requests = renderApp(
+        backend(
+          "editor",
+          { system: [], dw: [NIM] },
+          dwJobs(null, job({ status: "succeeded", created: 2, dropped: 1, skipped: 0 })),
+        ),
+        DW_FOLDER,
+      );
+
+      fireEvent.click(await screen.findByRole("button", { name: "Suggest cross-system KPIs" }));
+
+      const title = await screen.findByText("2 new KPIs suggested");
+      expect(title.closest("[role=status]")).toHaveTextContent(
+        "They are in the Suggested tab for you to accept or reject. 1 more was dropped: it used only one Source System.",
+      );
+      expect(requests.some((r) => r.method === "POST" && r.path === DW_JOBS)).toBe(true);
+    });
+
+    it("says when there is nothing new, or why it failed", async () => {
+      renderApp(
+        backend(
+          "editor",
+          { system: [], dw: [NIM] },
+          dwJobs(null, job({ status: "succeeded", created: 0, dropped: 0, skipped: 0 })),
+        ),
+        DW_FOLDER,
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Suggest cross-system KPIs" }));
+      expect(await screen.findByText("No new KPIs to suggest")).toBeInTheDocument();
+
+      cleanup();
+      renderApp(
+        backend(
+          "editor",
+          { system: [], dw: [NIM] },
+          dwJobs(null, job({ status: "failed", error: "No model is assigned." })),
+        ),
+        DW_FOLDER,
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Suggest cross-system KPIs" }));
+      const failed = await screen.findByText("Suggesting cross-system KPIs failed");
+      expect(failed.closest("[role=status]")).toHaveTextContent("No model is assigned.");
+    });
+  });
 });

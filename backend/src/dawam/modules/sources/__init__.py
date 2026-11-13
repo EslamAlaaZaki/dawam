@@ -79,7 +79,8 @@ Public interface. Other modules import only what is re-exported here:
   ``source_column_labels`` (in the caller's session, no permission check) names a
   Workspace's source columns ``SYSTEM.schema.table.column`` for the lineage graph.
   ``source_table_names`` (the same) names a Source System's present tables ``schema.table``,
-  for checking the tables an AI KPI suggestion is based on.
+  for checking the tables an AI KPI suggestion is based on; ``workspace_source_table_names``
+  names every present Source System's tables ``SYSTEM.schema.table``, for a cross-system one.
 - ``SourceSystemService.delete`` soft-deletes a Source System (owners only); for the
   ``deletions`` module (in the caller's session, no permission check):
   ``deleted_source_systems`` / ``deleted_source_system`` read the soft-deleted ones (and
@@ -183,6 +184,7 @@ from .staging_source_service import (
     StagingTable,
     source_column_labels,
     source_table_names,
+    workspace_source_table_names,
 )
 from .summary_service import SourceSummary, SourceSummaryService
 from .system_code_change import SourceSystemCodeHandler
@@ -268,4 +270,5 @@ __all__ = [
     "source_system_contents",
     "source_table_names",
     "untraceable_views",
+    "workspace_source_table_names",
 ]

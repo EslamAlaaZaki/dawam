@@ -547,11 +547,11 @@ export function KpiCatalog({
           </h3>
           {description && <p className="m-0 text-sm text-muted-foreground">{description}</p>}
         </div>
-        {canEdit && canSee && scope.systemId && (
+        {canEdit && canSee && (scope.systemId || workspaceWide) && (
           <KpiSuggestJob
             workspaceId={workspace.id}
-            systemId={scope.systemId}
-            kpis={all}
+            scope={scope.systemId ? { systemId: scope.systemId } : { dataWarehouse: true }}
+            kpis={kpis.data?.kpis ?? []}
             disabled={workspace.status !== "active"}
             onSuggested={() => {
               setTab("suggested");

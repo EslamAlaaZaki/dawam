@@ -7944,7 +7944,7 @@ a.tlink:hover { text-decoration: underline; }
      "in_orm": true,
      "attribute": "based_on",
      "app_default": "list()",
-     "description": "The source tables (``schema.table``) an AI suggestion is based on, each a table of\nthe KPI's Source System (checked when it is suggested); empty for any other KPI.",
+     "description": "The tables an AI suggestion is based on (checked when it is suggested): under a Source\nSystem its tables (``schema.table``); under the Data Warehouse tables of two or more\nSource Systems (``SYSTEM.schema.table``) or of the DW model (``core.table``); empty for\nany other KPI.",
      "pk": false,
      "fk": []
     }

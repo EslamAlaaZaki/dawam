@@ -20,15 +20,18 @@ Public interface. Other modules import only what is re-exported here:
   (``KpiSuggestionJobs``) starts a ``kpi_suggest`` job (``KPI_SUGGEST_JOB``, one per system at a
   time, owners and editors) whose scope the server pins: lookup tools for that system only and
   every KPI under it in every review state in the task; suggestions based on tables outside it
-  are dropped and counted in the job's result.
+  are dropped and counted in the job's result. ``start_dw`` runs it at Data Warehouse scope
+  (one per Workspace, only with two or more Source Systems or a DW model): cross-system
+  suggestions only, with formula SQL once the DW model exists.
 - ``router``: ``GET|POST /workspaces/{workspace_id}/assistant/conversations``,
   ``GET|PATCH .../conversations/{conversation_id}``, ``POST .../conversations/{id}/messages``
   (answers over Server-Sent Events), ``POST .../conversations/{id}/stop``,
   ``PUT .../conversations/{id}/runs/{run_id}/feedback`` (a member's up/down rating and
   comment on an answer) and, for Owners and admins, ``GET .../feedback`` and
   ``GET .../feedback/eval-candidates``; ``POST|GET
-  /workspaces/{workspace_id}/systems/{system_id}/kpi-suggestions`` (start the job, or read
-  the latest); for installation admins, the run explorer:
+  /workspaces/{workspace_id}/systems/{system_id}/kpi-suggestions`` and ``POST|GET
+  /workspaces/{workspace_id}/data-warehouse/kpi-suggestions`` (start the job, or read the
+  latest); for installation admins, the run explorer:
   ``GET /admin/assistant/runs`` and ``GET /admin/assistant/runs/{run_id}`` (steps, redacted
   prompts, tokens, cost, prompt version and feedback).
 
@@ -45,6 +48,7 @@ from .api import router as chat_router
 from .assembly import build_assistant_service
 from .internal.agent import DEFAULT_MAX_JOB_TOOL_CALLS, DEFAULT_MAX_TOOL_CALLS
 from .internal.tools import ASSISTANT_JOB, ToolRegistry, ToolServices
+from .kpi_job_api import dw_router as dw_kpi_job_router
 from .kpi_job_api import router as kpi_job_router
 from .kpi_suggestions import KPI_SUGGEST_JOB, KpiSuggestionJobs
 from .service import (
@@ -67,6 +71,7 @@ router = APIRouter()
 router.include_router(chat_router)
 router.include_router(admin_router)
 router.include_router(kpi_job_router)
+router.include_router(dw_kpi_job_router)
 
 __all__ = [
     "ASSISTANT_JOB",

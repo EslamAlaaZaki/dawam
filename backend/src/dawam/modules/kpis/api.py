@@ -109,8 +109,10 @@ class Kpi(BaseModel):
         description="Why the AI suggested the KPI; null unless `origin` is `ai`."
     )
     based_on: list[str] = Field(
-        description="The source tables (`schema.table`) an AI suggestion is based on, all of "
-        "its Source System; empty for other KPIs."
+        description="The tables an AI suggestion is based on: under a Source System its tables "
+        "(`schema.table`); under the Data Warehouse tables of two or more Source Systems "
+        "(`SYSTEM.schema.table`) or of the DW model (`core.table`, `mart.table`). Empty for "
+        "other KPIs."
     )
     status: KpiStatus = Field(description="The sign-off, apart from the review state.")
     review_state: KpiReviewState = Field(

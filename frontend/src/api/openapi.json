@@ -17652,6 +17652,112 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/kpi-suggestions": {
+      "post": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Start Dw Kpi Suggestions",
+        "description": "Suggest cross-system KPIs for the Data Warehouse with the AI, as a background job\n(owners and editors): only KPIs that need two or more Source Systems or the DW model. The\nAI sees every KPI in the Workspace in every review state; suggestions land in the Data\nWarehouse's Suggested tab. 409 `kpi_suggestions_unavailable` until the Workspace has two\nSource Systems or a DW model; 409 `kpi_suggestions_running` while a job runs already.",
+        "operationId": "startDwKpiSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Get Dw Kpi Suggestions",
+        "description": "The newest cross-system KPI suggestion job, with its outcome once it has succeeded,\nand whether one may start (owners and editors).",
+        "operationId": "getDwKpiSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestDwKpiSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/documentation-pack": {
       "get": {
         "tags": [
@@ -24165,7 +24271,7 @@
             },
             "type": "array",
             "title": "Based On",
-            "description": "The source tables (`schema.table`) an AI suggestion is based on, all of its Source System; empty for other KPIs."
+            "description": "The tables an AI suggestion is based on: under a Source System its tables (`schema.table`); under the Data Warehouse tables of two or more Source Systems (`SYSTEM.schema.table`) or of the DW model (`core.table`, `mart.table`). Empty for other KPIs."
           },
           "status": {
             "type": "string",
@@ -24627,7 +24733,7 @@
               }
             ],
             "title": "Dropped",
-            "description": "Suggestions dropped because they were based on tables outside the Source System; null until the job has succeeded."
+            "description": "Suggestions dropped because of the tables they were based on: outside the Source System or, for the Data Warehouse, one Source System's only; null until the job has succeeded."
           },
           "skipped": {
             "anyOf": [
@@ -24687,6 +24793,44 @@
           "items"
         ],
         "title": "KpiSuggestions"
+      },
+      "LatestDwKpiSuggestionJob": {
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiSuggestionJob"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest job; null if none ran yet."
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "description": "Whether a job may start: the Workspace has at least two Source Systems or a DW model."
+          },
+          "source_systems": {
+            "type": "integer",
+            "title": "Source Systems",
+            "description": "The Workspace's Source Systems, deleted ones not."
+          },
+          "dw_model": {
+            "type": "boolean",
+            "title": "Dw Model",
+            "description": "Whether the DW model exists (Core or Mart has tables)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "available",
+          "source_systems",
+          "dw_model"
+        ],
+        "title": "LatestDwKpiSuggestionJob"
       },
       "LatestKpiSuggestionJob": {
         "properties": {
