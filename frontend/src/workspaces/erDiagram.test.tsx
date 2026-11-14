@@ -346,13 +346,46 @@ const SUGGESTED: Relationship = {
   decided_by: null,
   decided_at: null,
   evidence: {
+    found_by: "both",
     signals: {
       name: { score: 0.8, detail: "customer_ref ~ customers.ref" },
       type: { score: 1, detail: "int / int" },
       unique: { score: 1, detail: "primary key" },
       join: { score: 1, objects: ["core.v_balances", "core.sp_close"] },
-      overlap: { ratio: 0.97, values_checked: 40, target_rows_sampled: 100 },
     },
+    rule_score: 1,
+    ai_guess: { confidence: 0.7, reason: "customer_ref holds the customer's ref" },
+    counts: {
+      status: "counted",
+      target_rows: 100,
+      target_values: 100,
+      target_distinct: 100,
+      target_unique: true,
+      child_values: 4000,
+      child_distinct: 40,
+      matched_rows: 3880,
+      orphan_rows: 120,
+      match_rate: 0.97,
+    },
+    threshold: 0.6,
+  },
+};
+
+/** Found only by the AI, and its count timed out. */
+const AI_ONLY: Relationship = {
+  ...SUGGESTED,
+  id: "88888888-8888-4888-8888-888888888888",
+  origin: "ai",
+  confidence: 0.6,
+  evidence: {
+    found_by: "ai",
+    signals: {
+      name: { score: 0, detail: "customer_ref ~ customers.ref" },
+      type: { score: 1, detail: "int / int" },
+      unique: { score: 1, detail: "primary key" },
+    },
+    ai_guess: { confidence: 0.75, reason: "the comment says it is the customer" },
+    counts: { status: "timed_out", note: "count timed out" },
     threshold: 0.6,
   },
 };
@@ -427,9 +460,30 @@ describe("Relationship review", () => {
     expect(row.getByText("core.customers.ref")).toBeInTheDocument();
     expect(row.getByText("82%")).toBeInTheDocument();
     expect(row.getByText("Routine JOIN")).toBeInTheDocument();
-    for (const chip of ["name", "type", "unique", "join: core.v_balances, core.sp_close", "overlap 97%"]) {
+    for (const chip of ["Found by rules + AI", "name", "type", "unique", "join: core.v_balances, core.sp_close"]) {
       expect(row.getByText(chip)).toBeInTheDocument();
     }
+    expect(row.getByText("3,880 of 4,000 rows match (97%)")).toBeInTheDocument();
+    expect(row.getByText("120 orphan rows")).toBeInTheDocument();
+    expect(row.getByText("40 distinct values")).toBeInTheDocument();
+    expect(row.getByText("customer_ref holds the customer's ref")).toBeInTheDocument();
+  });
+
+  it("shows a pair found only by the AI whose count timed out", async () => {
+    const { state, handler } = review(EDITOR);
+    state.rows = [AI_ONLY];
+    renderApp(handler, SCHEMA_FOLDER);
+    await screen.findByRole("tab", { name: /^Relationships/ });
+    openTab(/^Relationships/);
+    openTab(/^Suggested/);
+    const panel = within(await screen.findByRole("region", { name: "Relationships" }));
+    const row = within((await panel.findAllByRole("row"))[1]!);
+    expect(row.getByText("60%")).toBeInTheDocument();
+    expect(row.getByText("AI", { selector: "[data-slot=badge]" })).toBeInTheDocument();
+    expect(row.getByText("Found by AI")).toBeInTheDocument();
+    expect(row.getByText("count timed out")).toBeInTheDocument();
+    expect(row.getByText("the comment says it is the customer")).toBeInTheDocument();
+    expect(row.queryByText("name")).not.toBeInTheDocument();
   });
 
   it("opens on Current when the Relationships tab is clicked", async () => {

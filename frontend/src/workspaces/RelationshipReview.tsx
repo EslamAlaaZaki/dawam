@@ -59,15 +59,39 @@ const TABS: { status: View; label: string }[] = [
 
 type Signals = Record<
   string,
-  { score?: number; detail?: string; objects?: string[]; ratio?: number }
+  { score?: number; detail?: string; objects?: string[] }
 >;
 
-const percent = (ratio: number) => `${Math.round(ratio * 100)}%`;
+/** The counts a run took on the source, or why it has none. Numbers only, never a value. */
+type Counts = {
+  status?: "counted" | "timed_out" | "failed" | "no_connection";
+  note?: string;
+  child_values?: number;
+  child_distinct?: number;
+  matched_rows?: number;
+  orphan_rows?: number;
+  match_rate?: number;
+};
 
-/** The evidence signals as short chips: names and ratios only, never a data value. */
+const FOUND_BY: Record<string, string> = {
+  rules: "Found by rules",
+  ai: "Found by AI",
+  both: "Found by rules + AI",
+};
+
+const percent = (ratio: number) => `${Math.round(ratio * 100)}%`;
+const count = (n: number) => n.toLocaleString("en-US");
+const plural = (n: number, one: string, many: string) => `${count(n)} ${n === 1 ? one : many}`;
+
+/** The evidence signals as short chips: what found the pair, then the rule signals. */
 function signalChips(relationship: Relationship): string[] {
-  const signals = (relationship.evidence.signals ?? {}) as Signals;
+  const evidence = relationship.evidence;
+  const signals = (evidence.signals ?? {}) as Signals;
   const chips: string[] = [];
+  const foundBy = FOUND_BY[String(evidence.found_by ?? "")];
+  if (foundBy) {
+    chips.push(foundBy);
+  }
   for (const key of ["name", "type", "unique"]) {
     if ((signals[key]?.score ?? 0) > 0) {
       chips.push(key);
@@ -76,10 +100,22 @@ function signalChips(relationship: Relationship): string[] {
   if (signals.join) {
     chips.push(`join: ${(signals.join.objects ?? []).join(", ")}`);
   }
-  if (signals.overlap?.ratio != null) {
-    chips.push(`overlap ${percent(signals.overlap.ratio)}`);
-  }
   return chips;
+}
+
+/** The counts as short lines ("3,880 of 4,000 rows match (97%)"), or why there are none. */
+function countLines(counts: Counts | undefined): string[] {
+  if (!counts?.status) {
+    return [];
+  }
+  if (counts.status !== "counted") {
+    return [counts.note ?? "not counted"];
+  }
+  return [
+    `${count(counts.matched_rows ?? 0)} of ${count(counts.child_values ?? 0)} rows match (${percent(counts.match_rate ?? 0)})`,
+    plural(counts.orphan_rows ?? 0, "orphan row", "orphan rows"),
+    plural(counts.child_distinct ?? 0, "distinct value", "distinct values"),
+  ];
 }
 
 const columnName = (c: Relationship["from_column"]) =>
@@ -291,24 +327,45 @@ function DecidedBy({
   );
 }
 
-/** Evidence chips, or "Added by hand" for a manual relationship. */
+/**
+ * Evidence: what found the pair and the rule signals as chips, the counts on the source (or
+ * why there are none) and the AI's reason; "Added by hand" for a manual relationship.
+ */
 function Evidence({ relationship }: { relationship: Relationship }) {
   if (relationship.origin === "manual") {
     return <span className="text-muted-foreground">Added by hand</span>;
   }
+  const lines = countLines(relationship.evidence.counts as Counts | undefined);
+  const reason = (relationship.evidence.ai_guess as { reason?: string } | undefined)?.reason;
   return (
-    <div className="flex flex-wrap gap-1">
-      {signalChips(relationship).map((chip) => (
-        <Badge key={chip} variant="info">
-          {chip}
-        </Badge>
-      ))}
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap gap-1">
+        {signalChips(relationship).map((chip) => (
+          <Badge key={chip} variant="info">
+            {chip}
+          </Badge>
+        ))}
+      </div>
+      {lines.length > 0 && (
+        <div className="flex flex-wrap gap-x-2 text-xs tabular-nums text-muted-foreground">
+          {lines.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+        </div>
+      )}
+      {reason && <p className="text-xs text-muted-foreground">{reason}</p>}
     </div>
   );
 }
 
-const originLabel = (origin: Relationship["origin"]) =>
-  origin === "manual" ? "Manually added" : origin === "routine" ? "Routine JOIN" : "Rules";
+const ORIGIN_LABELS: Record<Relationship["origin"], string> = {
+  manual: "Manually added",
+  routine: "Routine JOIN",
+  inferred: "Rules",
+  ai: "AI",
+};
+
+const originLabel = (origin: Relationship["origin"]) => ORIGIN_LABELS[origin];
 
 /**
  * A Source System's relationships (spec story 60): Current (in effect, filterable by
