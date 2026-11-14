@@ -195,7 +195,7 @@ def test_an_imported_system_lists_what_does_not_work(roles: RoleClients):
     assert status["imported"] and status["latest_origin"] == "import"
     assert not status["has_connection"]
     text = " ".join(status["disabled_features"]).lower()
-    for feature in ("profiling", "pii", "overlap", "ai"):
+    for feature in ("profiling", "pii", "relationship counts", "ai"):
         assert feature in text
 
 

@@ -43,11 +43,11 @@ from .tables import (
 DISABLED_FEATURES: tuple[str, ...] = (
     "Profiling (row, null and distinct counts, top values, min and max)",
     "Value-based PII scans",
-    "Value-overlap relationship inference",
+    "Relationship counts on the source (inferred relationships stay uncounted)",
     "AI source queries (data exploration)",
 )
-"""What needs a live Connection (spec §6.4). Name-based PII, name/type-based inference and
-routine JOIN parsing still work."""
+"""What needs a live Connection (spec §6.4). Name-based PII, name/type-based inference,
+routine JOIN parsing and the AI's relationship guesses from metadata still work."""
 
 
 @dataclass(frozen=True)
