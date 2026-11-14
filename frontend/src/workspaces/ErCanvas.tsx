@@ -67,7 +67,6 @@ export function ErCanvas({
   query,
   selectedId,
   onOpen,
-  focus,
 }: {
   ref?: Ref<ErCanvasHandle>;
   tables: Table[];
@@ -79,8 +78,6 @@ export function ErCanvas({
   query: string;
   selectedId: string | null;
   onOpen: (id: string) => void;
-  /** The focused table and how to clear the focus, for the chip over the canvas. */
-  focus?: { name: string; onClear: () => void };
 }) {
   const layout = useMemo(() => {
     const geom = new Map(
@@ -334,17 +331,6 @@ export function ErCanvas({
           ))}
         </div>
       </div>
-      {focus && (
-        <div className="absolute top-3 left-3 flex items-center gap-2 rounded-lg border border-border bg-surface-raised py-1 pr-1 pl-2.5 text-sm shadow-overlay">
-          <span>
-            Showing <span className="font-mono text-mono">{focus.name}</span> and its
-            neighbours
-          </span>
-          <Button type="button" size="sm" variant="ghost" onClick={focus.onClear}>
-            Show all
-          </Button>
-        </div>
-      )}
       <Legend />
       <div className="absolute right-3 bottom-3 flex flex-col overflow-hidden rounded-lg border border-border bg-surface-raised shadow-overlay">
         <Button

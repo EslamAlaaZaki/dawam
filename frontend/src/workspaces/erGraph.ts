@@ -28,10 +28,8 @@ export interface ErEdge {
 }
 
 export interface ErFilters {
-  /** A Database Schema name; "" keeps every one. */
-  dbSchema: string;
-  /** A table id to focus on, with its neighbours; "" keeps every table. */
-  tableId: string;
+  /** The ids of the tables to keep; an empty set keeps every table. */
+  tableIds: ReadonlySet<string>;
 }
 
 export const qualified = (table: Pick<Table, "db_schema" | "name">) =>
@@ -112,30 +110,18 @@ export function relationshipEdges(
   return edges;
 }
 
-/** The tables and edges left by the filters. A focused table keeps itself and its neighbours. */
+/** The tables left by the filters, and the edges whose two ends are both left. */
 export function filterGraph(
   tables: readonly Table[],
   edges: readonly ErEdge[],
   filters: ErFilters,
 ): { tables: Table[]; edges: ErEdge[] } {
-  let keep = new Set(tables.filter(isPresent).map((t) => t.id));
-  if (filters.dbSchema !== "") {
-    const inSchema = new Set(
-      tables.filter((t) => keep.has(t.id) && t.db_schema === filters.dbSchema).map((t) => t.id),
-    );
-    keep = inSchema;
-  }
-  if (filters.tableId !== "") {
-    const near = new Set([filters.tableId]);
-    for (const edge of edges) {
-      if (edge.from === filters.tableId) near.add(edge.to);
-      if (edge.to === filters.tableId) near.add(edge.from);
-    }
-    // The focus is not narrowed by the Database Schema filter: its neighbours may live elsewhere.
-    keep = new Set(
-      tables.filter(isPresent).map((t) => t.id).filter((id) => near.has(id)),
-    );
-  }
+  const keep = new Set(
+    tables
+      .filter(isPresent)
+      .filter((t) => filters.tableIds.size === 0 || filters.tableIds.has(t.id))
+      .map((t) => t.id),
+  );
   return {
     tables: tables.filter((t) => keep.has(t.id)),
     edges: edges.filter((e) => keep.has(e.from) && keep.has(e.to)),
