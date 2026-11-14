@@ -334,7 +334,8 @@ function SetupForm({
           <NativeSelect
             className="h-9"
             name="fiscal_year_start_month"
-            defaultValue={String(dates?.fiscal_year_start_month ?? "")}
+            // A new setup starts on January; a saved one keeps its choice, "none" included.
+            defaultValue={dates ? String(dates.fiscal_year_start_month ?? "") : "1"}
           >
             <option value="">No fiscal calendar</option>
             {MONTHS.map((month, i) => (

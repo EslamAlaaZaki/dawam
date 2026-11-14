@@ -209,7 +209,7 @@ describe("the Data Warehouse folder before setup", () => {
       naming_rules: { case_style: "lower", dimension_prefix: "dim_" },
       date_dimension: {
         weekend_days: ["friday", "saturday"],
-        fiscal_year_start_month: null,
+        fiscal_year_start_month: 1,
       },
     });
   });
