@@ -217,7 +217,7 @@ function SetupForm({
   const rules = warehouse.naming_rules;
   const dates = warehouse.date_dimension;
   const startYear = dates?.start_year ?? 2000;
-  const endYear = dates?.end_year ?? 2040;
+  const endYear = dates?.end_year ?? 2099;
   const weekend: string[] = dates?.weekend_days ?? ["friday", "saturday"];
   // The collapsed sections' values, re-read from the form each time they close.
   const [summary, setSummary] = useState<Summary>(() =>
