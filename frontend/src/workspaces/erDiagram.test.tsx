@@ -187,6 +187,14 @@ async function relationships() {
   return within(await screen.findByRole("table", { name: "Relationships" }));
 }
 
+/** Tick a row of the Tables list, opening the list first if it is closed. */
+async function tick(name: string) {
+  if (!screen.queryByRole("checkbox", { name })) {
+    fireEvent.click(screen.getByRole("button", { name: /^Tables shown/ }));
+  }
+  fireEvent.click(await screen.findByRole("checkbox", { name }));
+}
+
 /** Open a tab below the diagram (Radix tabs activate on mouse down). */
 function openTab(name: RegExp) {
   const tab = screen.getByRole("tab", { name });
@@ -238,9 +246,8 @@ describe("Source ER diagram", () => {
   it("narrows to one Database Schema", async () => {
     renderApp(api, FOLDER);
     await relationships();
-    fireEvent.change(screen.getByLabelText("Database Schema"), {
-      target: { value: "audit" },
-    });
+    await tick("All tables in audit");
+    expect(screen.getByRole("button", { name: "Tables shown: audit.events" })).toBeInTheDocument();
     const canvas = screen.getByLabelText("ER diagram canvas");
     expect(within(canvas).getByText("audit.events")).toBeInTheDocument();
     expect(within(canvas).queryByText("core.accounts")).not.toBeInTheDocument();
@@ -251,12 +258,11 @@ describe("Source ER diagram", () => {
     expect(heading).toHaveTextContent("Relationships0");
   });
 
-  it("narrows the relationships list to the focused table's relationships", async () => {
+  it("narrows the relationships list to the ticked tables' relationships", async () => {
     renderApp(api, FOLDER);
     await relationships();
-    fireEvent.change(screen.getByLabelText("Focus on a table"), {
-      target: { value: "t-cust" },
-    });
+    await tick("core.customers");
+    await tick("core.accounts");
     await waitFor(() =>
       expect(
         screen.getByRole("heading", { name: /^Relationships/ }),
@@ -271,23 +277,39 @@ describe("Source ER diagram", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("focuses on a table and its neighbours", async () => {
+  it("shows only the ticked tables, across Database Schemas, until All tables clears them", async () => {
     renderApp(api, FOLDER);
     await relationships();
-    fireEvent.change(screen.getByLabelText("Focus on a table"), {
-      target: { value: "t-acct" },
-    });
-    await waitFor(() =>
-      expect(
-        within(screen.getByLabelText("ER diagram canvas")).queryByText(
-          "audit.events",
-        ),
-      ).not.toBeInTheDocument(),
-    );
+    await tick("core.accounts");
+    await tick("audit.events");
     const canvas = within(screen.getByLabelText("ER diagram canvas"));
+    await waitFor(() =>
+      expect(canvas.queryByText("core.customers")).not.toBeInTheDocument(),
+    );
+    for (const name of ["core.accounts", "audit.events"]) {
+      expect(canvas.getByText(name)).toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "Tables shown: 2 tables" })).toBeInTheDocument();
+
+    await tick("All tables");
+    expect(await canvas.findByText("core.customers")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tables shown: All tables" })).toBeInTheDocument();
+  });
+
+  it("ticks a whole Database Schema at once", async () => {
+    renderApp(api, FOLDER);
+    await relationships();
+    await tick("All tables in core");
+    const canvas = within(screen.getByLabelText("ER diagram canvas"));
+    await waitFor(() =>
+      expect(canvas.queryByText("audit.events")).not.toBeInTheDocument(),
+    );
     for (const name of ["core.accounts", "core.customers", "core.transactions"]) {
       expect(canvas.getByText(name)).toBeInTheDocument();
     }
+    expect(
+      screen.getByRole("button", { name: "Tables shown: core, all 3 tables" }),
+    ).toBeInTheDocument();
     const list = await relationships();
     expect(list.getAllByRole("row")).toHaveLength(3);
   });

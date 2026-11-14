@@ -17,17 +17,10 @@ import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
 import { ErCanvas, matchesSearch, type ErCanvasHandle } from "./ErCanvas";
 import { ErTableDetails } from "./ErTableDetails";
+import { ErTablePicker } from "./ErTablePicker";
 import { RelationshipsTable } from "./RelationshipsTable";
-import { filterGraph, qualified, relationshipEdges } from "./erGraph";
-import {
-  EmptyState,
-  ErrorText,
-  Hint,
-  NativeSelect,
-  Panel,
-} from "./parts";
-
-const toolbarLabelClasses = "text-xs text-subtle-foreground";
+import { filterGraph, relationshipEdges } from "./erGraph";
+import { EmptyState, ErrorText, Hint, Panel } from "./parts";
 
 /** Two or more buttons of which one is on (Keys only / All columns, All lines / On hover). */
 function Segmented<T extends string>({
@@ -108,9 +101,9 @@ function ReviewLink({ systemId, pending }: { systemId: string; pending: number |
 /**
  * A Source System's ER diagram (spec story 60): its tables and views with the foreign keys
  * the latest Snapshot declares and the inferred relationships a member accepted. Narrow it
- * by Database Schema, or focus on one table and its neighbours; search dims the tables that
- * don't match. Any member can view it; inferred relationships are found and reviewed in
- * the Source schema, which the header links to.
+ * to the tables ticked in the Tables list (a whole Database Schema at once, or table by
+ * table); search dims the tables that don't match. Any member can view it; inferred
+ * relationships are found and reviewed in the Source schema, which the header links to.
  */
 export function SourceErDiagram({
   workspace,
@@ -122,8 +115,7 @@ export function SourceErDiagram({
   const schema = useSourceSchema(workspace.id, system.id, true);
   const accepted = useAcceptedRelationships(workspace.id, system.id);
   const suggested = useRelationshipsByStatus(workspace.id, system.id, "suggested");
-  const [dbSchema, setDbSchema] = useState("");
-  const [tableId, setTableId] = useState("");
+  const [tableIds, setTableIds] = useState<ReadonlySet<string>>(() => new Set());
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"keys" | "all">("keys");
   const [lines, setLines] = useState<"all" | "hover">("all");
@@ -139,13 +131,18 @@ export function SourceErDiagram({
     const present = schema.data.tables.filter(
       (t) => !t.status || t.status === "present",
     );
+    // A ticked table the Snapshot no longer has drops out of the selection.
+    const picked = new Set(
+      present.filter((t) => tableIds.has(t.id)).map((t) => t.id),
+    );
     return {
       all,
       present,
+      picked,
       byId: new Map(present.map((t) => [t.id, t])),
-      shown: filterGraph(schema.data.tables, all, { dbSchema, tableId }),
+      shown: filterGraph(schema.data.tables, all, { tableIds: picked }),
     };
-  }, [schema.data, accepted.data, dbSchema, tableId]);
+  }, [schema.data, accepted.data, tableIds]);
 
   // "/" focuses the search, unless the user is typing or a dialog is open.
   useEffect(() => {
@@ -182,7 +179,6 @@ export function SourceErDiagram({
     reveal(id);
     setDetailsId(id);
   };
-  const focused = tableId ? graph.byId.get(tableId) : undefined;
 
   /** Enter centres the first match: an exact table name, then a partial one, then a column. */
   const jumpToMatch = () => {
@@ -235,47 +231,11 @@ export function SourceErDiagram({
               /
             </kbd>
           </div>
-          <span className="inline-flex items-center gap-1.5">
-            <label htmlFor="er-schema" className={toolbarLabelClasses}>
-              Database Schema
-            </label>
-            <NativeSelect
-              id="er-schema"
-              className="h-8 w-auto text-sm"
-              value={dbSchema}
-              onChange={(event) => {
-                setDbSchema(event.target.value);
-                setTableId("");
-              }}
-            >
-              <option value="">All Database Schemas</option>
-              {schema.data.db_schemas.map((s) => (
-                <option key={s.id} value={s.name}>
-                  {s.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </span>
-          <span className="inline-flex min-w-0 items-center gap-1.5">
-            <label htmlFor="er-table" className={toolbarLabelClasses}>
-              Focus on a table
-            </label>
-            <NativeSelect
-              id="er-table"
-              className="h-8 w-auto min-w-0 font-mono text-mono"
-              value={tableId}
-              onChange={(event) => setTableId(event.target.value)}
-            >
-              <option value="">All tables</option>
-              {graph.present
-                .filter((t) => dbSchema === "" || t.db_schema === dbSchema)
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {qualified(t)}
-                  </option>
-                ))}
-            </NativeSelect>
-          </span>
+          <ErTablePicker
+            tables={graph.present}
+            selected={graph.picked}
+            onChange={setTableIds}
+          />
           <span className="flex-1" />
           <Segmented
             label="Columns shown"
@@ -309,9 +269,6 @@ export function SourceErDiagram({
             query={query}
             selectedId={detailsId}
             onOpen={setDetailsId}
-            focus={
-              focused && { name: qualified(focused), onClear: () => setTableId("") }
-            }
           />
         )}
       </div>
