@@ -1,5 +1,7 @@
 "use client";
 
+import { ChevronRight, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 
 import {
@@ -16,6 +18,7 @@ import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import {
   Actions,
+  Callout,
   ErrorText,
   Hint,
   NativeSelect,
@@ -25,6 +28,7 @@ import {
   h3Classes,
   h4Classes,
   labelClasses,
+  monoClasses,
 } from "./parts";
 import { Loading } from "../shell/Loading";
 
@@ -40,8 +44,84 @@ const WEEKDAYS = [
   "saturday",
   "sunday",
 ] as const;
+const WEEKDAY_LABELS: Record<(typeof WEEKDAYS)[number], string> = {
+  monday: "Mon",
+  tuesday: "Tue",
+  wednesday: "Wed",
+  thursday: "Thu",
+  friday: "Fri",
+  saturday: "Sat",
+  sunday: "Sun",
+};
+/** The order the form shows the days in: the week starts on Saturday. */
+const WEEKDAYS_SHOWN = [
+  ...WEEKDAYS.slice(WEEKDAYS.indexOf("saturday")),
+  ...WEEKDAYS.slice(0, WEEKDAYS.indexOf("saturday")),
+];
 const LAYERS = ["staging", "core", "mart"] as const;
+const LAYER_LABELS: Record<(typeof LAYERS)[number], string> = {
+  staging: "Staging",
+  core: "Core",
+  mart: "Mart",
+};
+const PREFIXES = [
+  ["dimension_prefix", "Dimension prefix", "dim_"],
+  ["fact_prefix", "Fact prefix", "fact_"],
+  ["bridge_prefix", "Bridge prefix", "bridge_"],
+] as const;
+const CASE_STYLES = [
+  ["lower", "lower case"],
+  ["upper", "UPPER CASE"],
+] as const;
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 const PLATFORMS = Object.keys(PLATFORM_LABELS) as TargetPlatform[];
+
+/** A section's heading, ruled off from the section above. */
+const sectionHeadClasses =
+  "flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-border pt-4";
+/** Short fields side by side; one per row on a narrow screen. */
+const rowClasses = "grid gap-3 sm:grid-cols-3";
+/** A choice drawn as a chip: its native input is hidden, the label shows the state. */
+const choiceClasses =
+  "cursor-pointer text-center text-sm font-medium text-muted-foreground transition-colors has-checked:text-foreground has-focus-visible:outline-2 has-focus-visible:outline-primary has-disabled:cursor-not-allowed has-disabled:opacity-60";
+const summaryValueClasses = `${monoClasses} break-words whitespace-pre-wrap`;
+
+/** What the collapsed sections hold, shown while they are closed. */
+interface Summary {
+  schemas: string;
+  prefixes: string;
+  dates: string;
+}
+
+function summarize(
+  schemas: string[],
+  prefixes: string[],
+  startYear: string,
+  endYear: string,
+  weekend: string[],
+): Summary {
+  const days = WEEKDAYS.filter((day) => weekend.includes(day)).map(
+    (day) => WEEKDAY_LABELS[day],
+  );
+  return {
+    schemas: schemas.join("  "),
+    prefixes: prefixes.join("  "),
+    dates: `${startYear} to ${endYear}, weekend ${days.join(", ") || "none"}`,
+  };
+}
 
 /**
  * The "Set up Data Warehouse" step (spec story 87): target platform, a schema name per
@@ -103,9 +183,10 @@ function SetupForm({
       date_dimension: {
         start_year: Number(text("start_year")),
         end_year: Number(text("end_year")),
-        weekend_days: data
-          .getAll("weekend_days")
-          .map(String) as (typeof WEEKDAYS)[number][],
+        // Monday first, whatever order the form shows the days in.
+        weekend_days: WEEKDAYS.filter((day) =>
+          data.getAll("weekend_days").includes(day),
+        ),
         include_hijri: data.get("include_hijri") === "on",
         fiscal_year_start_month: text("fiscal_year_start_month")
           ? Number(text("fiscal_year_start_month"))
@@ -135,6 +216,184 @@ function SetupForm({
   const layers = warehouse.layer_schemas;
   const rules = warehouse.naming_rules;
   const dates = warehouse.date_dimension;
+  const startYear = dates?.start_year ?? 2000;
+  const endYear = dates?.end_year ?? 2099;
+  const weekend: string[] = dates?.weekend_days ?? ["friday", "saturday"];
+  // The collapsed sections' values, re-read from the form each time they close.
+  const [summary, setSummary] = useState<Summary>(() =>
+    summarize(
+      LAYERS.map((layer) => layers?.[layer] ?? layer),
+      PREFIXES.map(([name, , fallback]) => rules?.[name] ?? fallback),
+      String(startYear),
+      String(endYear),
+      weekend,
+    ),
+  );
+
+  function onSectionsClosed(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const text = (name: string) => String(data.get(name) ?? "");
+    setSummary(
+      summarize(
+        LAYERS.map(text),
+        PREFIXES.map(([name]) => text(name)),
+        text("start_year"),
+        text("end_year"),
+        data.getAll("weekend_days").map(String),
+      ),
+    );
+  }
+
+  const sections = (
+    <>
+      <div className={sectionHeadClasses}>
+        <h4 className={h4Classes}>Schema names</h4>
+        <Hint>One schema or dataset per Layer.</Hint>
+      </div>
+      <div className={rowClasses}>
+        {LAYERS.map((layer) => (
+          <label key={layer} className={labelClasses}>
+            {LAYER_LABELS[layer]}
+            <Input
+              className={monoClasses}
+              name={layer}
+              aria-label={`Schema or dataset name: ${layer}`}
+              required
+              defaultValue={layers?.[layer] ?? layer}
+            />
+          </label>
+        ))}
+      </div>
+      <div className={sectionHeadClasses}>
+        <h4 className={h4Classes}>Naming rules</h4>
+      </div>
+      <div className={labelClasses}>
+        <span id="dw-case-style-label">Identifier case</span>
+        <div
+          role="radiogroup"
+          aria-labelledby="dw-case-style-label"
+          className="flex w-fit gap-0.5 rounded-md border border-control-edge p-0.5"
+        >
+          {CASE_STYLES.map(([value, label]) => (
+            <label
+              key={value}
+              className={`${choiceClasses} rounded-sm px-3 py-1 has-checked:bg-muted`}
+            >
+              <input
+                type="radio"
+                className="sr-only"
+                name="case_style"
+                value={value}
+                defaultChecked={(rules?.case_style ?? "lower") === value}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className={rowClasses}>
+        {PREFIXES.map(([name, label, fallback]) => (
+          <label key={name} className={labelClasses}>
+            {label}
+            <Input
+              className={monoClasses}
+              name={name}
+              defaultValue={rules?.[name] ?? fallback}
+            />
+          </label>
+        ))}
+      </div>
+      <div className={sectionHeadClasses}>
+        <h4 className={h4Classes}>Date dimension</h4>
+      </div>
+      <div className={rowClasses}>
+        <label className={labelClasses}>
+          First year
+          <Input
+            className="tabular-nums"
+            name="start_year"
+            type="number"
+            aria-label="Date dimension: first year"
+            required
+            defaultValue={startYear}
+          />
+        </label>
+        <label className={labelClasses}>
+          Last year
+          <Input
+            className="tabular-nums"
+            name="end_year"
+            type="number"
+            aria-label="Date dimension: last year"
+            required
+            defaultValue={endYear}
+          />
+        </label>
+        <label className={labelClasses}>
+          Fiscal year starts in
+          <NativeSelect
+            className="h-9"
+            name="fiscal_year_start_month"
+            // A new setup starts on January; a saved one keeps its choice, "none" included.
+            defaultValue={dates ? String(dates.fiscal_year_start_month ?? "") : "1"}
+          >
+            <option value="">No fiscal calendar</option>
+            {MONTHS.map((month, i) => (
+              <option key={month} value={String(i + 1)}>
+                {month}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+      </div>
+      <div className={labelClasses}>
+        <span id="dw-weekend-label">Weekend days</span>
+        <div
+          role="group"
+          aria-labelledby="dw-weekend-label"
+          className="flex flex-wrap gap-1.5"
+        >
+          {WEEKDAYS_SHOWN.map((day) => (
+            <label
+              key={day}
+              className={`${choiceClasses} min-w-12 rounded-md border border-control-edge px-2.5 py-1 has-checked:border-primary has-checked:bg-primary-subtle`}
+            >
+              <input
+                type="checkbox"
+                className="sr-only"
+                name="weekend_days"
+                value={day}
+                aria-label={day}
+                defaultChecked={weekend.includes(day)}
+              />
+              {WEEKDAY_LABELS[day]}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        <label className={checkLabelClasses}>
+          <input
+            type="checkbox"
+            className={checkClasses}
+            name="include_hijri"
+            defaultChecked={dates?.include_hijri}
+          />
+          Include Hijri calendar attributes
+        </label>
+        <label className={checkLabelClasses}>
+          <input
+            type="checkbox"
+            className={checkClasses}
+            name="include_time_dimension"
+            defaultChecked={dates?.include_time_dimension}
+          />
+          Include a time dimension
+        </label>
+      </div>
+    </>
+  );
+
   return (
     <form
       className={dialogFormClasses}
@@ -152,9 +411,10 @@ function SetupForm({
       )}
       {!canEdit && <Hint>Only editors and owners can change the setup.</Hint>}
       <fieldset disabled={!canEdit} className={`${fieldsetClasses} gap-4`}>
-        <label className={labelClasses}>
+        <label className={`${labelClasses} sm:max-w-xs`}>
           Target platform
           <NativeSelect
+            className="h-9"
             name="target_platform"
             defaultValue={warehouse.target_platform ?? "postgresql"}
             disabled={!canEdit || !canChangePlatform}
@@ -169,135 +429,61 @@ function SetupForm({
         {!canChangePlatform && (
           <Hint>Only owners can change the platform after setup.</Hint>
         )}
-        <h4 className={`${h4Classes} border-t border-border pt-4`}>
-          Schema names
-        </h4>
-        {LAYERS.map((layer) => (
-          <label key={layer} className={labelClasses}>
-            Schema or dataset name: {layer}
-            <Input
-              className="font-mono text-mono"
-              name={layer}
-              required
-              defaultValue={layers?.[layer] ?? layer}
-            />
-          </label>
-        ))}
-        <h4 className={`${h4Classes} border-t border-border pt-4`}>
-          Naming rules
-        </h4>
-        <label className={labelClasses}>
-          Identifier case
-          <NativeSelect
-            name="case_style"
-            defaultValue={rules?.case_style ?? "lower"}
+        {warehouse.set_up && canEdit && canChangePlatform && (
+          <Callout tone="warning" icon={<TriangleAlert aria-hidden />}>
+            Once the Data Warehouse has tables or KPI formulas, a platform
+            change goes through a Change Set.
+          </Callout>
+        )}
+        {warehouse.set_up ? (
+          sections
+        ) : (
+          <details
+            className="group border-t border-border pt-4"
+            onToggle={(event) => {
+              const form = event.currentTarget.closest("form");
+              if (canEdit && form && !event.currentTarget.open) {
+                onSectionsClosed(form);
+              }
+            }}
           >
-            <option value="lower">lower case</option>
-            <option value="upper">UPPER CASE</option>
-          </NativeSelect>
-        </label>
-        <label className={labelClasses}>
-          Dimension prefix
-          <Input
-            className="font-mono text-mono"
-            name="dimension_prefix"
-            defaultValue={rules?.dimension_prefix ?? "dim_"}
-          />
-        </label>
-        <label className={labelClasses}>
-          Fact prefix
-          <Input
-            className="font-mono text-mono"
-            name="fact_prefix"
-            defaultValue={rules?.fact_prefix ?? "fact_"}
-          />
-        </label>
-        <label className={labelClasses}>
-          Bridge prefix
-          <Input
-            className="font-mono text-mono"
-            name="bridge_prefix"
-            defaultValue={rules?.bridge_prefix ?? "bridge_"}
-          />
-        </label>
-        <h4 className={`${h4Classes} border-t border-border pt-4`}>
-          Date dimension
-        </h4>
-        <label className={labelClasses}>
-          Date dimension: first year
-          <Input
-            name="start_year"
-            type="number"
-            required
-            defaultValue={dates?.start_year ?? 2000}
-          />
-        </label>
-        <label className={labelClasses}>
-          Date dimension: last year
-          <Input
-            name="end_year"
-            type="number"
-            required
-            defaultValue={dates?.end_year ?? 2040}
-          />
-        </label>
-        <div
-          role="group"
-          aria-label="Weekend days"
-          className="flex flex-wrap gap-x-4 gap-y-2"
-        >
-          {WEEKDAYS.map((day) => (
-            <label key={day} className={checkLabelClasses}>
-              <input
-                type="checkbox"
-                className={checkClasses}
-                name="weekend_days"
-                value={day}
-                defaultChecked={(
-                  dates?.weekend_days ?? ["saturday", "sunday"]
-                ).includes(day)}
+            <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 rounded-sm focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+              <ChevronRight
+                aria-hidden
+                className="size-4 text-subtle-foreground transition-transform group-open:rotate-90"
               />
-              {day}
-            </label>
-          ))}
-        </div>
-        <label className={checkLabelClasses}>
-          <input
-            type="checkbox"
-            className={checkClasses}
-            name="include_hijri"
-            defaultChecked={dates?.include_hijri}
-          />
-          Include Hijri calendar attributes
-        </label>
-        <label className={labelClasses}>
-          Fiscal year starts in
-          <NativeSelect
-            name="fiscal_year_start_month"
-            defaultValue={String(dates?.fiscal_year_start_month ?? "")}
-          >
-            <option value="">No fiscal calendar</option>
-            {Array.from({ length: 12 }, (_, i) => (
-              <option key={i + 1} value={String(i + 1)}>
-                Month {i + 1}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className={checkLabelClasses}>
-          <input
-            type="checkbox"
-            className={checkClasses}
-            name="include_time_dimension"
-            defaultChecked={dates?.include_time_dimension}
-          />
-          Include a time dimension
-        </label>
+              <span className={h4Classes}>Naming and dates</span>
+              <span className="text-sm font-medium text-primary group-open:hidden">
+                Review or change
+              </span>
+              <span className="col-span-2 col-start-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-1 text-sm text-muted-foreground group-open:hidden">
+                <span className="text-subtle-foreground">Schemas</span>
+                <span className={summaryValueClasses}>{summary.schemas}</span>
+                <span className="text-subtle-foreground">Prefixes</span>
+                <span className={summaryValueClasses}>{summary.prefixes}</span>
+                <span className="text-subtle-foreground">Date dimension</span>
+                <span>{summary.dates}</span>
+              </span>
+            </summary>
+            <div className="flex flex-col gap-4 pt-4">{sections}</div>
+          </details>
+        )}
       </fieldset>
       {mutation.isError && <ErrorText>{mutation.error.message}</ErrorText>}
       {canEdit && (
         <Actions>
-          <Button type="submit" variant="primary" disabled={mutation.isPending}>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={mutation.isPending}
+            onClick={(event) => {
+              // The browser cannot point at an invalid field inside closed sections.
+              const form = event.currentTarget.form;
+              if (form && !form.checkValidity()) {
+                form.querySelector("details")?.setAttribute("open", "");
+              }
+            }}
+          >
             {warehouse.set_up ? "Save" : "Set up Data Warehouse"}
           </Button>
         </Actions>
