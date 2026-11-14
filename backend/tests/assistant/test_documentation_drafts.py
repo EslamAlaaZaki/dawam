@@ -6,8 +6,9 @@ the drafts arrive as one ``ai`` Change Set against the Source Schema enhancement
 relationship decision may cite the run's COUNT queries, whose counts (never values) become
 its evidence. Model-written text is redacted with the PII validators before it is saved, and
 the drafting works at every data-sharing level. The source is a scratch PostgreSQL database
-where ``orders.customer_id`` and ``invoices.customer_id`` are undeclared relationships to
-``customers.id`` (only the first holds matching values).
+where ``orders.customer_id`` -> ``customers.id`` and ``orders.sku`` -> ``products.sku`` are
+undeclared relationships that inference suggests (``invoices.customer_id`` matches no
+customer, so its counts keep it below the threshold).
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ model = test_chat.model
 IQAMA = "2000000006"
 EMAIL = "zz-sentinel@leak.example"
 ORDERS = ("public.orders.customer_id", "public.customers.id")
-INVOICES = ("public.invoices.customer_id", "public.customers.id")
+SKUS = ("public.orders.sku", "public.products.sku")
 OVERLAP = (
     "SELECT COUNT(*) AS total, COUNT(c.id) AS matched FROM public.orders o "
     "LEFT JOIN public.customers c ON o.customer_id = c.id"
@@ -310,7 +311,7 @@ def test_a_member_s_decision_is_not_reversed_by_the_ai(roles, model, fake_llm, s
 
 
 def test_a_decision_works_without_sample_access(roles, model, fake_llm, source):
-    invoices = relationship(roles, source, INVOICES)
+    skus = relationship(roles, source, SKUS)
 
     [(status, seen)] = chat(
         roles,
@@ -318,7 +319,7 @@ def test_a_decision_works_without_sample_access(roles, model, fake_llm, source):
         propose(
             source,
             relationships=[
-                decide(invoices, "reject", reason="The documents say invoices bill accounts.")
+                decide(skus, "reject", reason="The documents say order SKUs are free text.")
             ],
         ),
     )
@@ -327,10 +328,10 @@ def test_a_decision_works_without_sample_access(roles, model, fake_llm, source):
     assert "run_source_query" not in tool_names(fake_llm)
     detail = only_change_set(roles)
     assert detail["items"][0]["payload"]["ai_evidence"] == {
-        "reason": "The documents say invoices bill accounts."
+        "reason": "The documents say order SKUs are free text."
     }
     accept(roles, detail)
-    assert relationship(roles, source, INVOICES)["status"] == "rejected"
+    assert relationship(roles, source, SKUS)["status"] == "rejected"
 
 
 def test_a_relationship_outside_the_named_source_system_or_a_bad_proposal_is_refused(

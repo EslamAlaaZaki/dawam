@@ -2019,10 +2019,11 @@ export interface paths {
         put?: never;
         /**
          * Start Relationship Inference
-         * @description Infer undeclared relationships from the latest Snapshot, as a background job (owners
-         *     and editors). Name, type, uniqueness and JOIN conditions in views and routines always
-         *     count; value overlap only with a live Connection and profiled columns. 409
-         *     `no_snapshot` before the first Snapshot; 422 for a bad threshold or sample size.
+         * @description Find undeclared relationships from the latest Snapshot, as a background job (owners
+         *     and editors): the rules (names, and JOIN conditions in views and routines) and the AI
+         *     (metadata only, as the Workspace's AI privacy allows) guess pairs side by side, and with
+         *     a live Connection each pair is confirmed by count queries on the source (counts only,
+         *     45 s each). 409 `no_snapshot` before the first Snapshot; 422 for a bad threshold.
          */
         post: operations["startRelationshipInference"];
         delete?: never;
@@ -7380,12 +7381,6 @@ export interface components {
              * @default 0.6
              */
             threshold: number;
-            /**
-             * Sample Size
-             * @description Rows sampled per table for value overlap (1 to 100000); used only with a live Connection and profiled columns.
-             * @default 5000
-             */
-            sample_size: number;
         };
         /** InferenceStarted */
         InferenceStarted: {
@@ -9987,18 +9982,18 @@ export interface components {
             to_column: components["schemas"]["ColumnRef"];
             /**
              * Origin
-             * @description `routine` when a view or routine joins the two columns, `manual` when an editor added it, else `inferred`.
+             * @description `routine` when a view or routine joins the two columns, `inferred` when the rules found it by name, `ai` when only the AI found it, `manual` when an editor added it.
              * @enum {string}
              */
-            origin: "inferred" | "routine" | "manual";
+            origin: "inferred" | "routine" | "ai" | "manual";
             /**
              * Confidence
-             * @description 0 to 1, from the signals in `evidence`; `null` for a `manual` relationship.
+             * @description 0 to 1: from the counts on the source when counted, else from the guess; `null` for a `manual` relationship.
              */
             confidence: number | null;
             /**
              * Evidence
-             * @description Each signal that fired with its score and detail: `name`, `type`, `unique`, `join` (the views and routines) and `overlap` (a ratio, with a live Connection and profiling). Names and ratios only, never a data value.
+             * @description `found_by` (`rules`, `ai` or `both`); `signals` with each rule signal's score and detail (`name`, `type`, `unique`, `join`: the views and routines); `rule_score`; `ai_guess` (the AI's own `confidence` and `reason`); `counts` (`status` `counted` with the target's rows, values and distinct values, the child's values and distinct values, the matched and orphan rows and the match rate; or `timed_out`, `failed` or `no_connection` with a `note`); and `threshold`. `ai` is the Assistant's evidence for a decision. Names and counts only, never a data value.
              */
             evidence: {
                 [key: string]: unknown;

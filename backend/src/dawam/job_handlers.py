@@ -154,13 +154,6 @@ def _service_handlers(
         encryption_key=settings.encryption_key.get_secret_value(),
         clock=clock,
     )
-    relationships = RelationshipService(
-        engine,
-        workspaces=WorkspaceService(engine, clock=clock),
-        jobs=runner,
-        encryption_key=settings.encryption_key.get_secret_value(),
-        clock=clock,
-    )
     documents = build_document_search(
         runner,
         engine,
@@ -172,20 +165,26 @@ def _service_handlers(
         ocr=ocr,
     )
     options = {"adapters": llm_adapters} if llm_adapters is not None else {}
-    pii_ai = PiiAiDetectService(
+    roles = RoleService(
         engine,
-        roles=RoleService(
+        providers=ProviderService(
             engine,
-            providers=ProviderService(
-                engine,
-                encryption_key=settings.encryption_key.get_secret_value(),
-                clock=clock,
-                **options,
-            ),
+            encryption_key=settings.encryption_key.get_secret_value(),
             clock=clock,
+            **options,
         ),
         clock=clock,
-        documents=PiiDocuments(documents, engine, settings, clock),
+    )
+    pii_documents = PiiDocuments(documents, engine, settings, clock)
+    pii_ai = PiiAiDetectService(engine, roles=roles, clock=clock, documents=pii_documents)
+    relationships = RelationshipService(
+        engine,
+        workspaces=WorkspaceService(engine, clock=clock),
+        jobs=runner,
+        encryption_key=settings.encryption_key.get_secret_value(),
+        clock=clock,
+        roles=roles,
+        documents=pii_documents,
     )
     runner.on_abandoned(INDEX_JOB, documents.abandon_index)
     runner.on_abandoned(REINDEX_JOB, documents.abandon_reindex)

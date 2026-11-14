@@ -1,20 +1,28 @@
-"""Relationship inference (spec §6.6, stories 58, 59).
+"""Relationship inference (spec §6.6, stories 58, 59, #608).
 
 Behaviour is driven through the HTTP API: an editor starts inference (a background job, run
 inline in tests), any member lists the suggested relationships with their evidence, and an
 editor accepts or rejects them. The shared sample source seeds undeclared relationships
 (``accounts.cust_no``, ``transactions.acct_no``, ``crm.contacts.cust_no``); a scratch source
-shows how value overlap (live Connection and profiling) changes the score. The audit trail
-is read through its service.
+shows how the count queries on the source set the confidence. The AI's guesses come from the
+scripted fake provider behind a registered agent model. The audit trail is read through its
+service.
 """
 
 from __future__ import annotations
 
+import json
+
+import psycopg
 import pytest
+import sqlalchemy as sa
 
 from dawam.modules.audit import AuditService
+from dawam.modules.llm import Reply
+from dawam.modules.sources import relationship_service
+from tests.llm.test_roles_budgets import register, use_models
 from tests.roles import RoleClients
-from tests.sample_source import SampleSource
+from tests.sample_source import SEED
 from tests.sources import test_extraction
 from tests.sources.test_extraction import add_system, connect, extract
 from tests.sources.test_profiling import profile_tables
@@ -41,6 +49,12 @@ INSERT INTO orders SELECT i, 1 + i % 10, 'sku' || (1 + i % 5), i FROM generate_s
 INSERT INTO invoices SELECT i, 500 + i FROM generate_series(1, 10) i;
 INSERT INTO shipments SELECT i, i FROM generate_series(1, 10) i;
 """
+
+EMPLOYEES = """
+CREATE TABLE employees (emp_id integer PRIMARY KEY, mgr integer);
+INSERT INTO employees SELECT i, CASE WHEN i > 6 THEN 1 + i % 6 END FROM generate_series(1, 20) i;
+"""
+"""``employees.mgr`` references ``employees.emp_id``: a self-reference no name rule finds."""
 
 
 def infer(roles: RoleClients, system: str, as_role="editor", **body):
@@ -74,10 +88,69 @@ def by_link(items: list[dict]) -> dict[tuple[str, str], dict]:
     return {link(i): i for i in items}
 
 
+def guesses(*pairs: tuple[str, str, float, str]) -> Reply:
+    return Reply(
+        text=json.dumps(
+            {
+                "relationships": [
+                    {"child": c, "parent": p, "confidence": conf, "reason": why}
+                    for c, p, conf, why in pairs
+                ]
+            }
+        )
+    )
+
+
+def chats(fake_llm):
+    return [c for c in fake_llm.calls if c.kind == "chat"]
+
+
+def shown(call) -> dict:
+    """The metadata the AI was shown (the JSON inside the user turn's <data> tags)."""
+    text = next(m.content for m in call.messages if m.role == "user")
+    return json.loads(text.split("<data>\n", 1)[1].rsplit("\n</data>", 1)[0])
+
+
 @pytest.fixture
-def sample_system(roles: RoleClients, sample_source: SampleSource) -> str:
+def model(admin_client, fake_llm, roles: RoleClients):
+    assert roles.workspace_id
+    agent = register(admin_client, "relationship-model")
+    assert use_models(roles.client("owner"), roles.workspace_id, agent).status_code == 200
+    fake_llm.calls.clear()
+    return agent
+
+
+MORE_REFERENCES = """
+INSERT INTO core.customers (cust_no, full_name, branch_code)
+    SELECT i, 'Customer ' || i, 'CAI' FROM generate_series(4, 8) i;
+INSERT INTO core.accounts (acct_no, cust_no, balance)
+    SELECT 100 + i, i, 0 FROM generate_series(3, 7) i;
+INSERT INTO core.transactions
+    SELECT i, 99 + i, 10, '2024-02-01 10:00+00' FROM generate_series(4, 8) i;
+INSERT INTO crm.contacts (cust_no) SELECT i FROM generate_series(3, 6) i;
+"""
+"""More rows than the shared seed, so each undeclared reference has at least 5 distinct
+values (fewer would be halved as a possible chance match): accounts.cust_no 7,
+transactions.acct_no 7, contacts.cust_no 6, every one found in its target."""
+
+
+@pytest.fixture
+def sample_system(roles: RoleClients, scratch_source) -> str:
+    """The sample source's schema (tests/sample_source/seed.sql) in a database of this test's
+    own, with ``MORE_REFERENCES``, read by the read-only user."""
+    scratch_source["run"](SEED.read_text(encoding="utf-8") + MORE_REFERENCES)
     system = add_system(roles)
-    connect(roles, system, sample_source.connection_body())
+    body = scratch_source["body"](("core", "crm"))
+    connect(roles, system, {**body, "username": "dawam_reader", "password": "reader-secret"})
+    extract(roles, system)
+    return system
+
+
+def scratch_system(roles: RoleClients, scratch_source, *statements: str) -> str:
+    for sql in statements:
+        scratch_source["run"](sql)
+    system = add_system(roles)
+    connect(roles, system, scratch_source["body"]())
     extract(roles, system)
     return system
 
@@ -85,19 +158,24 @@ def sample_system(roles: RoleClients, sample_source: SampleSource) -> str:
 def test_the_seeded_undeclared_relationships_are_found_with_their_evidence(
     roles: RoleClients, sample_system: str
 ):
-    run(roles, sample_system)
+    job = run(roles, sample_system)
 
     found = by_link(listed(roles, sample_system))
 
     accounts_customer = found["core.accounts.cust_no", "core.customers.cust_no"]
     assert accounts_customer["origin"] == "routine" and accounts_customer["status"] == "suggested"
-    assert accounts_customer["confidence"] >= 0.6
-    signals = accounts_customer["evidence"]["signals"]
+    evidence = accounts_customer["evidence"]
+    assert evidence["found_by"] == "rules"
+    signals = evidence["signals"]
     assert signals["name"]["score"] == 0.9 and signals["type"]["score"] == 1.0
     assert signals["unique"]["detail"] == "primary key"
     assert "view core.customer_balances" in signals["join"]["objects"]
     assert "procedure core.close_account" in signals["join"]["objects"]
-    assert "overlap" not in signals, "nothing is profiled yet"
+    counts = evidence["counts"]
+    assert counts["status"] == "counted" and counts["target_unique"] is True
+    assert (counts["child_values"], counts["child_distinct"], counts["matched_rows"]) == (8, 7, 8)
+    assert counts["orphan_rows"] == 0 and counts["match_rate"] == 1.0
+    assert accounts_customer["confidence"] == pytest.approx(1.0)
 
     transactions_account = found["core.transactions.acct_no", "core.accounts.acct_no"]
     assert transactions_account["origin"] == "routine"
@@ -109,7 +187,8 @@ def test_the_seeded_undeclared_relationships_are_found_with_their_evidence(
     contacts_customer = found["crm.contacts.cust_no", "core.customers.cust_no"]
     assert contacts_customer["origin"] == "inferred"
     assert "join" not in contacts_customer["evidence"]["signals"]
-    assert 0.6 <= contacts_customer["confidence"] < accounts_customer["confidence"]
+    assert contacts_customer["evidence"]["counts"]["child_distinct"] == 6
+    assert contacts_customer["confidence"] == pytest.approx(0.7 + 0.3 * 0.71)
 
     # The declared foreign key is not proposed, and nothing falls below the threshold.
     assert ("core.customers.branch_code", "core.branches.branch_code") not in found
@@ -117,16 +196,17 @@ def test_the_seeded_undeclared_relationships_are_found_with_their_evidence(
     assert [i["confidence"] for i in found.values()] == sorted(
         (i["confidence"] for i in found.values()), reverse=True
     )
+    assert "The AI is not set up" in job["log"] or "no agent model" in job["log"]
 
 
 def test_a_threshold_hides_weaker_candidates(roles: RoleClients, sample_system: str):
     run(roles, sample_system)
 
-    strict = by_link(listed(roles, sample_system, min_confidence=0.8))
+    strict = by_link(listed(roles, sample_system, min_confidence=0.95))
 
     assert ("core.accounts.cust_no", "core.customers.cust_no") in strict
     assert ("crm.contacts.cust_no", "core.customers.cust_no") not in strict
-    run(roles, sample_system, threshold=0.9)
+    run(roles, sample_system, threshold=0.95)
     assert ("crm.contacts.cust_no", "core.customers.cust_no") not in by_link(
         listed(roles, sample_system, min_confidence=0)
     )
@@ -146,59 +226,39 @@ def test_name_type_and_join_rules_work_without_a_connection(roles: RoleClients):
     outcome = upload(roles, system, sheets)
     assert outcome["imported"], outcome["report"]
 
-    run(roles, system)
+    job = run(roles, system)
 
     found = by_link(listed(roles, system))
     by_name = found["sales.Orders.customer_id", "sales.Customer.id"]
-    assert by_name["origin"] == "inferred" and "overlap" not in by_name["evidence"]["signals"]
+    assert by_name["origin"] == "inferred" and by_name["confidence"] == 0.75
+    assert by_name["evidence"]["counts"]["status"] == "no_connection"
     by_join = found["sales.Orders.cref", "sales.Customer.id"]
-    assert by_join["origin"] == "routine"
+    assert by_join["origin"] == "routine" and by_join["confidence"] == pytest.approx(0.8)
     assert by_join["evidence"]["signals"]["join"]["objects"] == ["view sales.Totals"]
     assert not [k for k in found if k[0].endswith(".note")]
+    assert "No live Connection" in job["log"]
 
 
-def test_value_overlap_needs_profiling_and_decides_between_look_alikes(
-    roles: RoleClients, scratch_source
-):
-    scratch_source["run"](SOURCE)
-    system = add_system(roles)
-    connect(roles, system, scratch_source["body"]())
-    extract(roles, system)
+def test_counts_on_the_source_decide_between_look_alikes(roles: RoleClients, scratch_source):
+    system = scratch_system(roles, scratch_source, SOURCE)
 
     run(roles, system)
 
-    before = by_link(listed(roles, system))
-    assert ("public.orders.customer_id", "public.customers.id") in before
-    assert ("public.invoices.customer_id", "public.customers.id") in before
-    assert ("public.orders.sku", "public.products.sku") in before
-    assert ("public.shipments.order_id", "public.orders.id") not in before, "declared"
-    assert not [k for k in before if k[0].endswith(".quantity")]
-    assert all("overlap" not in i["evidence"]["signals"] for i in before.values())
-
-    tables = {t["name"]: t["id"] for t in schema(roles, system)["tables"]}
-    profiled = profile_tables(
-        roles, system, [tables[n] for n in ("customers", "orders", "invoices", "products")]
-    )
-    assert profiled.status_code == 202, profiled.text
-    run(roles, system)
-
-    after = by_link(listed(roles, system))
-    good = after["public.orders.customer_id", "public.customers.id"]
-    assert good["evidence"]["signals"]["overlap"]["ratio"] == 1.0
-    assert (
-        good["confidence"]
-        > before["public.orders.customer_id", "public.customers.id"]["confidence"]
-    )
-    assert (
-        after["public.orders.sku", "public.products.sku"]["evidence"]["signals"]["overlap"]["ratio"]
-        == 1.0
-    )
-    assert ("public.invoices.customer_id", "public.customers.id") not in after, (
-        "no value of invoices.customer_id exists in customers.id"
-    )
+    found = by_link(listed(roles, system))
+    good = found["public.orders.customer_id", "public.customers.id"]
+    counts = good["evidence"]["counts"]
+    assert counts["status"] == "counted" and counts["match_rate"] == 1.0
+    assert (counts["child_values"], counts["child_distinct"], counts["orphan_rows"]) == (30, 10, 0)
+    assert (counts["target_rows"], counts["target_distinct"]) == (10, 10)
+    assert good["confidence"] == pytest.approx(0.7 + 0.3 * 0.75)
+    sku = found["public.orders.sku", "public.products.sku"]
+    assert sku["evidence"]["counts"]["match_rate"] == 1.0
+    assert sku["confidence"] == pytest.approx(0.7 + 0.3 * 0.71)
+    assert ("public.shipments.order_id", "public.orders.id") not in found, "declared"
+    assert not [k for k in found if k[0].endswith(".quantity")]
     assert ("public.invoices.customer_id", "public.customers.id") not in by_link(
         listed(roles, system, min_confidence=0)
-    ), "a candidate that falls below the threshold is withdrawn"
+    ), "no value of invoices.customer_id exists in customers.id: below the threshold"
 
 
 def test_accepting_and_rejecting_are_audited_and_survive_a_new_run(
@@ -232,16 +292,13 @@ def test_accepting_and_rejecting_are_audited_and_survive_a_new_run(
     after = by_link(listed(roles, sample_system))
     assert after["core.accounts.cust_no", "core.customers.cust_no"]["status"] == "accepted"
     assert after["crm.contacts.cust_no", "core.customers.cust_no"]["status"] == "rejected"
-    assert [link(i) for i in listed(roles, sample_system, status="suggested")] and (
-        "crm.contacts.cust_no",
-        "core.customers.cust_no",
-    ) not in [link(i) for i in listed(roles, sample_system, status="suggested")]
+    suggested = [link(i) for i in listed(roles, sample_system, status="suggested")]
+    assert suggested and ("crm.contacts.cust_no", "core.customers.cust_no") not in suggested
 
 
 def test_roles_and_inputs(roles: RoleClients, sample_system: str):
     assert infer(roles, sample_system, as_role="viewer").status_code == 403
     assert infer(roles, sample_system, threshold=0).status_code == 422
-    assert infer(roles, sample_system, sample_size=0).status_code == 422
     run(roles, sample_system)
     item = listed(roles, sample_system)[0]
     viewer = roles.client("viewer")
@@ -259,34 +316,48 @@ def test_inference_needs_a_snapshot(roles: RoleClients):
     assert response.status_code == 409 and response.json()["error"]["code"] == "no_snapshot"
 
 
-def profiled_scratch(roles: RoleClients, scratch_source) -> tuple[str, dict]:
-    scratch_source["run"](SOURCE)
-    system = add_system(roles)
-    connect(roles, system, scratch_source["body"]())
-    extract(roles, system)
-    tables = {t["name"]: t for t in schema(roles, system)["tables"]}
-    ids = [tables[n]["id"] for n in ("customers", "orders", "invoices", "products")]
-    assert profile_tables(roles, system, ids).status_code == 202
-    return system, tables
-
-
-def test_a_target_larger_than_the_sample_leaves_overlap_unmeasured(
-    roles: RoleClients, scratch_source
+def test_a_count_over_the_timeout_is_cancelled_on_the_source_and_lowers_the_guess(
+    roles: RoleClients, scratch_source, fresh_database_url, monkeypatch
 ):
-    system, _ = profiled_scratch(roles, scratch_source)
+    system = scratch_system(roles, scratch_source, SOURCE)
+    monkeypatch.setattr(relationship_service, "COUNT_TIMEOUT_SECONDS", 1)
+    url = sa.make_url(fresh_database_url)
+    lock = psycopg.connect(
+        host=url.host,
+        port=url.port,
+        user=url.username,
+        password=url.password,
+        dbname=url.database,
+    )
+    try:
+        # Another session holds customers, so every count that reads it waits past 1 s.
+        lock.execute("LOCK TABLE customers IN ACCESS EXCLUSIVE MODE")
 
-    run(roles, system, sample_size=5)  # customers has 10 rows
+        job = run(roles, system)
 
+        waiting = lock.execute(
+            "SELECT count(*) FROM pg_stat_activity "
+            "WHERE application_name = 'dawam' AND state = 'active' AND pid <> pg_backend_pid()"
+        ).fetchone()
+    finally:
+        lock.rollback()
+        lock.close()
+
+    assert waiting == (0,), "the source cancelled the query: nothing keeps running there"
+    assert "count timed out" in job["log"]
     found = by_link(listed(roles, system))
-    good = found["public.orders.customer_id", "public.customers.id"]
-    assert "overlap" not in good["evidence"]["signals"]
-    assert good["confidence"] == 0.75, "scored with the no-overlap weights, not dropped"
-    # products has exactly 5 rows, so the sample covers it and it is measured.
-    assert "overlap" in found["public.orders.sku", "public.products.sku"]["evidence"]["signals"]
+    slow = found["public.orders.customer_id", "public.customers.id"]
+    assert slow["evidence"]["counts"] == {"status": "timed_out", "note": "count timed out"}
+    assert slow["confidence"] == pytest.approx(max(0.6, 0.75 - 0.15))
+    assert slow["status"] == "suggested", "still visible, and the user can still accept it"
+    # products is not locked: its pair is counted as usual.
+    sku = found["public.orders.sku", "public.products.sku"]
+    assert sku["evidence"]["counts"]["status"] == "counted"
 
 
-def test_protected_columns_take_no_part_in_value_overlap(roles: RoleClients, scratch_source):
-    system, tables = profiled_scratch(roles, scratch_source)
+def test_protected_columns_are_only_joined_and_counted(roles: RoleClients, scratch_source):
+    system = scratch_system(roles, scratch_source, SOURCE)
+    tables = {t["name"]: t for t in schema(roles, system)["tables"]}
     customers = tables["customers"]
     [key] = [c for c in customers["columns"] if c["name"] == "id"]
     flagged = roles.client("editor").patch(
@@ -295,10 +366,138 @@ def test_protected_columns_take_no_part_in_value_overlap(roles: RoleClients, scr
     )
     assert flagged.status_code == 200, flagged.text
 
-    run(roles, system)
+    job = run(roles, system)
 
     found = by_link(listed(roles, system))
     protected = found["public.orders.customer_id", "public.customers.id"]
-    assert "overlap" not in protected["evidence"]["signals"]
-    assert protected["confidence"] == 0.75
-    assert "overlap" in found["public.orders.sku", "public.products.sku"]["evidence"]["signals"]
+    counts = protected["evidence"]["counts"]
+    assert counts["status"] == "counted" and counts["match_rate"] == 1.0
+    assert protected["confidence"] == pytest.approx(0.7 + 0.3 * 0.75)
+    # Numbers only: no value of the protected column is kept anywhere.
+    kept = json.dumps(protected["evidence"]) + job["log"]
+    assert all(isinstance(v, (int, float, bool, str)) for v in counts.values())
+    assert "c1" not in kept and "sku1" not in kept
+
+
+# -- the AI beside the rules ---------------------------------------------------------------
+
+
+def test_ai_and_rule_pairs_are_unioned_and_a_self_reference_is_found(
+    roles: RoleClients, scratch_source, model, fake_llm
+):
+    system = scratch_system(roles, scratch_source, SOURCE, EMPLOYEES)
+    fake_llm.script(
+        guesses(
+            ("public.employees.mgr", "public.employees.emp_id", 0.8, "mgr is a manager's emp_id"),
+            # The rules' pair, the other way round: one pair, found by both.
+            ("public.customers.id", "public.orders.customer_id", 0.9, "orders name a customer"),
+            ("public.orders.quantity", "public.nowhere.id", 0.9, "not a column: dropped"),
+            ("public.orders.quantity", "public.customers.id", 0.2, "under the threshold"),
+        )
+    )
+
+    job = run(roles, system)
+
+    [call] = chats(fake_llm)
+    data = shown(call)
+    assert {t["table"] for t in data["tables"]} >= {"public.employees", "public.orders"}
+    prompt = "\n".join(m.content or "" for m in call.messages)
+    assert "sku1" not in prompt and "'c1'" not in prompt, "metadata only, never a value"
+    assert all("profile" not in c for t in data["tables"] for c in t["columns"])
+    found = by_link(listed(roles, system))
+    both = found["public.orders.customer_id", "public.customers.id"]
+    assert both["evidence"]["found_by"] == "both" and both["origin"] == "inferred"
+    assert both["evidence"]["ai_guess"] == {
+        "confidence": 0.9,
+        "reason": "orders name a customer",
+    }
+    assert both["confidence"] == pytest.approx(0.7 + 0.3 * 0.95)
+    assert ("public.customers.id", "public.orders.customer_id") not in found
+    self_reference = found["public.employees.mgr", "public.employees.emp_id"]
+    assert self_reference["origin"] == "ai" and self_reference["evidence"]["found_by"] == "ai"
+    assert self_reference["evidence"]["counts"]["child_distinct"] == 6
+    assert self_reference["confidence"] == pytest.approx(0.7 + 0.3 * 0.8)
+    assert not [k for k in found if k[0].endswith(".quantity")]
+    assert "The AI found 2 pairs" in job["log"]
+
+
+def test_an_ai_failure_still_saves_the_rules_pairs(
+    roles: RoleClients, scratch_source, model, fake_llm
+):
+    system = scratch_system(roles, scratch_source, SOURCE)
+    fake_llm.script(Reply(text="this is not JSON"))
+
+    job = run(roles, system)
+
+    assert "The AI did not guess" in job["log"] and "not valid JSON" in job["log"]
+    found = by_link(listed(roles, system))
+    rules = found["public.orders.customer_id", "public.customers.id"]
+    assert rules["evidence"]["found_by"] == "rules"
+    assert rules["evidence"]["counts"]["status"] == "counted"
+
+
+def test_the_ai_sees_profile_statistics_only_when_the_workspace_shares_them(
+    roles: RoleClients, scratch_source, model, fake_llm
+):
+    system = scratch_system(roles, scratch_source, SOURCE)
+    tables = {t["name"]: t["id"] for t in schema(roles, system)["tables"]}
+    assert profile_tables(roles, system, [tables["customers"]]).status_code == 202
+    assert (
+        use_models(
+            roles.client("owner"), roles.workspace_id, model, share_profiles=True
+        ).status_code
+        == 200
+    )
+    fake_llm.calls.clear()
+    fake_llm.script(guesses())
+
+    run(roles, system)
+
+    [call] = chats(fake_llm)
+    [customers] = [t for t in shown(call)["tables"] if t["table"] == "public.customers"]
+    profiled = {c["name"]: c.get("profile") for c in customers["columns"]}
+    assert profiled["id"] == {"rows": 10, "null_pct": 0.0, "distinct": 10}
+    assert "top_values" not in json.dumps(shown(call))
+
+
+def test_an_ai_only_pair_is_withdrawn_when_a_new_run_no_longer_finds_it(
+    roles: RoleClients, scratch_source, model, fake_llm
+):
+    system = scratch_system(roles, scratch_source, SOURCE, EMPLOYEES)
+    fake_llm.script(guesses(("public.employees.mgr", "public.employees.emp_id", 0.8, "manager")))
+    run(roles, system)
+    assert ("public.employees.mgr", "public.employees.emp_id") in by_link(listed(roles, system))
+
+    fake_llm.script(guesses())
+    run(roles, system)
+
+    assert ("public.employees.mgr", "public.employees.emp_id") not in by_link(
+        listed(roles, system, min_confidence=0)
+    )
+
+
+def test_a_decided_pair_keeps_its_origin_when_a_new_run_finds_it_another_way(
+    roles: RoleClients, scratch_source
+):
+    system = scratch_system(roles, scratch_source, SOURCE)
+    run(roles, system)
+    found = by_link(listed(roles, system))
+    decided = found["public.orders.customer_id", "public.customers.id"]
+    assert decided["origin"] == "inferred"
+    accepted = roles.client("editor").post(f"{system}/relationships/{decided['id']}/accept")
+    assert accepted.status_code == 200, accepted.text
+    # A view now joins both pairs: the rules find them through a JOIN as well.
+    scratch_source["run"](
+        "CREATE VIEW order_lines AS SELECT 1 AS one FROM orders o "
+        "JOIN customers c ON o.customer_id = c.id JOIN products p ON o.sku = p.sku"
+    )
+    extract(roles, system)
+
+    run(roles, system)
+
+    after = by_link(listed(roles, system))
+    kept = after["public.orders.customer_id", "public.customers.id"]
+    assert kept["status"] == "accepted" and kept["origin"] == "inferred"
+    assert kept["evidence"]["signals"]["join"]["objects"] == ["view public.order_lines"]
+    suggested = after["public.orders.sku", "public.products.sku"]
+    assert suggested["status"] == "suggested" and suggested["origin"] == "routine"

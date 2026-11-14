@@ -4,8 +4,11 @@ SQL Server has no read-only transaction, so read-only is enforced in layers: ``q
 runs only a single ``SELECT`` / ``WITH`` statement without ``INTO``, every other statement
 is one this module builds, and ``test`` warns when the login could write. Give the
 Connection's login no more than read access. Every session
-has a query timeout (default 30 s) and every name is schema-qualified: nothing outside the
-allowed Database Schemas is queried. Errors are reduced to a fixed set of safe messages.
+has a query timeout (default 30 s; pymssql's ``timeout``): when it passes, pymssql's error
+handler answers FreeTDS's timeout with ``INT_CANCEL``, so FreeTDS sends the server a cancel
+(an attention packet) and the statement stops on the server, not only in the client. Every
+name is schema-qualified: nothing outside the allowed Database Schemas is queried. Errors are
+reduced to a fixed set of safe messages.
 """
 
 from __future__ import annotations

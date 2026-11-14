@@ -503,7 +503,7 @@ function Legend() {
           <path className="er-line" d="M2 6H44" />
         </g>
       ),
-      text: "Accepted inferred or manually added relationship",
+      text: "Accepted inferred (rules or AI) or manually added relationship",
     },
     {
       glyph: <path className="er-glyph" d="M2 6H44M32 6L44 1M32 6L44 11M28 1V11" />,

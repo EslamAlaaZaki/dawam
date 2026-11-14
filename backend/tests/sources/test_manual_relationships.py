@@ -1,6 +1,6 @@
 """Manually added relationships and deleting relationships (spec §6.6, stories 58 to 60).
 
-Driven through the HTTP API on the shared sample source: an editor adds a relationship by
+Driven through the HTTP API on the sample source's schema: an editor adds a relationship by
 hand (always ``accepted``, origin ``manual``, no confidence), may delete any relationship
 that is not a declared foreign key, and later inference runs leave manual pairs alone.
 """
@@ -18,7 +18,8 @@ from tests.sources.test_relationship_inference import (
 from tests.sources.test_schema_browser import schema
 
 sample_system = test_relationship_inference.sample_system
-"""The fixture that extracts the shared sample source into a Source System."""
+"""The fixture that extracts the sample source's schema into a Source System."""
+scratch_source = test_relationship_inference.scratch_source
 
 
 def column_id(roles: RoleClients, system: str, ref: str) -> str:

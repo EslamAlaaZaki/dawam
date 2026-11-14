@@ -18,7 +18,7 @@ from dawam.modules.auth import CurrentUser
 from dawam.modules.workspaces import WorkspaceService
 
 from .internal.inference import DEFAULT_THRESHOLD
-from .relationship_service import DEFAULT_SAMPLE_SIZE, MAX_SAMPLE_SIZE, RelationshipService
+from .relationship_service import RelationshipService
 
 router = APIRouter(tags=["sources"])
 
@@ -56,17 +56,23 @@ class Relationship(BaseModel):
     id: uuid.UUID
     from_column: ColumnRef = Field(description="The referencing column.")
     to_column: ColumnRef = Field(description="The referenced (unique) column.")
-    origin: Literal["inferred", "routine", "manual"] = Field(
-        description="`routine` when a view or routine joins the two columns, `manual` when an "
-        "editor added it, else `inferred`."
+    origin: Literal["inferred", "routine", "ai", "manual"] = Field(
+        description="`routine` when a view or routine joins the two columns, `inferred` when "
+        "the rules found it by name, `ai` when only the AI found it, `manual` when an editor "
+        "added it."
     )
     confidence: float | None = Field(
-        description="0 to 1, from the signals in `evidence`; `null` for a `manual` relationship."
+        description="0 to 1: from the counts on the source when counted, else from the guess; "
+        "`null` for a `manual` relationship."
     )
     evidence: dict[str, Any] = Field(
-        description="Each signal that fired with its score and detail: `name`, `type`, "
-        "`unique`, `join` (the views and routines) and `overlap` (a ratio, with a live "
-        "Connection and profiling). Names and ratios only, never a data value."
+        description="`found_by` (`rules`, `ai` or `both`); `signals` with each rule signal's "
+        "score and detail (`name`, `type`, `unique`, `join`: the views and routines); "
+        "`rule_score`; `ai_guess` (the AI's own `confidence` and `reason`); `counts` (`status` "
+        "`counted` with the target's rows, values and distinct values, the child's values and "
+        "distinct values, the matched and orphan rows and the match rate; or `timed_out`, "
+        "`failed` or `no_connection` with a `note`); and `threshold`. `ai` is the Assistant's "
+        "evidence for a decision. Names and counts only, never a data value."
     )
     status: RelationshipStatus
     version: int
@@ -89,11 +95,6 @@ class InferenceRequest(BaseModel):
         default=DEFAULT_THRESHOLD,
         description="Only candidates at or above this confidence (above 0, at most 1) are kept.",
     )
-    sample_size: int = Field(
-        default=DEFAULT_SAMPLE_SIZE,
-        description=f"Rows sampled per table for value overlap (1 to {MAX_SAMPLE_SIZE}); "
-        "used only with a live Connection and profiled columns.",
-    )
 
 
 class InferenceStarted(BaseModel):
@@ -111,17 +112,17 @@ def start_relationship_inference(
     relationships: RelationshipServiceDep,
     body: InferenceRequest | None = None,
 ) -> InferenceStarted:
-    """Infer undeclared relationships from the latest Snapshot, as a background job (owners
-    and editors). Name, type, uniqueness and JOIN conditions in views and routines always
-    count; value overlap only with a live Connection and profiled columns. 409
-    `no_snapshot` before the first Snapshot; 422 for a bad threshold or sample size."""
+    """Find undeclared relationships from the latest Snapshot, as a background job (owners
+    and editors): the rules (names, and JOIN conditions in views and routines) and the AI
+    (metadata only, as the Workspace's AI privacy allows) guess pairs side by side, and with
+    a live Connection each pair is confirmed by count queries on the source (counts only,
+    45 s each). 409 `no_snapshot` before the first Snapshot; 422 for a bad threshold."""
     request = body or InferenceRequest()
     job = relationships.start_inference(
         user,
         workspace_id,
         system_id,
         threshold=request.threshold,
-        sample_size=request.sample_size,
     )
     return InferenceStarted(job_id=job.id, status=job.status)  # type: ignore[arg-type]
 

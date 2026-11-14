@@ -1,11 +1,21 @@
-"""Relationship inference and review (spec §6.6, stories 58, 59).
+"""Relationship inference and review (spec §6.6, stories 58, 59, #608).
 
 An owner or editor starts an ``infer_relationships`` job for a Source System
-(``start_inference``; ``run_inference`` is its handler). It scores candidate column pairs
-from the latest Snapshot (``internal.inference``) and keeps those at or above the
-threshold (default 0.6) as ``suggested`` relationships with their evidence. Value overlap
-joins the score only when the system has a live Connection and both columns are profiled:
-the job samples the two tables, compares the values in memory and keeps the ratio alone.
+(``start_inference``; ``run_inference`` is its handler). In that one job:
+
+1. **Guess.** The rules (names and JOINs in view and routine text, ``internal.inference``)
+   and the AI (``relationship_ai``: metadata only, as the Workspace's AI privacy allows)
+   propose pairs side by side. If the AI cannot guess, the job logs why and goes on.
+2. **Union.** Pairs on the same two columns, either way round, are one pair that records
+   what found it (``rules``, ``ai`` or ``both``). Declared foreign keys, rejected and
+   manual pairs, and pairs whose types cannot join are dropped.
+3. **Count.** With a live Connection, each pair is counted on the source, one read-only
+   query at a time (counts only, ``COUNT_TIMEOUT_SECONDS`` statement timeout, which
+   cancels the query on the source), most promising first; the counts set the confidence.
+   A count that times out lowers the guess; one that fails keeps it, with the reason.
+4. **Save.** Pairs at or above the threshold (default 0.6) are kept as ``suggested``
+   relationships with their evidence: never a value.
+
 Any member lists the relationships; owners and editors ``accept`` or ``reject`` one, each
 decision audited and recorded in the activity feed. A decision is never undone by a later
 run: the run only refreshes a pair's confidence and evidence, and drops ``suggested``
@@ -16,9 +26,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
-from decimal import Decimal
 from typing import Any
 
 import sqlalchemy as sa
@@ -28,6 +37,7 @@ from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
 from dawam.modules.jobs import Job, JobContext, JobRunner, JobService
+from dawam.modules.llm import RoleService, WorkspaceAiService
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.crypto import DecryptionError, SecretBox
@@ -36,13 +46,21 @@ from dawam.platform.errors import ApiError
 from .connection_service import PASSWORD_CONTEXT
 from .internal.connector import ConnectionParams, Connector, ConnectorError, connector_for
 from .internal.inference import (
+    COUNT_OUTPUTS,
     DEFAULT_THRESHOLD,
+    AiGuess,
     Candidate,
     Col,
+    Counts,
+    count_order,
+    count_sql,
     find_candidates,
+    reverse_wins,
     routine_joins,
+    union,
 )
-from .internal.pii import protected_column_ids
+from .pii_ai_service import PiiDocumentSearch
+from .relationship_ai import RelationshipAiError, RelationshipGuesser
 from .tables import (
     RELATIONSHIP_STATUSES,
     ColumnProfileRecord,
@@ -62,8 +80,8 @@ from .tables import (
 )
 
 INFER_JOB = "infer_relationships"
-DEFAULT_SAMPLE_SIZE = 5_000
-MAX_SAMPLE_SIZE = 100_000
+COUNT_TIMEOUT_SECONDS = 45
+"""The statement timeout of each count query: past it the source cancels the query."""
 _DIALECTS = {"postgresql": "postgres", "sqlserver": "tsql", "mysql": "mysql", "oracle": "oracle"}
 
 
@@ -113,6 +131,8 @@ class RelationshipService:
         encryption_key: bytes,
         clock: Clock,
         connectors: Callable[[str, ConnectionParams], Connector] = connector_for,
+        roles: RoleService | None = None,
+        documents: PiiDocumentSearch | None = None,
     ) -> None:
         self._engine = engine
         self._workspaces = workspaces
@@ -120,6 +140,13 @@ class RelationshipService:
         self._box = SecretBox(encryption_key)
         self._clock = clock
         self._connectors = connectors
+        self._ai = WorkspaceAiService(engine, workspaces=workspaces, clock=clock)
+        self._guesser = (
+            RelationshipGuesser(engine, roles=roles, documents=documents)
+            if roles is not None
+            else None
+        )
+        """``None`` where the job does not run (the API's service): rules only."""
 
     # -- for users ----------------------------------------------------------------------
 
@@ -130,17 +157,12 @@ class RelationshipService:
         system_id: uuid.UUID,
         *,
         threshold: float = DEFAULT_THRESHOLD,
-        sample_size: int = DEFAULT_SAMPLE_SIZE,
     ) -> Job:
         """Queue an ``infer_relationships`` job (owners and editors). 409 ``no_snapshot``
-        before the first Snapshot; 422 for a threshold outside (0, 1] or a bad sample size."""
+        before the first Snapshot; 422 for a threshold outside (0, 1]."""
         self._workspaces.authorize(user, Action.RUN_PROFILING, workspace_id)
         if not 0 < threshold <= 1:
             raise ApiError(422, "invalid_threshold", "The threshold is above 0 and at most 1.")
-        if not 1 <= sample_size <= MAX_SAMPLE_SIZE:
-            raise ApiError(
-                422, "invalid_sample_size", f"The sample size is 1 to {MAX_SAMPLE_SIZE} rows."
-            )
         with Session(self._engine) as db, db.begin():
             system = self._system(db, workspace_id, system_id)
             if self._latest_snapshot(db, system_id) is None:
@@ -156,7 +178,7 @@ class RelationshipService:
                 {
                     "source_system_id": str(system_id),
                     "threshold": threshold,
-                    "sample_size": sample_size,
+                    "user_id": str(user.id),
                 },
                 title=f"Infer relationships: {system.name}",
                 created_by=user.id,
@@ -373,14 +395,15 @@ class RelationshipService:
     # -- the job ------------------------------------------------------------------------
 
     def run_inference(self, params: Mapping[str, Any], ctx: JobContext) -> None:
-        """The ``infer_relationships`` job handler."""
+        """The ``infer_relationships`` job handler: guess, union, count, save."""
         system_id = uuid.UUID(params["source_system_id"])
         threshold = float(params.get("threshold", DEFAULT_THRESHOLD))
-        sample_size = int(params.get("sample_size", DEFAULT_SAMPLE_SIZE))
+        user_id = uuid.UUID(params["user_id"]) if params.get("user_id") else None
         with Session(self._engine) as db:
             system = db.get(SourceSystemRecord, system_id)
             if system is None or system.status != "present":
                 raise InferenceError("The Source System no longer exists.")
+            workspace_id = system.workspace_id
             snapshot_id = self._latest_snapshot(db, system_id)
             if snapshot_id is None:
                 raise InferenceError("The Source System has no Snapshot.")
@@ -388,9 +411,10 @@ class RelationshipService:
                 sa.select(ConnectionRecord).where(ConnectionRecord.source_system_id == system_id)
             ).first()
             dialect = _DIALECTS.get(connection.engine) if connection else None
-            columns, profiled = self._columns(db, system_id, snapshot_id)
+            columns = self._columns(db, system_id, snapshot_id)
             declared = self._declared(db, snapshot_id, columns)
             joins = self._joins(db, snapshot_id, columns, dialect)
+            excluded = self._excluded(db, system_id)
             params_for_source = self._source_params(connection) if connection else None
             engine_name = connection.engine if connection else None
         ctx.log(
@@ -398,19 +422,26 @@ class RelationshipService:
             f"foreign key pairs, {len(joins)} joined column pairs in views and routines."
         )
         ctx.raise_if_cancelled()
-        candidates = find_candidates(columns, joins, declared, threshold=threshold)
-        ctx.log(f"{len(candidates)} candidates before value overlap.")
-        if params_for_source is not None and engine_name is not None:
-            measured = self._measure_overlap(
-                candidates,
-                profiled,
-                self._connectors(engine_name, params_for_source),
-                sample_size,
-                ctx,
+        rules = find_candidates(columns, joins, declared, threshold=threshold)
+        ctx.log(f"The rules found {len(rules)} pairs (names and JOINs).")
+        guesses = self._guess(workspace_id, user_id, snapshot_id, columns, threshold, ctx)
+        candidates = union(rules, guesses, declared=declared, excluded=excluded)
+        both = sum(1 for c in candidates if c.found_by == "both")
+        ctx.log(f"{len(candidates)} pairs after the union, {both} found by both.")
+        ctx.progress(30)
+        if params_for_source is not None and engine_name is not None and dialect is not None:
+            counting = replace(
+                params_for_source,
+                options={
+                    **params_for_source.options,
+                    "statement_timeout_seconds": COUNT_TIMEOUT_SECONDS,
+                },
             )
-            ctx.log(f"Value overlap measured for {measured} candidates.")
+            candidates = self._count(
+                candidates, self._connectors(engine_name, counting), dialect, ctx
+            )
         else:
-            ctx.log("No live Connection: value overlap skipped.")
+            ctx.log("No live Connection: the pairs keep the score of their guess, uncounted.")
         kept = [c for c in candidates if c.confidence + 1e-9 >= threshold]
         created, updated, dropped = self._record(system_id, kept, threshold)
         ctx.log(
@@ -418,13 +449,40 @@ class RelationshipService:
             f"({created} new, {updated} refreshed, {dropped} withdrawn)."
         )
 
+    def _guess(
+        self,
+        workspace_id: uuid.UUID,
+        user_id: uuid.UUID | None,
+        snapshot_id: uuid.UUID,
+        columns: list[Col],
+        threshold: float,
+        ctx: JobContext,
+    ) -> list[AiGuess]:
+        """The AI's pairs; none, with the reason in the log, when it cannot guess."""
+        if self._guesser is None:
+            ctx.log("The AI is not set up for this job: the rules' pairs only.")
+            return []
+        try:
+            guesses = self._guesser.guess(
+                workspace_id=workspace_id,
+                user_id=user_id,
+                snapshot_id=snapshot_id,
+                columns=columns,
+                policy=self._ai.policy(workspace_id),
+                threshold=threshold,
+                ctx=ctx,
+            )
+        except RelationshipAiError as exc:
+            ctx.log(f"The AI did not guess ({exc}): the rules' pairs only.")
+            return []
+        ctx.log(f"The AI found {len(guesses)} pairs.")
+        return guesses
+
     # -- loading the model --------------------------------------------------------------
 
-    def _columns(
-        self, db: Session, system_id: uuid.UUID, snapshot_id: uuid.UUID
-    ) -> tuple[list[Col], set[uuid.UUID]]:
+    def _columns(self, db: Session, system_id: uuid.UUID, snapshot_id: uuid.UUID) -> list[Col]:
         """The present columns of base tables in the Snapshot, with how their uniqueness is
-        known; and the ids of those that have a profile."""
+        known."""
         rows = db.execute(
             sa.select(
                 SrcColumnRecord.id,
@@ -494,8 +552,7 @@ class RelationshipService:
                 if row_count > 0 and null_pct == 0 and distinct == row_count:
                     via = "profiled: distinct = rows"
             columns_out.append(Col(column_id, table_id, schema, table, name, data_type, via))
-        # A Protected Column never takes part in value overlap (the one policy, as profiling).
-        return columns_out, set(profiles) - protected_column_ids(db, ids)
+        return columns_out
 
     def _declared(
         self, db: Session, snapshot_id: uuid.UUID, columns: list[Col]
@@ -566,66 +623,98 @@ class RelationshipService:
         for label, text in texts:
             for left, right in routine_joins(text, dialect):
                 a, b = resolve(left), resolve(right)
-                if a is None or b is None or a.table_id == b.table_id:
+                if a is None or b is None or a.id == b.id:
                     continue
                 key = (a.id, b.id) if str(a.id) < str(b.id) else (b.id, a.id)
                 found.setdefault(key, set()).add(label)
         return {key: sorted(labels) for key, labels in found.items()}
 
-    # -- value overlap ------------------------------------------------------------------
+    def _excluded(self, db: Session, system_id: uuid.UUID) -> set[frozenset[uuid.UUID]]:
+        """The rejected and manual pairs (either way round): never proposed or counted."""
+        return {
+            frozenset((from_id, to_id))
+            for from_id, to_id in db.execute(
+                sa.select(RelationshipRecord.from_column_id, RelationshipRecord.to_column_id)
+                .join(SrcColumnRecord, SrcColumnRecord.id == RelationshipRecord.from_column_id)
+                .join(SrcTableRecord, SrcTableRecord.id == SrcColumnRecord.table_id)
+                .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+                .where(
+                    SrcDbSchemaRecord.source_system_id == system_id,
+                    sa.or_(
+                        RelationshipRecord.status == "rejected",
+                        RelationshipRecord.origin == "manual",
+                    ),
+                )
+            )
+        }
 
-    def _measure_overlap(
-        self,
-        candidates: list[Candidate],
-        profiled: set[uuid.UUID],
-        connector: Connector,
-        sample_size: int,
-        ctx: JobContext,
-    ) -> int:
-        """Set ``overlap`` on each candidate whose two columns are profiled: the share of
-        the source column's distinct sampled values found in the target column. Measured
-        only when the sample holds the whole target table; protected columns are not in
-        ``profiled``.
-        Values live only in this call's locals."""
-        eligible = [c for c in candidates if c.from_col.id in profiled and c.to_col.id in profiled]
-        wanted: dict[uuid.UUID, dict[str, Col]] = {}
-        tables: dict[uuid.UUID, Col] = {}
-        for c in eligible:
-            for col in (c.from_col, c.to_col):
-                wanted.setdefault(col.table_id, {})[col.name] = col
-                tables[col.table_id] = col
-        values: dict[uuid.UUID, set[Any]] = {}
-        rows_sampled: dict[uuid.UUID, int] = {}
-        complete: dict[uuid.UUID, bool] = {}
-        for table_id, named in wanted.items():
+    # -- counts -------------------------------------------------------------------------
+
+    def _count(
+        self, candidates: list[Candidate], connector: Connector, dialect: str, ctx: JobContext
+    ) -> list[Candidate]:
+        """Count every pair on the source, one query at a time, most promising first. A
+        pair whose target turns out not unique is counted the other way round too, and the
+        better direction is kept (``reverse_wins``). No time limit per run: the job stays
+        cancellable between queries."""
+        ordered = count_order(candidates)
+        counted: list[Candidate] = []
+        timed_out = failed = 0
+        for done, candidate in enumerate(ordered, start=1):
             ctx.raise_if_cancelled()
-            anchor = tables[table_id]
-            try:
-                sample = connector.sample(anchor.schema, anchor.table, limit=sample_size + 1)
-            except ConnectorError as exc:
-                ctx.log(f"{anchor.schema}.{anchor.table}: no sample ({exc.message}).")
-                continue
-            complete[table_id] = len(sample.rows) <= sample_size
-            rows = sample.rows[:sample_size]
-            positions = {name: i for i, name in enumerate(sample.columns)}
-            for name, col in named.items():
-                position = positions.get(name)
-                if position is None:
-                    continue
-                values[col.id] = {
-                    _normalised(row[position]) for row in rows if row[position] is not None
-                }
-                rows_sampled[col.id] = len(rows)
-        measured = 0
-        for c in eligible:
-            source, target = values.get(c.from_col.id), values.get(c.to_col.id)
-            # A sample of a larger target would miss true references: leave it unmeasured.
-            if not source or target is None or not complete.get(c.to_col.table_id, False):
-                continue
-            c.overlap = len(source & target) / len(source)
-            c.overlap_sample = (len(source), rows_sampled[c.to_col.id])
-            measured += 1
-        return measured
+            self._count_one(candidate, connector, dialect, ctx)
+            chosen = candidate
+            if candidate.counts is not None and not candidate.counts.target_unique:
+                ctx.log(
+                    f"{candidate.from_col.qualified} -> {candidate.to_col.qualified}: the target "
+                    "is not unique; counting the other way round too."
+                )
+                reverse = candidate.reversed()
+                self._count_one(reverse, connector, dialect, ctx)
+                if reverse.counts is not None and reverse_wins(candidate.counts, reverse.counts):
+                    chosen = reverse
+            timed_out += chosen.count_status == "timed_out"
+            failed += chosen.count_status == "failed"
+            counted.append(chosen)
+            if chosen is not candidate:
+                ctx.log(
+                    f"{candidate.from_col.qualified} -> {candidate.to_col.qualified}: the target "
+                    "is not unique; counted the other way round, which reads better."
+                )
+            ctx.progress(30 + 60 * done // len(ordered))
+        ctx.log(
+            f"Counted {len(ordered)} pairs on the source: {timed_out} timed out, {failed} failed."
+        )
+        return counted
+
+    @staticmethod
+    def _count_one(
+        candidate: Candidate, connector: Connector, dialect: str, ctx: JobContext
+    ) -> None:
+        """Run the pair's count query. A query past ``COUNT_TIMEOUT_SECONDS`` is cancelled
+        by the source's statement timeout; any other failure keeps the guess."""
+        label = f"{candidate.from_col.qualified} -> {candidate.to_col.qualified}"
+        try:
+            result = connector.query(
+                count_sql(candidate.from_col, candidate.to_col, dialect), limit=1
+            )
+            [row] = result.rows
+            candidate.counts = Counts(*(int(value or 0) for value in row[: len(COUNT_OUTPUTS)]))
+            candidate.count_status = "counted"
+        except ConnectorError as exc:
+            if exc.code == "timeout":
+                candidate.count_status = "timed_out"
+                ctx.log(
+                    f"{label}: count timed out after {COUNT_TIMEOUT_SECONDS} s and was "
+                    "cancelled on the source."
+                )
+            else:
+                candidate.count_status, candidate.count_reason = "failed", exc.message
+                ctx.log(f"{label}: not counted ({exc.message}).")
+        except ValueError:  # not exactly one row of counts
+            candidate.count_status = "failed"
+            candidate.count_reason = "The count query did not return one row of counts."
+            ctx.log(f"{label}: not counted ({candidate.count_reason}).")
 
     # -- writing ------------------------------------------------------------------------
 
@@ -653,13 +742,19 @@ class RelationshipService:
                 record = existing.get(key)
                 reverse = existing.get((c.to_col.id, c.from_col.id))
                 if record is None and reverse is not None and reverse.status == "rejected":
-                    seen.add(key)
                     continue  # a rejected x -> y also suppresses y -> x
                 if (record or reverse) is not None and "manual" in (
                     getattr(record, "origin", None),
                     getattr(reverse, "origin", None),
                 ):
                     continue  # a manual pair is the user's: never scored, withdrawn or proposed
+                if record is None and reverse is not None:
+                    # The pair is now read the other way round: one row, never two. A
+                    # suggestion turns round; an accepted pair keeps the direction decided.
+                    seen.add((c.to_col.id, c.from_col.id))
+                    record = reverse
+                    if record.status == "suggested":
+                        record.from_column_id, record.to_column_id = key
                 if record is None:
                     db.add(
                         RelationshipRecord(
@@ -677,20 +772,22 @@ class RelationshipService:
                     created += 1
                 else:
                     # A decision is never undone: only the score and its evidence move. The
-                    # AI's evidence for a decision (``ai``) is not the rules' and stays.
+                    # AI's evidence for a decision (``ai``) is not the rules' and stays, and
+                    # a decided pair keeps the origin it was decided with.
                     record.confidence = c.confidence
                     kept_ai = (record.evidence or {}).get("ai")
                     record.evidence = c.evidence(threshold) | (
                         {"ai": kept_ai} if kept_ai is not None else {}
                     )
-                    record.origin = c.origin
+                    if record.status == "suggested":
+                        record.origin = c.origin
                     updated += 1
             stale = [
                 r.id
                 for key, r in existing.items()
                 if key not in seen
                 and r.status == "suggested"
-                and r.origin in ("inferred", "routine")
+                and r.origin in ("inferred", "routine", "ai")
             ]
             if stale:
                 db.execute(sa.delete(RelationshipRecord).where(RelationshipRecord.id.in_(stale)))
@@ -881,14 +978,3 @@ class RelationshipService:
             self._apply_decision(db, system, row, user, decision)
             db.flush()
             return self._view(*row)
-
-
-def _normalised(value: Any) -> Any:
-    """Make values comparable across driver types (``Decimal('1.0')`` and ``1``)."""
-    if isinstance(value, Decimal):
-        return int(value) if value == value.to_integral_value() else value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        return bytes(value)
-    return value

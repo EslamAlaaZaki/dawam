@@ -12850,7 +12850,7 @@ a.tlink:hover { text-decoration: underline; }
      "in_orm": true,
      "attribute": "origin",
      "app_default": null,
-     "description": "``inferred`` (rules), ``routine`` (a JOIN in a view or routine) or ``manual`` (an\neditor added it); later ``declared`` and ``ai``.",
+     "description": "``inferred`` (the name rules), ``routine`` (a JOIN in a view or routine), ``ai`` (found\nonly by the AI) or ``manual`` (an editor added it); ``declared`` is reserved.",
      "pk": false,
      "fk": []
     },
@@ -12865,7 +12865,7 @@ a.tlink:hover { text-decoration: underline; }
      "in_orm": true,
      "attribute": "confidence",
      "app_default": null,
-     "description": "0 to 1; ``NULL`` for a ``manual`` relationship, which has no score.",
+     "description": "0 to 1, from the counts on the source when counted, else from the guess; ``NULL`` for\na ``manual`` relationship, which has no score.",
      "pk": false,
      "fk": []
     },
@@ -12880,7 +12880,7 @@ a.tlink:hover { text-decoration: underline; }
      "in_orm": true,
      "attribute": "evidence",
      "app_default": null,
-     "description": null,
+     "description": "What found the pair (``found_by``: ``rules``, ``ai`` or ``both``), the rule signals,\nthe AI's guess and reason, the counts (with the orphan rows) or why they are missing,\nand the Assistant's evidence for a decision (``ai``).",
      "pk": false,
      "fk": []
     },
@@ -13124,7 +13124,7 @@ a.tlink:hover { text-decoration: underline; }
    "module": "sources",
    "orm_class": "RelationshipRecord",
    "source": "backend/src/dawam/modules/sources/tables.py",
-   "description": "A relationship between two Source Columns that the source does not declare as a\nforeign key (spec §6.6, §7): inferred from names, types, overlap and JOINs, then\naccepted or rejected by an editor. It attaches to the stable Source Columns, so a\ndecision survives Snapshots. ``evidence`` holds names and ratios, never a value."
+   "description": "A relationship between two Source Columns that the source does not declare as a\nforeign key (spec §6.6, §7): guessed by the rules (names and JOINs) and the AI, confirmed\nby count queries on the source, then accepted or rejected by an editor. It attaches to the\nstable Source Columns, so a decision survives Snapshots. ``evidence`` holds names, scores\nand counts, never a value."
   },
   {
    "name": "rename_candidates",

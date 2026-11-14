@@ -11,7 +11,7 @@ export interface ErEdge {
   to: string;
   /**
    * `declared` is a foreign key of the Snapshot; `inferred` an accepted inferred
-   * relationship; `manual` one a person added.
+   * relationship (found by the rules, the AI or both); `manual` one a person added.
    */
   kind: "declared" | "inferred" | "manual";
   /** The relationship's id, for the ones that can be deleted (not `declared`). */
