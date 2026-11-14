@@ -465,7 +465,18 @@ function SetupForm({
       {mutation.isError && <ErrorText>{mutation.error.message}</ErrorText>}
       {canEdit && (
         <Actions>
-          <Button type="submit" variant="primary" disabled={mutation.isPending}>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={mutation.isPending}
+            onClick={(event) => {
+              // The browser cannot point at an invalid field inside closed sections.
+              const form = event.currentTarget.form;
+              if (form && !form.checkValidity()) {
+                form.querySelector("details")?.setAttribute("open", "");
+              }
+            }}
+          >
             {warehouse.set_up ? "Save" : "Set up Data Warehouse"}
           </Button>
         </Actions>
