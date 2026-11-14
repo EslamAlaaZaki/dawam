@@ -1,6 +1,6 @@
 """Manually added relationships and deleting relationships (spec §6.6, stories 58 to 60).
 
-Driven through the HTTP API on the shared sample source: an editor adds a relationship by
+Driven through the HTTP API on the sample source's schema: an editor adds a relationship by
 hand (always ``accepted``, origin ``manual``, no confidence), may delete any relationship
 that is not a declared foreign key, and later inference runs leave manual pairs alone.
 """
@@ -18,7 +18,8 @@ from tests.sources.test_relationship_inference import (
 from tests.sources.test_schema_browser import schema
 
 sample_system = test_relationship_inference.sample_system
-"""The fixture that extracts the shared sample source into a Source System."""
+"""The fixture that extracts the sample source's schema into a Source System."""
+scratch_source = test_relationship_inference.scratch_source
 
 
 def column_id(roles: RoleClients, system: str, ref: str) -> str:
@@ -96,9 +97,8 @@ def test_a_suggested_or_rejected_pair_becomes_the_manual_row(
     roles: RoleClients,
     sample_system: str,
 ):
-    # crm.contacts.cust_no counts 2 distinct customers (a possible chance match): 0.56.
-    run(roles, sample_system, threshold=0.5)
-    found = by_link(listed(roles, sample_system, min_confidence=0.5))
+    run(roles, sample_system)
+    found = by_link(listed(roles, sample_system))
     suggested = found["core.accounts.cust_no", "core.customers.cust_no"]
     rejected = found["crm.contacts.cust_no", "core.customers.cust_no"]
     roles.client("editor").post(f"{sample_system}/relationships/{rejected['id']}/reject")
@@ -129,8 +129,8 @@ def test_deleting_rejects_inferred_and_removes_manual_rows(
     sample_system: str,
     app,
 ):
-    run(roles, sample_system, threshold=0.5)
-    inferred = by_link(listed(roles, sample_system, min_confidence=0.5))[
+    run(roles, sample_system)
+    inferred = by_link(listed(roles, sample_system))[
         "crm.contacts.cust_no", "core.customers.cust_no"
     ]
     manual = add(roles, sample_system, "core.accounts.iban", "core.branches.branch_code").json()

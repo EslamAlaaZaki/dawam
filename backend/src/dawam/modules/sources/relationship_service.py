@@ -665,6 +665,10 @@ class RelationshipService:
             self._count_one(candidate, connector, dialect, ctx)
             chosen = candidate
             if candidate.counts is not None and not candidate.counts.target_unique:
+                ctx.log(
+                    f"{candidate.from_col.qualified} -> {candidate.to_col.qualified}: the target "
+                    "is not unique; counting the other way round too."
+                )
                 reverse = candidate.reversed()
                 self._count_one(reverse, connector, dialect, ctx)
                 if reverse.counts is not None and reverse_wins(candidate.counts, reverse.counts):
@@ -672,6 +676,11 @@ class RelationshipService:
             timed_out += chosen.count_status == "timed_out"
             failed += chosen.count_status == "failed"
             counted.append(chosen)
+            if chosen is not candidate:
+                ctx.log(
+                    f"{candidate.from_col.qualified} -> {candidate.to_col.qualified}: the target "
+                    "is not unique; counted the other way round, which reads better."
+                )
             ctx.progress(30 + 60 * done // len(ordered))
         ctx.log(
             f"Counted {len(ordered)} pairs on the source: {timed_out} timed out, {failed} failed."
@@ -763,13 +772,15 @@ class RelationshipService:
                     created += 1
                 else:
                     # A decision is never undone: only the score and its evidence move. The
-                    # AI's evidence for a decision (``ai``) is not the rules' and stays.
+                    # AI's evidence for a decision (``ai``) is not the rules' and stays, and
+                    # a decided pair keeps the origin it was decided with.
                     record.confidence = c.confidence
                     kept_ai = (record.evidence or {}).get("ai")
                     record.evidence = c.evidence(threshold) | (
                         {"ai": kept_ai} if kept_ai is not None else {}
                     )
-                    record.origin = c.origin
+                    if record.status == "suggested":
+                        record.origin = c.origin
                     updated += 1
             stale = [
                 r.id

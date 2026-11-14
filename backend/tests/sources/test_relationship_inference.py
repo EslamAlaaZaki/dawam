@@ -22,7 +22,7 @@ from dawam.modules.llm import Reply
 from dawam.modules.sources import relationship_service
 from tests.llm.test_roles_budgets import register, use_models
 from tests.roles import RoleClients
-from tests.sample_source import SampleSource
+from tests.sample_source import SEED
 from tests.sources import test_extraction
 from tests.sources.test_extraction import add_system, connect, extract
 from tests.sources.test_profiling import profile_tables
@@ -120,10 +120,28 @@ def model(admin_client, fake_llm, roles: RoleClients):
     return agent
 
 
+MORE_REFERENCES = """
+INSERT INTO core.customers (cust_no, full_name, branch_code)
+    SELECT i, 'Customer ' || i, 'CAI' FROM generate_series(4, 8) i;
+INSERT INTO core.accounts (acct_no, cust_no, balance)
+    SELECT 100 + i, i, 0 FROM generate_series(3, 7) i;
+INSERT INTO core.transactions
+    SELECT i, 99 + i, 10, '2024-02-01 10:00+00' FROM generate_series(4, 8) i;
+INSERT INTO crm.contacts (cust_no) SELECT i FROM generate_series(3, 6) i;
+"""
+"""More rows than the shared seed, so each undeclared reference has at least 5 distinct
+values (fewer would be halved as a possible chance match): accounts.cust_no 7,
+transactions.acct_no 7, contacts.cust_no 6, every one found in its target."""
+
+
 @pytest.fixture
-def sample_system(roles: RoleClients, sample_source: SampleSource) -> str:
+def sample_system(roles: RoleClients, scratch_source) -> str:
+    """The sample source's schema (tests/sample_source/seed.sql) in a database of this test's
+    own, with ``MORE_REFERENCES``, read by the read-only user."""
+    scratch_source["run"](SEED.read_text(encoding="utf-8") + MORE_REFERENCES)
     system = add_system(roles)
-    connect(roles, system, sample_source.connection_body())
+    body = scratch_source["body"](("core", "crm"))
+    connect(roles, system, {**body, "username": "dawam_reader", "password": "reader-secret"})
     extract(roles, system)
     return system
 
@@ -140,9 +158,9 @@ def scratch_system(roles: RoleClients, scratch_source, *statements: str) -> str:
 def test_the_seeded_undeclared_relationships_are_found_with_their_evidence(
     roles: RoleClients, sample_system: str
 ):
-    job = run(roles, sample_system, threshold=0.5)
+    job = run(roles, sample_system)
 
-    found = by_link(listed(roles, sample_system, min_confidence=0.5))
+    found = by_link(listed(roles, sample_system))
 
     accounts_customer = found["core.accounts.cust_no", "core.customers.cust_no"]
     assert accounts_customer["origin"] == "routine" and accounts_customer["status"] == "suggested"
@@ -155,10 +173,9 @@ def test_the_seeded_undeclared_relationships_are_found_with_their_evidence(
     assert "procedure core.close_account" in signals["join"]["objects"]
     counts = evidence["counts"]
     assert counts["status"] == "counted" and counts["target_unique"] is True
-    assert (counts["child_values"], counts["child_distinct"], counts["matched_rows"]) == (3, 2, 3)
+    assert (counts["child_values"], counts["child_distinct"], counts["matched_rows"]) == (8, 7, 8)
     assert counts["orphan_rows"] == 0 and counts["match_rate"] == 1.0
-    # 3 rows, 2 distinct customers: a possible chance match, so the match rate is halved.
-    assert accounts_customer["confidence"] == pytest.approx(0.7 * 0.5 + 0.3 * 1.0)
+    assert accounts_customer["confidence"] == pytest.approx(1.0)
 
     transactions_account = found["core.transactions.acct_no", "core.accounts.acct_no"]
     assert transactions_account["origin"] == "routine"
@@ -170,11 +187,12 @@ def test_the_seeded_undeclared_relationships_are_found_with_their_evidence(
     contacts_customer = found["crm.contacts.cust_no", "core.customers.cust_no"]
     assert contacts_customer["origin"] == "inferred"
     assert "join" not in contacts_customer["evidence"]["signals"]
-    assert contacts_customer["confidence"] == pytest.approx(0.7 * 0.5 + 0.3 * 0.71)
+    assert contacts_customer["evidence"]["counts"]["child_distinct"] == 6
+    assert contacts_customer["confidence"] == pytest.approx(0.7 + 0.3 * 0.71)
 
     # The declared foreign key is not proposed, and nothing falls below the threshold.
     assert ("core.customers.branch_code", "core.branches.branch_code") not in found
-    assert all(i["confidence"] >= 0.5 for i in found.values())
+    assert all(i["confidence"] >= 0.6 for i in found.values())
     assert [i["confidence"] for i in found.values()] == sorted(
         (i["confidence"] for i in found.values()), reverse=True
     )
@@ -182,13 +200,13 @@ def test_the_seeded_undeclared_relationships_are_found_with_their_evidence(
 
 
 def test_a_threshold_hides_weaker_candidates(roles: RoleClients, sample_system: str):
-    run(roles, sample_system, threshold=0.5)
+    run(roles, sample_system)
 
-    strict = by_link(listed(roles, sample_system))
+    strict = by_link(listed(roles, sample_system, min_confidence=0.95))
 
     assert ("core.accounts.cust_no", "core.customers.cust_no") in strict
     assert ("crm.contacts.cust_no", "core.customers.cust_no") not in strict
-    run(roles, sample_system, threshold=0.9)
+    run(roles, sample_system, threshold=0.95)
     assert ("crm.contacts.cust_no", "core.customers.cust_no") not in by_link(
         listed(roles, sample_system, min_confidence=0)
     )
@@ -246,8 +264,8 @@ def test_counts_on_the_source_decide_between_look_alikes(roles: RoleClients, scr
 def test_accepting_and_rejecting_are_audited_and_survive_a_new_run(
     roles: RoleClients, sample_system: str, app
 ):
-    run(roles, sample_system, threshold=0.5)
-    found = by_link(listed(roles, sample_system, min_confidence=0.5))
+    run(roles, sample_system)
+    found = by_link(listed(roles, sample_system))
     keep = found["core.accounts.cust_no", "core.customers.cust_no"]
     drop = found["crm.contacts.cust_no", "core.customers.cust_no"]
     editor = roles.client("editor")
@@ -269,9 +287,9 @@ def test_accepting_and_rejecting_are_audited_and_survive_a_new_run(
         editor.post(f"{sample_system}/relationships/{keep['id']}/accept").json()["version"] == 2
     ), "deciding again changes nothing"
 
-    run(roles, sample_system, threshold=0.5)
+    run(roles, sample_system)
 
-    after = by_link(listed(roles, sample_system, min_confidence=0.5))
+    after = by_link(listed(roles, sample_system))
     assert after["core.accounts.cust_no", "core.customers.cust_no"]["status"] == "accepted"
     assert after["crm.contacts.cust_no", "core.customers.cust_no"]["status"] == "rejected"
     suggested = [link(i) for i in listed(roles, sample_system, status="suggested")]
@@ -456,3 +474,30 @@ def test_an_ai_only_pair_is_withdrawn_when_a_new_run_no_longer_finds_it(
     assert ("public.employees.mgr", "public.employees.emp_id") not in by_link(
         listed(roles, system, min_confidence=0)
     )
+
+
+def test_a_decided_pair_keeps_its_origin_when_a_new_run_finds_it_another_way(
+    roles: RoleClients, scratch_source
+):
+    system = scratch_system(roles, scratch_source, SOURCE)
+    run(roles, system)
+    found = by_link(listed(roles, system))
+    decided = found["public.orders.customer_id", "public.customers.id"]
+    assert decided["origin"] == "inferred"
+    accepted = roles.client("editor").post(f"{system}/relationships/{decided['id']}/accept")
+    assert accepted.status_code == 200, accepted.text
+    # A view now joins both pairs: the rules find them through a JOIN as well.
+    scratch_source["run"](
+        "CREATE VIEW order_lines AS SELECT 1 AS one FROM orders o "
+        "JOIN customers c ON o.customer_id = c.id JOIN products p ON o.sku = p.sku"
+    )
+    extract(roles, system)
+
+    run(roles, system)
+
+    after = by_link(listed(roles, system))
+    kept = after["public.orders.customer_id", "public.customers.id"]
+    assert kept["status"] == "accepted" and kept["origin"] == "inferred"
+    assert kept["evidence"]["signals"]["join"]["objects"] == ["view public.order_lines"]
+    suggested = after["public.orders.sku", "public.products.sku"]
+    assert suggested["status"] == "suggested" and suggested["origin"] == "routine"
