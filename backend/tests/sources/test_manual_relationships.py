@@ -96,8 +96,9 @@ def test_a_suggested_or_rejected_pair_becomes_the_manual_row(
     roles: RoleClients,
     sample_system: str,
 ):
-    run(roles, sample_system)
-    found = by_link(listed(roles, sample_system))
+    # crm.contacts.cust_no counts 2 distinct customers (a possible chance match): 0.56.
+    run(roles, sample_system, threshold=0.5)
+    found = by_link(listed(roles, sample_system, min_confidence=0.5))
     suggested = found["core.accounts.cust_no", "core.customers.cust_no"]
     rejected = found["crm.contacts.cust_no", "core.customers.cust_no"]
     roles.client("editor").post(f"{sample_system}/relationships/{rejected['id']}/reject")
@@ -128,8 +129,8 @@ def test_deleting_rejects_inferred_and_removes_manual_rows(
     sample_system: str,
     app,
 ):
-    run(roles, sample_system)
-    inferred = by_link(listed(roles, sample_system))[
+    run(roles, sample_system, threshold=0.5)
+    inferred = by_link(listed(roles, sample_system, min_confidence=0.5))[
         "crm.contacts.cust_no", "core.customers.cust_no"
     ]
     manual = add(roles, sample_system, "core.accounts.iban", "core.branches.branch_code").json()
