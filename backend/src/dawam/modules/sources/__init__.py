@@ -43,11 +43,13 @@ Public interface. Other modules import only what is re-exported here:
   composition root fills; validated answers become ``ai`` findings.
 - ``RelationshipService``: owners and editors infer undeclared relationships of a Source System
   (``start_inference`` queues an ``infer_relationships`` job; ``run_inference`` is its handler,
-  which ``dawam.job_handlers`` registers). Candidates are scored from name similarity, type
-  compatibility, target uniqueness, JOIN conditions parsed with sqlglot from view and routine
-  text, and (live Connection and profiling only) value overlap; those at or above the
-  threshold (default 0.6) are kept as ``suggested`` ``Relationship`` rows with their evidence.
-  Any member lists them; owners and editors ``accept`` or ``reject`` one, audited.
+  which ``dawam.job_handlers`` registers with the agent model's ``RoleService``). The rules
+  (name similarity and JOIN conditions parsed with sqlglot from view and routine text) and the
+  AI (``relationship_ai``: metadata only) guess pairs side by side; their union is counted on
+  the source with a live Connection (counts only, 45 s per query) and the counts set the
+  confidence. Pairs at or above the threshold (default 0.6) are kept as ``suggested``
+  ``Relationship`` rows with their evidence. Any member lists them; owners and editors
+  ``accept`` or ``reject`` one, audited.
 - ``SourceSystemCodeHandler``: the ``changesets`` engine's handler for ``source_system`` items
   (a System Code change, owner-only); ``SourceSystemService`` takes a ``SystemStagedCheck`` and
   refuses a direct code change (409 ``use_change_set``) for a system that has Staging Tables.
@@ -116,7 +118,8 @@ Owns the ``source_systems`` and ``connections`` tables, the Source Objects
 (``snapshots``, ``snapshot_*``, ``definition_texts``). ``internal/`` holds the Connector
 interface, its PostgreSQL implementation and the Snapshot writer, which other code
 reaches only through the service API. Imports ``activity``, ``audit``, ``auth``,
-``changesets``, ``jobs``, ``llm`` (the AI PII detection's model) and ``workspaces``.
+``changesets``, ``jobs``, ``llm`` (the AI PII detection's and relationship guessing's
+model) and ``workspaces``.
 """
 
 from fastapi import APIRouter

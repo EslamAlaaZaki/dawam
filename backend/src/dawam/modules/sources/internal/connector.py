@@ -203,9 +203,11 @@ class Connector(Protocol):
     def query(self, sql: str, *, limit: int = DEFAULT_ROW_LIMIT) -> QueryResult:
         """A read-only query over the allowed schemas, capped at ``limit`` rows.
 
-        NOT SAFE TO EXPOSE directly: the scoping is a best-effort text check. The only
-        caller is ``SourceQueryService``, which sends ``SafeQuery.sql`` from the sqlglot
-        query guard (ADR 0002), never text a model or user wrote."""
+        NOT SAFE TO EXPOSE directly: the scoping is a best-effort text check. The callers
+        are ``SourceQueryService``, which sends ``SafeQuery.sql`` from the sqlglot query
+        guard (ADR 0002), and relationship inference, which sends the count queries it
+        builds with sqlglot from Snapshot names (``inference.count_sql``); never text a
+        model or user wrote."""
         ...
 
 
