@@ -53,6 +53,11 @@ const WEEKDAY_LABELS: Record<(typeof WEEKDAYS)[number], string> = {
   saturday: "Sat",
   sunday: "Sun",
 };
+/** The order the form shows the days in: the week starts on Saturday. */
+const WEEKDAYS_SHOWN = [
+  ...WEEKDAYS.slice(WEEKDAYS.indexOf("saturday")),
+  ...WEEKDAYS.slice(0, WEEKDAYS.indexOf("saturday")),
+];
 const LAYERS = ["staging", "core", "mart"] as const;
 const LAYER_LABELS: Record<(typeof LAYERS)[number], string> = {
   staging: "Staging",
@@ -178,9 +183,10 @@ function SetupForm({
       date_dimension: {
         start_year: Number(text("start_year")),
         end_year: Number(text("end_year")),
-        weekend_days: data
-          .getAll("weekend_days")
-          .map(String) as (typeof WEEKDAYS)[number][],
+        // Monday first, whatever order the form shows the days in.
+        weekend_days: WEEKDAYS.filter((day) =>
+          data.getAll("weekend_days").includes(day),
+        ),
         include_hijri: data.get("include_hijri") === "on",
         fiscal_year_start_month: text("fiscal_year_start_month")
           ? Number(text("fiscal_year_start_month"))
@@ -212,7 +218,7 @@ function SetupForm({
   const dates = warehouse.date_dimension;
   const startYear = dates?.start_year ?? 2000;
   const endYear = dates?.end_year ?? 2040;
-  const weekend: string[] = dates?.weekend_days ?? ["saturday", "sunday"];
+  const weekend: string[] = dates?.weekend_days ?? ["friday", "saturday"];
   // The collapsed sections' values, re-read from the form each time they close.
   const [summary, setSummary] = useState<Summary>(() =>
     summarize(
@@ -346,7 +352,7 @@ function SetupForm({
           aria-labelledby="dw-weekend-label"
           className="flex flex-wrap gap-1.5"
         >
-          {WEEKDAYS.map((day) => (
+          {WEEKDAYS_SHOWN.map((day) => (
             <label
               key={day}
               className={`${choiceClasses} min-w-12 rounded-md border border-control-edge px-2.5 py-1 has-checked:border-primary has-checked:bg-primary-subtle`}

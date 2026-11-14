@@ -208,7 +208,7 @@ describe("the Data Warehouse folder before setup", () => {
       layer_schemas: { staging: "raw", core: "core", mart: "mart" },
       naming_rules: { case_style: "lower", dimension_prefix: "dim_" },
       date_dimension: {
-        weekend_days: ["saturday", "sunday"],
+        weekend_days: ["friday", "saturday"],
         fiscal_year_start_month: null,
       },
     });
