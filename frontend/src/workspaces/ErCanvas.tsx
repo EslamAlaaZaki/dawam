@@ -496,20 +496,20 @@ function ErCard({
 /** What the lines, ends and markers mean (replaces the old hint sentence). */
 function Legend() {
   const items: { glyph: React.ReactNode; text: string }[] = [
-    { glyph: <path className="er-line" d="M2 6H44" />, text: "Foreign key declared in the Snapshot" },
+    { glyph: <path className="er-line" d="M2 6H44" />, text: "Declared foreign key" },
     {
       glyph: (
         <g className="er-inferred">
           <path className="er-line" d="M2 6H44" />
         </g>
       ),
-      text: "Accepted inferred (rules or AI) or manually added relationship",
+      text: "Inferred or manually added",
     },
     {
       glyph: <path className="er-glyph" d="M2 6H44M32 6L44 1M32 6L44 11M28 1V11" />,
-      text: "many (the referencing side)",
+      text: "Many (referencing side)",
     },
-    { glyph: <path className="er-glyph" d="M2 6H44M38 1V11M42 1V11" />, text: "exactly one (NOT NULL)" },
+    { glyph: <path className="er-glyph" d="M2 6H44M38 1V11M42 1V11" />, text: "Exactly one (NOT NULL)" },
     {
       glyph: (
         <>
@@ -517,7 +517,7 @@ function Legend() {
           <circle className="er-glyph-fill" cx="37" cy="6" r="3.5" />
         </>
       ),
-      text: "zero or one (nullable)",
+      text: "Zero or one (nullable)",
     },
     {
       glyph: (
@@ -530,21 +530,27 @@ function Legend() {
     },
   ];
   return (
-    <div className="absolute bottom-3 left-3 hidden flex-col gap-1 rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground shadow-overlay md:flex">
+    <div className="absolute bottom-2 left-2 hidden grid-cols-2 gap-x-4 gap-y-0.5 rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-2xs text-muted-foreground shadow-overlay md:grid">
       {items.map((item) => (
-        <div key={item.text} className="flex items-center gap-2.5">
-          <svg width="46" height="12" className="shrink-0 overflow-visible" aria-hidden>
+        <div key={item.text} className="flex items-center gap-2">
+          <svg
+            width="31"
+            height="8"
+            viewBox="0 0 46 12"
+            className="shrink-0 overflow-visible"
+            aria-hidden
+          >
             {item.glyph}
           </svg>
           <span>{item.text}</span>
         </div>
       ))}
-      <div className="flex items-center gap-2.5">
+      <div className="col-span-2 flex items-center gap-2">
         <span className="flex shrink-0 gap-1">
           <Badge variant="pk">PK</Badge>
           <Badge variant="fk">FK</Badge>
         </span>
-        <span>primary key, foreign key</span>
+        <span>Primary key, foreign key</span>
       </div>
     </div>
   );
