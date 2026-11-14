@@ -254,9 +254,10 @@ RELATIONSHIP_STATUSES = ("suggested", "accepted", "rejected")
 
 class RelationshipRecord(Base):
     """A relationship between two Source Columns that the source does not declare as a
-    foreign key (spec §6.6, §7): inferred from names, types, overlap and JOINs, then
-    accepted or rejected by an editor. It attaches to the stable Source Columns, so a
-    decision survives Snapshots. ``evidence`` holds names and ratios, never a value."""
+    foreign key (spec §6.6, §7): guessed by the rules (names and JOINs) and the AI, confirmed
+    by count queries on the source, then accepted or rejected by an editor. It attaches to the
+    stable Source Columns, so a decision survives Snapshots. ``evidence`` holds names, scores
+    and counts, never a value."""
 
     __tablename__ = "relationships"
     __table_args__ = (
@@ -275,11 +276,15 @@ class RelationshipRecord(Base):
         sa.ForeignKey("src_columns.id", ondelete="CASCADE"), index=True
     )
     origin: Mapped[str] = mapped_column(sa.String(16))
-    """``inferred`` (rules), ``routine`` (a JOIN in a view or routine) or ``manual`` (an
-    editor added it); later ``declared`` and ``ai``."""
+    """``inferred`` (the name rules), ``routine`` (a JOIN in a view or routine), ``ai`` (found
+    only by the AI) or ``manual`` (an editor added it); ``declared`` is reserved."""
     confidence: Mapped[float | None] = mapped_column()
-    """0 to 1; ``NULL`` for a ``manual`` relationship, which has no score."""
+    """0 to 1, from the counts on the source when counted, else from the guess; ``NULL`` for
+    a ``manual`` relationship, which has no score."""
     evidence: Mapped[dict[str, Any]] = mapped_column(sa.JSON)
+    """What found the pair (``found_by``: ``rules``, ``ai`` or ``both``), the rule signals,
+    the AI's guess and reason, the counts (with the orphan rows) or why they are missing,
+    and the Assistant's evidence for a decision (``ai``)."""
     status: Mapped[str] = mapped_column(sa.String(16))
     version: Mapped[int] = mapped_column()
     """Goes up by one on every decision (optimistic concurrency, spec §8.3)."""
