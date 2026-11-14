@@ -102,8 +102,8 @@ function ReviewLink({ systemId, pending }: { systemId: string; pending: number |
  * A Source System's ER diagram (spec story 60): its tables and views with the foreign keys
  * the latest Snapshot declares and the inferred relationships a member accepted. Narrow it
  * to the tables ticked in the Tables list (a whole Database Schema at once, or table by
- * table); search dims the tables that don't match. Any member can view it; inferred relationships are found and reviewed in
- * the Source schema, which the header links to.
+ * table); search dims the tables that don't match. Any member can view it; inferred
+ * relationships are found and reviewed in the Source schema, which the header links to.
  */
 export function SourceErDiagram({
   workspace,
@@ -131,11 +131,16 @@ export function SourceErDiagram({
     const present = schema.data.tables.filter(
       (t) => !t.status || t.status === "present",
     );
+    // A ticked table the Snapshot no longer has drops out of the selection.
+    const picked = new Set(
+      present.filter((t) => tableIds.has(t.id)).map((t) => t.id),
+    );
     return {
       all,
       present,
+      picked,
       byId: new Map(present.map((t) => [t.id, t])),
-      shown: filterGraph(schema.data.tables, all, { tableIds }),
+      shown: filterGraph(schema.data.tables, all, { tableIds: picked }),
     };
   }, [schema.data, accepted.data, tableIds]);
 
@@ -226,7 +231,11 @@ export function SourceErDiagram({
               /
             </kbd>
           </div>
-          <ErTablePicker tables={graph.present} selected={tableIds} onChange={setTableIds} />
+          <ErTablePicker
+            tables={graph.present}
+            selected={graph.picked}
+            onChange={setTableIds}
+          />
           <span className="flex-1" />
           <Segmented
             label="Columns shown"
