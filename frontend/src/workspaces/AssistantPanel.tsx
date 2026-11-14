@@ -11,6 +11,7 @@ import {
   ThumbsDown,
   Trash2,
   ThumbsUp,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -50,6 +51,11 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../components/ui/popover";
 import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import {
@@ -744,18 +750,25 @@ function ModelPicker({
           disabled={disabled}
           className="min-w-0 max-w-56 data-[state=open]:bg-muted data-[state=open]:text-foreground"
         >
-          <span className="truncate">{name}</span>
+          <span className="truncate" title={name}>
+            {name}
+          </span>
           <ChevronDown aria-hidden className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="w-64">
+      <DropdownMenuContent side="top" align="start" className="w-80">
         <DropdownMenuLabel>Model for this message</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={value} onValueChange={onPick}>
           {models.map((m) => (
             <DropdownMenuRadioItem key={m.id} value={m.id}>
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate">{m.name}</span>
-                <span className="truncate text-xs text-subtle-foreground">
+                <span className="truncate" title={m.name}>
+                  {m.name}
+                </span>
+                <span
+                  className="truncate text-xs text-subtle-foreground"
+                  title={m.provider_name}
+                >
                   {m.provider_name}
                 </span>
               </span>
@@ -1059,6 +1072,36 @@ export function AssistantPanel({
             </span>
           )}
           <span className="ml-auto" />
+          {current && mine && !archived && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={
+                    current.shared_with_workspace
+                      ? "Sharing: shared with the Workspace"
+                      : "Sharing: only you"
+                  }
+                  className={cn(
+                    current.shared_with_workspace && "text-primary",
+                  )}
+                >
+                  <Users aria-hidden />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end">
+                <label className={checkLabelClasses}>
+                  <Switch
+                    checked={current.shared_with_workspace}
+                    disabled={share.isPending}
+                    onCheckedChange={(checked) => share.mutate(checked)}
+                  />
+                  Share with the Workspace&apos;s members
+                </label>
+              </PopoverContent>
+            </Popover>
+          )}
           <Button
             ref={listToggle}
             variant="ghost"
@@ -1094,16 +1137,6 @@ export function AssistantPanel({
               This Workspace is archived: conversations are read-only.
             </Hint>
           )}
-          {current && mine && !archived && (
-            <label className={checkLabelClasses}>
-              <Switch
-                checked={current.shared_with_workspace}
-                disabled={share.isPending}
-                onCheckedChange={(checked) => share.mutate(checked)}
-              />
-              Share with the Workspace&apos;s members
-            </label>
-          )}
           {turns.length === 0 && !draft && canAsk && !archived && (
             <div className="m-auto flex flex-col items-center gap-3 py-8 text-center">
               <span
@@ -1113,6 +1146,9 @@ export function AssistantPanel({
                 ✦
               </span>
               <p className="text-xl font-semibold">How can I help?</p>
+              <p className="text-sm text-muted-foreground">
+                Ask me anything about {workspace.name} Workspace.
+              </p>
             </div>
           )}
           <ol className="flex flex-col gap-6" aria-label="Conversation">
@@ -1252,7 +1288,14 @@ export function AssistantPanel({
                 )}
               </div>
             </div>
-            <p className="mt-1.5 text-center text-xs text-subtle-foreground">
+            {/* The keys hint shows only while the input is empty; it keeps its line so
+                the box does not jump while typing. */}
+            <p
+              className={cn(
+                "mt-1.5 text-center text-xs text-subtle-foreground",
+                canPost && question !== "" && "invisible",
+              )}
+            >
               {canPost
                 ? "Enter to send, Shift+Enter for a new line."
                 : "Viewers can only read this shared conversation."}
