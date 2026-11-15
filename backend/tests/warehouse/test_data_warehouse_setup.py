@@ -216,3 +216,66 @@ def test_the_service_rejects_an_unknown_case_style():
     with pytest.raises(ApiError) as caught:
         _validate(_Settings("postgresql", naming_rules=rules))
     assert caught.value.details == {"field": "naming_rules.case_style"}
+
+
+# --- the audit column names (#617) ---------------------------------------------------------
+
+
+def with_a_core_table(roles: RoleClients) -> dict:
+    """Set up, then make one Core table by hand: it carries DAWAM's audit columns."""
+    assert set_up(roles).status_code == 201
+    response = roles.client("editor").post(
+        f"{url(roles)}/tables", json={"layer": "core", "name": "dim_customer", "kind": "dimension"}
+    )
+    assert response.status_code == 201, response.text
+    return roles.client("editor").get(url(roles)).json()
+
+
+def change_rules(roles: RoleClients, current: dict, **rules):
+    return roles.client("editor").patch(
+        url(roles),
+        json={"version": current["version"], "naming_rules": current["naming_rules"] | rules},
+    )
+
+
+@pytest.mark.parametrize("rule", ["created_ts_column", "updated_ts_column", "source_system_column"])
+def test_an_audit_column_name_cannot_change_once_core_or_mart_tables_exist(
+    roles: RoleClients, rule: str
+):
+    current = with_a_core_table(roles)
+
+    response = change_rules(roles, current, **{rule: "etl_renamed"})
+
+    assert response.status_code == 409, response.text
+    error = response.json()["error"]
+    assert error["code"] == "audit_names_in_use"
+    assert error["details"]["fields"] == [f"naming_rules.{rule}"]
+    after = roles.client("viewer").get(url(roles)).json()
+    assert after["naming_rules"] == current["naming_rules"]
+
+
+def test_audit_column_names_change_freely_before_any_core_or_mart_table(roles: RoleClients):
+    assert set_up(roles).status_code == 201
+    current = roles.client("editor").get(url(roles)).json()
+
+    response = change_rules(
+        roles,
+        current,
+        created_ts_column="etl_created",
+        updated_ts_column="etl_updated",
+        source_system_column="etl_source",
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["naming_rules"]["created_ts_column"] == "etl_created"
+
+
+def test_unchanged_audit_names_and_other_rules_still_save_with_tables(roles: RoleClients):
+    current = with_a_core_table(roles)
+
+    response = change_rules(roles, current, case_style="upper", fact_prefix="fct_")
+
+    assert response.status_code == 200, response.text
+    rules = response.json()["naming_rules"]
+    assert rules["fact_prefix"] == "fct_" and rules["case_style"] == "upper"
+    assert rules["created_ts_column"] == "dw_created_ts"

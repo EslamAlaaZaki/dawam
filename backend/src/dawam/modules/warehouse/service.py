@@ -23,11 +23,13 @@ from .platforms import (
     is_reserved_word,
     max_identifier_length,
 )
-from .tables import WORKSPACE_UNIQUE, DataWarehouseRecord, DwTableRecord
+from .tables import DELETED, WORKSPACE_UNIQUE, DataWarehouseRecord, DwTableRecord
 
 CaseStyle = Literal["lower", "upper"]
 Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
+AUDIT_NAME_RULES = ("created_ts_column", "updated_ts_column", "source_system_column")
+"""The naming rules the audit columns of Core and Mart tables are named by."""
 MAX_PREFIX_LENGTH = 20
 MAX_DATE_RANGE_YEARS = 200
 _PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
@@ -299,7 +301,9 @@ class DataWarehouseService:
     ) -> DataWarehouse:
         """Change the settings (``None``: leave as is). Editors and owners may, except
         that changing the platform is for owners (403 ``forbidden``) and, once the Data
-        Warehouse has tables, a Change Set (409 ``use_change_set``; see ``DwChangeService``). 404
+        Warehouse has tables, a Change Set (409 ``use_change_set``; see ``DwChangeService``).
+        The names of the Core and Mart audit columns stay as they are once such a table
+        exists (409 ``audit_names_in_use``). 404
         ``not_set_up`` before setup; 409 ``version_conflict`` if ``version`` is stale."""
         self._workspaces.authorize(user, Action.SET_UP_DATA_WAREHOUSE, workspace_id)
         with Session(self._engine) as db, db.begin():
@@ -333,6 +337,8 @@ class DataWarehouseService:
                         "The Data Warehouse has tables or KPI formulas whose types and SQL depend "
                         "on its platform. Propose the change as a Change Set instead.",
                     )
+            if naming_rules is not None:
+                self._ensure_audit_names_kept(db, record, current.naming_rules, naming_rules)
             settings = _Settings(
                 target_platform or current.target_platform,
                 layer_schemas or current.layer_schemas,
@@ -345,3 +351,32 @@ class DataWarehouseService:
             record.updated_at = self._clock()
             db.flush()
             return _view(record)
+
+    @staticmethod
+    def _ensure_audit_names_kept(
+        db: Session, record: DataWarehouseRecord, current: NamingRules, wanted: NamingRules
+    ) -> None:
+        """Every Core and Mart table carries audit columns named by these rules, as system
+        columns nobody can rename or delete: once one exists, a new name would leave the old
+        column beside the new one. 409 ``audit_names_in_use``."""
+        changed = [f for f in AUDIT_NAME_RULES if getattr(wanted, f) != getattr(current, f)]
+        if not changed:
+            return
+        in_use = db.scalar(
+            sa.select(DwTableRecord.id)
+            .where(
+                DwTableRecord.data_warehouse_id == record.id,
+                DwTableRecord.layer.in_(("core", "mart")),
+                DwTableRecord.kind != "generated",
+                DwTableRecord.status != DELETED,
+            )
+            .limit(1)
+        )
+        if in_use is not None:
+            raise ApiError(
+                409,
+                "audit_names_in_use",
+                "The audit column names cannot be changed once Core or Mart tables exist: "
+                "their audit columns already use them.",
+                {"fields": [f"naming_rules.{f}" for f in changed]},
+            )
