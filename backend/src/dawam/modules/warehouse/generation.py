@@ -66,6 +66,8 @@ from .model_service import (
     generated_table_name,
     key_name,
     mark_edited,
+    share_lock,
+    warehouse_query,
 )
 from .platforms import max_identifier_length
 from .regeneration import table_inputs
@@ -792,9 +794,23 @@ class _Planner:
     @staticmethod
     def _unconform_last(items: list[ProposedItem]) -> list[ProposedItem]:
         """A dimension stops being conformed only after every other item: a Mart item of
-        the plan may first move the reference that kept it conformed elsewhere."""
+        the plan may first move the reference that kept it conformed elsewhere, and it
+        depends on those items: accepting it applies them too, rejecting them rejects it.
+        (A plan never deletes a column or a table, so moving a reference is the only way.)"""
         out: list[ProposedItem] = []
         last: list[ProposedItem] = []
+
+        def moving_away(dimension_id: str) -> list[str]:
+            return [
+                i.key
+                for i in items
+                if i.object_type == COLUMN
+                and i.operation == "update"
+                and "references_table_id" in i.payload
+                and (i.base_values or {}).get("references_table_id") == dimension_id
+                and i.payload["references_table_id"] != dimension_id
+            ]
+
         for item in items:
             if (
                 item.object_type == TABLE
@@ -810,7 +826,7 @@ class _Planner:
                         key=f"{item.key}:unconform",
                         payload={"is_conformed": False, PROVENANCE: GENERATION},
                         base_values={"is_conformed": base.pop("is_conformed", True)},
-                        depends_on=[],
+                        depends_on=moving_away(str(item.object_id)),
                     )
                 )
                 if set(rest) - {PROVENANCE}:
@@ -1549,10 +1565,12 @@ def _uuid(value: Any) -> uuid.UUID | None:
         return None
 
 
-def _warehouse_of(db: Session, workspace_id: uuid.UUID) -> DataWarehouseRecord:
-    warehouse = db.scalars(
-        sa.select(DataWarehouseRecord).where(DataWarehouseRecord.workspace_id == workspace_id)
-    ).first()
+def _warehouse_of(
+    db: Session, workspace_id: uuid.UUID, *, share: bool = False
+) -> DataWarehouseRecord:
+    """With ``share``, locked FOR SHARE and read afresh: a table item names audit columns
+    by the naming rules, which must not change under it (see ``ModelService._warehouse``)."""
+    warehouse = db.scalars(share_lock(warehouse_query(workspace_id), share)).first()
     if warehouse is None:
         raise _invalid_item("The Data Warehouse is not set up.")
     return warehouse
@@ -1771,7 +1789,7 @@ class DwTableHandler(_Handler):
         at: datetime,
         scope: Mapping[str, Any] | None = None,
     ) -> AppliedChange:
-        warehouse = _warehouse_of(db, workspace_id)
+        warehouse = _warehouse_of(db, workspace_id, share=True)
         rules = editing_rules(lambda: at)
         if operation == "create":
             return self._create(db, workspace_id, warehouse, payload, at)

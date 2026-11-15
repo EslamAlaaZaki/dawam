@@ -495,7 +495,7 @@ class ModelService:
         self._workspaces.authorize(user, Action.EDIT_DW_SCHEMA, workspace_id)
         try:
             with Session(self._engine) as db, db.begin():
-                warehouse = self._warehouse(db, workspace_id)
+                warehouse = self._warehouse(db, workspace_id, share=True)
                 assert warehouse is not None
                 now = self._clock()
                 table = self._build_table(db, warehouse, user, fields, now)
@@ -890,11 +890,12 @@ class ModelService:
     # --- loading ---------------------------------------------------------------------
 
     def _warehouse(
-        self, db: Session, workspace_id: uuid.UUID, *, required: bool = True
+        self, db: Session, workspace_id: uuid.UUID, *, required: bool = True, share: bool = False
     ) -> DataWarehouseRecord | None:
-        warehouse = db.scalars(
-            sa.select(DataWarehouseRecord).where(DataWarehouseRecord.workspace_id == workspace_id)
-        ).first()
+        """With ``share``, the row is locked FOR SHARE, as it is read when audit columns are
+        named: a change of the naming rules (FOR UPDATE) waits for the new table, or the
+        table for the change, so no table gets audit columns under names the rules lost."""
+        warehouse = db.scalars(share_lock(warehouse_query(workspace_id), share)).first()
         if warehouse is None and required:
             raise ApiError(404, "not_set_up", "The Data Warehouse has not been set up yet.")
         return warehouse
@@ -1542,6 +1543,20 @@ def _structural(
 
 def _not_pii_derived() -> ApiError:
     return _invalid("pii_note", "Only a PII-derived column has a handling note.")
+
+
+def warehouse_query(workspace_id: uuid.UUID) -> sa.Select[tuple[DataWarehouseRecord]]:
+    return sa.select(DataWarehouseRecord).where(DataWarehouseRecord.workspace_id == workspace_id)
+
+
+def share_lock(
+    query: sa.Select[tuple[DataWarehouseRecord]], share: bool
+) -> sa.Select[tuple[DataWarehouseRecord]]:
+    """The warehouse row locked FOR SHARE and read afresh (the naming rules as committed
+    now), when ``share``."""
+    if not share:
+        return query
+    return query.with_for_update(read=True).execution_options(populate_existing=True)
 
 
 def generated_table_name(rules: NamingRules, which: str) -> str:

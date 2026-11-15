@@ -1308,3 +1308,53 @@ def test_the_built_in_date_dimension_gets_no_audit_columns(staged):
 
     for detail in (by_generation, response.json()):
         assert not [c for c in detail["columns"] if c["role"] == "audit"]
+
+
+# -- review round 2 (#617) ----------------------------------------------------------------
+
+
+def moved_away(roles: RoleClients) -> tuple[Any, Any, Any]:
+    """A plan whose Mart fact moves its foreign key off Core dim_customer, so the dimension
+    stops being conformed; proposed through the real Change Set engine."""
+    apply_plan(roles, plan(roles, [customer(), sales(), mart_sales()]))
+    mart = as_is(roles, "fact_daily_sales")
+    for column in mart["columns"]:
+        if column["role"] == "fk":
+            column["references"] = "mart.dim_region"
+    planned = plan(
+        roles, [as_is(roles, "dim_customer"), as_is(roles, "fact_sales"), region(), mart]
+    )
+    service = change_set_service(SimpleNamespace(app=roles.app))  # type: ignore[arg-type]
+    detail = service.propose(
+        roles.user("editor"),
+        roles.workspace_id,
+        origin=planned.origin,
+        scope=planned.scope,
+        title="Generate",
+        items=planned.items,
+    )
+    unconform = next(i for i in detail.items if i.payload.get("is_conformed") is False)
+    moving = next(i for i in detail.items if i.label.startswith("mart.fact_daily_sales."))
+    assert moving.id in unconform.depends_on
+    return service, detail, (unconform, moving)
+
+
+def test_accepting_only_the_unconform_item_applies_the_mart_item_it_needs(staged):
+    service, detail, (unconform, moving) = moved_away(staged)
+
+    result = service.accept(
+        staged.user("editor"), staged.workspace_id, detail.change_set.id, [unconform.id]
+    )
+
+    assert {unconform.id, moving.id} <= set(result.accepted)
+    assert conformed(staged) is False
+
+
+def test_rejecting_the_mart_item_rejects_the_unconform_item_too(staged):
+    service, detail, (unconform, moving) = moved_away(staged)
+
+    service.reject(staged.user("editor"), staged.workspace_id, detail.change_set.id, [moving.id])
+    result = service.accept(staged.user("editor"), staged.workspace_id, detail.change_set.id)
+
+    assert unconform.id not in result.accepted and moving.id not in result.accepted
+    assert conformed(staged) is True  # the Mart fact still references it

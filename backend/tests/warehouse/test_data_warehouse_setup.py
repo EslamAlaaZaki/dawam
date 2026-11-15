@@ -279,3 +279,49 @@ def test_unchanged_audit_names_and_other_rules_still_save_with_tables(roles: Rol
     rules = response.json()["naming_rules"]
     assert rules["fact_prefix"] == "fct_" and rules["case_style"] == "upper"
     assert rules["created_ts_column"] == "dw_created_ts"
+
+
+def test_the_staging_load_ts_name_still_changes_with_core_tables(roles: RoleClients):
+    current = with_a_core_table(roles)
+
+    response = change_rules(roles, current, load_ts_column="etl_loaded_at")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["naming_rules"]["load_ts_column"] == "etl_loaded_at"
+
+
+def test_a_table_made_while_the_rules_change_takes_the_new_audit_names(roles: RoleClients):
+    import threading
+
+    import sqlalchemy as sa
+
+    assert set_up(roles).status_code == 201
+    engine = roles.app.state.engine
+    made: dict = {}
+    with engine.connect() as connection:
+        change = connection.begin()  # a rule change in flight holds the row, as update does
+        connection.execute(
+            sa.text(
+                "update data_warehouses set naming_rules = (naming_rules::jsonb "
+                '|| \'{"created_ts_column": "etl_created"}\'::jsonb)::json '
+                "where workspace_id = :w"
+            ),
+            {"w": roles.workspace_id},
+        )
+        creating = threading.Thread(
+            target=lambda: made.update(
+                response=roles.client("editor").post(
+                    f"{url(roles)}/tables",
+                    json={"layer": "core", "name": "dim_customer", "kind": "dimension"},
+                )
+            )
+        )
+        creating.start()
+        creating.join(2)
+        assert creating.is_alive()  # the create waits for the change
+        change.commit()
+    creating.join(60)
+
+    assert made["response"].status_code == 201, made["response"].text
+    names = [c["name"] for c in made["response"].json()["columns"]]
+    assert "etl_created" in names and "dw_created_ts" not in names
