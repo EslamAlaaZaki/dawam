@@ -1333,7 +1333,15 @@ def moved_away(roles: RoleClients) -> tuple[Any, Any, Any]:
         title="Generate",
         items=planned.items,
     )
-    unconform = next(i for i in detail.items if i.payload.get("is_conformed") is False)
+    dim_id = tables(roles)["core.dim_customer"]["id"]
+    [unconform] = [  # the Core dimension's flag-off update, not a create of a new one
+        i
+        for i in detail.items
+        if i.operation == "update"
+        and str(i.object_id) == dim_id
+        and i.payload.get("is_conformed") is False
+    ]
+    assert unconform.position == len(detail.items) - 1
     moving = next(i for i in detail.items if i.label.startswith("mart.fact_daily_sales."))
     assert moving.id in unconform.depends_on
     return service, detail, (unconform, moving)
