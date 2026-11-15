@@ -782,7 +782,12 @@ class _Planner:
     def _dry_run(self, items: Sequence[ProposedItem]) -> None:
         """Apply the items with the real handlers, in the Change Set engine's order, and roll
         everything back: whatever an apply would refuse becomes a problem. Planning leaves no
-        trace and holds no lock once it returns."""
+        trace and holds no lock once it returns.
+
+        No savepoint is ever released: SQLAlchemy runs a session's commit hooks on a
+        RELEASE too, and the score trigger's hook then scores the warehouse from another
+        connection, which waits forever on the rows this transaction holds. A savepoint is
+        rolled back when its item fails and otherwise stays open under the next one."""
         db = self._db
         workspace_id = self._warehouse.workspace_id
         handlers: dict[str, DwTableHandler | DwColumnHandler] = {
@@ -791,7 +796,6 @@ class _Planner:
         }
         at = datetime.now(UTC)
         failed: set[str] = set()
-        outer = db.begin_nested()
         try:
             for item in items:
                 if any(d in failed for d in item.depends_on):
@@ -799,30 +803,30 @@ class _Planner:
                     continue
                 handler = handlers[item.object_type]
                 where = item.label.split(" (")[0]
+                savepoint = db.begin_nested()
                 try:
-                    with db.begin_nested():
-                        handler.validate(
-                            db, workspace_id, item.operation, item.object_id, item.payload
-                        )
-                        handler.apply(
-                            db,
-                            workspace_id,
-                            item.operation,
-                            item.object_id,
-                            item.payload,
-                            at=at,
-                            scope=SCOPE,
-                        )
+                    handler.validate(db, workspace_id, item.operation, item.object_id, item.payload)
+                    handler.apply(
+                        db,
+                        workspace_id,
+                        item.operation,
+                        item.object_id,
+                        item.payload,
+                        at=at,
+                        scope=SCOPE,
+                    )
+                    db.flush()
                 except ApiError as exc:
+                    savepoint.rollback()
                     failed.add(item.key)
                     column = exc.details.get("column")
                     self._problem(f"{where}.{column}" if column else where, exc.message)
                 except IntegrityError:
+                    savepoint.rollback()
                     failed.add(item.key)
                     self._problem(where, "A name it uses is already taken.")
         finally:
-            outer.rollback()
-            db.rollback()
+            db.rollback()  # the whole transaction, with every savepoint: no trace, no lock
 
     # -- tables to create -----------------------------------------------------------
 
@@ -1452,6 +1456,9 @@ class _Planner:
                     depends_on=[needs] if needs else [],
                 )
             )
+        audit = self._audit_item(record)
+        if audit is not None:
+            items.append(audit)
         return items
 
     def _update_column(
@@ -1821,8 +1828,7 @@ class DwTableHandler(_Handler):
             if spec.get("lookup"):
                 lookups.append((column, spec["lookup"]))
         rules._sync_scd2(db, None, workspace_id, table, at)
-        if payload.get(AUDIT_COLUMNS):
-            rules._sync_audit(db, None, workspace_id, warehouse, table, at)
+        rules._sync_audit(db, None, workspace_id, warehouse, table, at)  # every table has them
         table.generated = {f: _plain(getattr(table, f)) for f in GENERATED_TABLE_FIELDS}
         db.flush()
         for column, lookup in lookups:

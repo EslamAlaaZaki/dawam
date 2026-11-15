@@ -54,7 +54,7 @@ def test_a_member_downloads_the_mapping_sheet_with_a_row_per_branch_column(wareh
     sheets = book(response.content)
     assert list(sheets) == ["Mapping", "Branches"]
     rows = [r for r in sheets["Mapping"] if r["target_table"] == "dim_customer"]
-    assert len(rows) == 7  # 3 columns x 2 branches, plus the surrogate key
+    assert len(rows) == 10  # 3 columns x 2 branches, the surrogate key and 3 audit columns
     [cb_name] = [r for r in rows if r["branch"] == "Core Banking" and r["target_column"] == "name"]
     assert cb_name["layer"] == "mart"
     assert cb_name["input_layer"] == "core"

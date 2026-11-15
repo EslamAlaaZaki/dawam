@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 import sqlalchemy as sa
+from sqlalchemy.orm import Session
 
 from dawam.modules.assistant.internal.tools import _generated_table, _GenTable
 from dawam.modules.changesets.api import change_set_service
@@ -666,7 +667,7 @@ def has_problem(found: list[str], where: str, message: str) -> bool:
             "Only a dimension's attributes have an SCD type override.",
         ),
         (  # 6: a role name on a non-FK
-            with_columns(customer(), column_of("segment", role_name="primary")),
+            with_columns(customer(), column_of("segment", role_name="main")),
             "core.dim_customer.segment",
             "Only a foreign key has a role name.",
         ),
@@ -741,6 +742,7 @@ COUNTED = (
     "lineage_edges",
     "audit_entries",
     "activity_events",
+    "score_runs",
 )
 
 
@@ -767,6 +769,25 @@ def test_the_dry_run_leaves_no_trace_and_holds_no_lock(staged):
             sa.text("select id from dw_tables for update nowait")
         ).all()  # would fail if planning still held a row lock
     assert locked
+
+
+def test_the_dry_run_runs_no_commit_hook(staged):
+    """A released savepoint runs the session's commit hooks, and the score trigger then
+    waited forever, from another connection, on the rows the dry run held."""
+    released: list[Session] = []
+
+    def on_commit(session: Session) -> None:
+        if session.in_nested_transaction():
+            released.append(session)
+            raise AssertionError("the dry run released a savepoint")
+
+    sa.event.listen(Session, "before_commit", on_commit)
+    try:
+        plan(staged, [customer(), sales(), mart_sales(), sales(name="fact_returns")])
+    finally:
+        sa.event.remove(Session, "before_commit", on_commit)
+
+    assert released == []
 
 
 def test_new_core_and_mart_tables_get_dawams_audit_columns(staged):
@@ -917,13 +938,20 @@ def test_an_existing_hand_made_design_regenerates_and_gains_dawams_audit_columns
     from tests.warehouse.test_core_mart_model import column, dimension, fact
 
     dim = dimension(staged, scd_type=1)
+    sales_fact = fact(staged)
+    with staged.app.state.engine.begin() as connection:  # made before DAWAM added them
+        connection.execute(
+            sa.text(
+                "delete from dw_columns where is_system and role = 'audit' and table_id in (:a, :b)"
+            ),
+            {"a": dim["id"], "b": sales_fact["id"]},
+        )
     for spec in (
         column_of("customer_no", "nk"),
         {"name": "dw_created_ts", "data_type": {"type": "timestamp"}, "role": "audit"},
         {"name": "valid_from", "data_type": {"type": "timestamp"}, "role": "audit"},
     ):
         column(staged, dim["id"], **spec)
-    sales_fact = fact(staged)
     column(
         staged,
         sales_fact["id"],

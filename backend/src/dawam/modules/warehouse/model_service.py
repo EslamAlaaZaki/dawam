@@ -9,8 +9,8 @@ activity feed, in the transaction that makes it. Tables and columns carry a ``ve
 DAWAM maintains some structure itself: a dimension gets its surrogate key and an
 unknown member (key ``-1``, configurable default values), a bridge gets its group key,
 and a dimension that is, or has an attribute that is, SCD2 gets the housekeeping columns
-(``is_system``: not edited or deleted by hand). A generated table also gets the audit
-columns the naming rules name (``is_system``, role ``audit``).
+(``is_system``: not edited or deleted by hand). Every Core and Mart table also gets the
+audit columns the naming rules name (``is_system``, role ``audit``).
 """
 
 from __future__ import annotations
@@ -514,6 +514,7 @@ class ModelService:
                 self._activity(db, user, workspace_id, "dw_table.created", table)
                 self._scaffold_key(db, user, workspace_id, warehouse, table, now)
                 self._sync_scd2(db, user, workspace_id, table, now)
+                self._sync_audit(db, user, workspace_id, warehouse, table, now)
                 return _table_view(table, self._columns(db, table.id), _rules(warehouse))
         except IntegrityError as exc:
             raise self._integrity(exc) from None

@@ -69,6 +69,10 @@ def get_table(roles: RoleClients, table_id: str) -> dict:
     return response.json()
 
 
+AUDIT = ["dw_created_ts", "dw_updated_ts", "source_system"]
+"""The audit columns DAWAM adds to every Core and Mart table, under the default rules."""
+
+
 def names(detail: dict) -> list[str]:
     return [c["name"] for c in detail["columns"]]
 
@@ -110,7 +114,7 @@ def test_a_fact_records_its_grain_and_type(warehouse: RoleClients, fact_type: st
     assert created["fact_type"] == fact_type
     assert created["scd_type"] is None
     assert created["unknown_member"] is None
-    assert created["columns"] == []
+    assert names(created) == AUDIT  # only DAWAM's audit columns
     assert created["version"] == 1
 
 
@@ -162,7 +166,7 @@ def test_a_dimension_gets_a_surrogate_key_and_an_unknown_member(warehouse: RoleC
     assert created["scd_type"] == 1
     assert created["is_conformed"] is False
     assert created["unknown_member"] == {"surrogate_key": -1, "defaults": {}}
-    assert names(created) == ["dim_customer_key"]
+    assert names(created) == ["dim_customer_key", *AUDIT]
     key = created["columns"][0]
     assert key["role"] == "sk" and key["is_nullable"] is False
     assert key["data_type"] == {"type": "bigint", "length": None, "precision": None, "scale": None}
@@ -186,6 +190,7 @@ def test_making_a_dimension_scd2_adds_the_housekeeping_columns(warehouse: RoleCl
         "scd_valid_to",
         "scd_current_flag",
         "row_hash",
+        *AUDIT,
     ]
     roles = {c["name"]: c["role"] for c in created["columns"]}
     assert roles["scd_valid_from"] == "scd_valid_from"
@@ -196,17 +201,58 @@ def test_making_a_dimension_scd2_adds_the_housekeeping_columns(warehouse: RoleCl
 
     # Going SCD2 later adds them too, and leaving SCD2 takes them away again.
     other = dimension(warehouse, name="dim_product", scd_type=1)
-    assert names(other) == ["dim_product_key"]
+    assert names(other) == ["dim_product_key", *AUDIT]
     changed = warehouse.client("editor").patch(
         f"{base(warehouse)}/tables/{other['id']}", json={"version": 1, "scd_type": 2}
     )
     assert changed.status_code == 200, changed.text
-    assert len(names(get_table(warehouse, other["id"]))) == 5
+    assert len(names(get_table(warehouse, other["id"]))) == 8
     back = warehouse.client("editor").patch(
         f"{base(warehouse)}/tables/{other['id']}", json={"version": 2, "scd_type": 0}
     )
     assert back.status_code == 200
-    assert names(get_table(warehouse, other["id"])) == ["dim_product_key"]
+    assert names(get_table(warehouse, other["id"])) == ["dim_product_key", *AUDIT]
+
+
+def test_every_hand_made_core_and_mart_table_gets_dawams_audit_columns(warehouse: RoleClients):
+    made = [
+        dimension(warehouse),
+        fact(warehouse),
+        table(warehouse, layer="core", name="bridge_x", kind="bridge"),
+        dimension(warehouse, name="dim_region", layer="mart"),
+    ]
+
+    for detail in made:
+        audit = [c for c in detail["columns"] if c["role"] == "audit"]
+        assert [c["name"] for c in audit] == AUDIT
+        assert all(c["is_system"] for c in audit)
+    stamp = next(c for c in made[1]["columns"] if c["name"] == "dw_created_ts")
+    assert stamp["data_type"]["type"] == "timestamp" and stamp["is_nullable"] is False
+    # DAWAM maintains them: not edited or deleted by hand.
+    response = warehouse.client("editor").delete(
+        f"{base(warehouse)}/tables/{made[1]['id']}/columns/{stamp['id']}"
+    )
+    assert response.status_code == 422 and code_of(response) == "system_column"
+
+
+def test_hand_made_audit_columns_follow_the_naming_rules(warehouse: RoleClients):
+    current = warehouse.client("editor").get(base(warehouse)).json()
+    rules = current["naming_rules"] | {
+        "created_ts_column": "made_at",
+        "updated_ts_column": "changed_at",
+    }
+    response = warehouse.client("editor").patch(
+        base(warehouse), json={"version": current["version"], "naming_rules": rules}
+    )
+    assert response.status_code == 200, response.text
+
+    made = fact(warehouse)
+
+    assert [c["name"] for c in made["columns"] if c["role"] == "audit"] == [
+        "made_at",
+        "changed_at",
+        "source_system",
+    ]
 
 
 def test_an_scd2_attribute_override_adds_housekeeping_to_a_type_1_dimension(
@@ -366,7 +412,14 @@ def test_columns_store_neutral_data_types(warehouse: RoleClients):
     assert amount["semantic_type"] == "amount" and amount["description"] == "Approved limit"
     assert amount["is_nullable"] is True and text["is_nullable"] is False
     assert text["data_type"]["length"] == 100
-    assert [c["ordinal"] for c in get_table(warehouse, created["id"])["columns"]] == [1, 2, 3]
+    assert [c["ordinal"] for c in get_table(warehouse, created["id"])["columns"]] == [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -690,7 +743,7 @@ def test_a_bridge_table_has_a_group_key_and_two_foreign_keys(warehouse: RoleClie
     bridge = table(warehouse, layer="core", name="bridge_account_customer", kind="bridge")
 
     assert bridge["kind"] == "bridge" and bridge["scd_type"] is None
-    assert names(bridge) == ["bridge_account_customer_group_key"]
+    assert names(bridge) == ["bridge_account_customer_group_key", *AUDIT]
     assert bridge["columns"][0]["role"] == "sk"
     for target in (accounts, customers):
         column(
@@ -701,7 +754,7 @@ def test_a_bridge_table_has_a_group_key_and_two_foreign_keys(warehouse: RoleClie
             role="fk",
             references_table_id=target["id"],
         )
-    assert len(get_table(warehouse, bridge["id"])["columns"]) == 3
+    assert len(get_table(warehouse, bridge["id"])["columns"]) == 6
 
 
 # --- editing, listing, concurrency, audit ----------------------------------------------
@@ -717,8 +770,8 @@ def test_the_layers_tables_are_listed(warehouse: RoleClients):
 
     assert core.status_code == 200
     assert [t["name"] for t in core.json()["items"]] == ["dim_customer", "fact_sales"]
-    assert core.json()["items"][1]["column_count"] == 0
-    assert core.json()["items"][0]["column_count"] == 1
+    assert core.json()["items"][1]["column_count"] == 3  # the audit columns
+    assert core.json()["items"][0]["column_count"] == 4
     assert len(everything.json()["items"]) == 3
 
 

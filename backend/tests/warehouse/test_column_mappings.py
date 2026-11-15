@@ -87,6 +87,9 @@ def test_an_unmapped_table_lists_every_column_as_unmapped(warehouse, model):
     assert mapping["version"] == 0
     assert {c["column_name"]: c["mapping_type"] for c in mapping["columns"]} == {
         "dim_customer_m_key": "system",
+        "dw_created_ts": "system",  # DAWAM's audit columns
+        "dw_updated_ts": "system",
+        "source_system": "system",
         "full_name": "unmapped",
         "name": "unmapped",
     }
