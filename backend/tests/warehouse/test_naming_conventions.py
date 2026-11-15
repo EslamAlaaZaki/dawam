@@ -76,6 +76,8 @@ def test_violations_are_shown_on_tables_and_columns(warehouse):  # noqa: F811
     again = {c["name"]: c for c in get_table(warehouse, detail["id"])["columns"]}
     assert again["OrderId"]["naming_violations"][0]["expected"] == "lower"
     # DAWAM's own audit columns are never reported.
+    system = {name for name, c in again.items() if c["is_system"]}
+    assert {"dw_created_ts", "dw_updated_ts", "source_system"} <= system
     assert all(c["naming_violations"] == [] for c in again.values() if c["is_system"])
     listed = warehouse.client("viewer").get(f"{base(warehouse)}/tables").json()["items"]
     assert listed[0]["naming_violation_count"] == 2
