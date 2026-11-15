@@ -56,7 +56,13 @@ class NamingRules:
     load_ts_column: str = "load_ts"
     """The audit column of every Staging Table that says when the row was loaded."""
     source_system_column: str = "source_system"
-    """The audit column of every Staging Table that holds the System Code."""
+    """The audit column of every Staging Table that holds the System Code, and of every Core
+    and Mart table that holds the row's source system."""
+    created_ts_column: str = "dw_created_ts"
+    """The audit column of every Core and Mart table that says when the row was created."""
+    updated_ts_column: str = "dw_updated_ts"
+    """The audit column of every Core and Mart table that says when the row last changed.
+    A warehouse saved before these two rules existed reads them as their defaults."""
 
 
 @dataclass(frozen=True)
@@ -146,6 +152,8 @@ def _validate(settings: _Settings) -> None:
     audit_names = {
         "load_ts_column": rules.load_ts_column,
         "source_system_column": rules.source_system_column,
+        "created_ts_column": rules.created_ts_column,
+        "updated_ts_column": rules.updated_ts_column,
     }
     for field_name, name in audit_names.items():
         if not SAFE_IDENTIFIER.fullmatch(name) or len(name.encode()) > max_identifier_length(
@@ -162,6 +170,15 @@ def _validate(settings: _Settings) -> None:
             )
     if rules.load_ts_column.lower() == rules.source_system_column.lower():
         raise _invalid("naming_rules", "The two audit columns need different names.")
+    model_audit = [
+        rules.created_ts_column.lower(),
+        rules.updated_ts_column.lower(),
+        rules.source_system_column.lower(),
+    ]
+    if len(set(model_audit)) != len(model_audit):
+        raise _invalid(
+            "naming_rules", "The audit columns of Core and Mart tables need different names."
+        )
 
     dates = settings.date_dimension
     if dates.start_year > dates.end_year:

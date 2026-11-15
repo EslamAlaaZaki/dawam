@@ -2242,17 +2242,25 @@ TABLE_GENERATION_TASK = (
 GENERATION_NOTE = (
     "Design the Core Layer as a Kimball star schema from the staging tables: facts with a "
     "grain statement and fact type; dimensions with an SCD type (2 where history matters) and "
-    "their natural keys (role nk); measures with an additivity; foreign keys (role fk) whose "
-    "`references` is a dimension's handle or name. DAWAM adds surrogate keys, SCD2 columns and "
-    "unknown members itself. A dimension shared by several facts is conformed. Every fact can "
-    "reference the date dimension (`references`: its handle, or `date`); never model one. Give "
-    "a Core fact's foreign key a `lookup` with the staging natural-key columns (and the "
-    "as-of date for an SCD2 dimension). A column's `data_type.type` is one of smallint, "
-    "integer, bigint, decimal, float, double, boolean, char, string, text, binary, date, "
-    "time, timestamp, timestamptz, uuid, json. Add Mart facts or aggregates for the KPIs; Mart "
-    "tables reference Core conformed dimensions. Keep every existing table or column you still "
-    "want by giving its `handle` (a new name is a rename); leave the handle out only for "
-    "something new. Never propose anything in `deleted_by_users`. Follow the naming rules."
+    "their natural keys (role nk); foreign keys (role fk) whose `references` is a dimension's "
+    "handle or name. Measures (with an additivity) and degenerate dimensions belong on facts "
+    "only; a numeric property of a dimension (a balance, a rate, a budget) is an attribute. A "
+    "table that references the same dimension more than once gives each foreign key a "
+    "`role_name` (opened, resolved). Never add the columns in `dawam_adds`: DAWAM adds each "
+    "dimension's and bridge's key, the SCD2 history columns, the audit columns of every Core "
+    "and Mart table and unknown members itself, so never send a key, history or audit "
+    "column (role audit). DAWAM also names every new foreign key and derives `is_conformed` "
+    "(a dimension two or more tables reference): a foreign key's name is replaced, and "
+    "`is_conformed` is not yours to set. Every fact can reference the date dimension "
+    "(`references`: its handle, or `date`); never model one. Give every Core fact's foreign "
+    "key, except one to the date dimension, a `lookup` with the staging natural-key "
+    "columns (and the as-of date for an SCD2 dimension). A column's `data_type.type` is one "
+    "of smallint, integer, bigint, decimal, float, double, boolean, char, string, text, "
+    "binary, date, time, timestamp, timestamptz, uuid, json. Add Mart facts or aggregates "
+    "for the KPIs; a Mart table references Mart dimensions or Core dimensions that Core "
+    "tables reference too. Keep every existing table or column you still want by giving its "
+    "`handle` (a new name is a rename); leave the handle out only for something new. Never "
+    "propose anything in `deleted_by_users`. Follow the naming rules."
 )
 
 
@@ -2277,7 +2285,9 @@ class _GenColumn(BaseModel):
     data_type: dict[str, Any] = Field(
         description="`{type, length?, precision?, scale?}`; see the note for the types."
     )
-    role: Literal["sk", "nk", "fk", "measure", "attribute", "degenerate_dimension", "audit"]
+    role: Literal["sk", "nk", "fk", "measure", "attribute", "degenerate_dimension", "audit"] = (
+        Field(description="Never audit on a new column: DAWAM adds the audit columns.")
+    )
     is_nullable: bool = True
     additivity: Literal["additive", "semi_additive", "non_additive"] | None = Field(
         default=None, description="Required for a measure."
@@ -2289,7 +2299,10 @@ class _GenColumn(BaseModel):
         description="A foreign key's dimension: handle, name or `date`.",
     )
     role_name: str | None = Field(
-        default=None, max_length=128, description="For a role-playing foreign key."
+        default=None,
+        max_length=128,
+        description="For a role-playing foreign key; required when a table references the "
+        "same dimension more than once.",
     )
     description: str = Field(default="", max_length=4000)
     semantic_type: str | None = Field(default=None, max_length=64)
@@ -2312,7 +2325,6 @@ class _GenTable(BaseModel):
     ) = None
     is_aggregate: bool = False
     scd_type: Literal[0, 1, 2] | None = Field(default=None, description="A dimension's SCD type.")
-    is_conformed: bool = False
     columns: list[_GenColumn] = Field(default_factory=list, max_length=300)
 
 

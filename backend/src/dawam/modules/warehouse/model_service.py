@@ -9,7 +9,8 @@ activity feed, in the transaction that makes it. Tables and columns carry a ``ve
 DAWAM maintains some structure itself: a dimension gets its surrogate key and an
 unknown member (key ``-1``, configurable default values), a bridge gets its group key,
 and a dimension that is, or has an attribute that is, SCD2 gets the housekeeping columns
-(``is_system``: not edited or deleted by hand).
+(``is_system``: not edited or deleted by hand). A generated table also gets the audit
+columns the naming rules name (``is_system``, role ``audit``).
 """
 
 from __future__ import annotations
@@ -145,6 +146,50 @@ _HOUSEKEEPING: tuple[tuple[str, dict[str, Any], bool], ...] = (
     ("row_hash", {"type": "string", "length": 64}, False),
 )
 """Role (= column name), neutral type and nullability of each SCD2 housekeeping column."""
+HOUSEKEEPING_NAMES = tuple(name for name, _, _ in _HOUSEKEEPING)
+SOURCE_SYSTEM_LENGTH = 24
+"""The length of a source-system audit column: a System Code."""
+
+
+def key_name(table_name: str, kind: str, platform: str) -> str | None:
+    """The name of the key DAWAM adds to a dimension (its surrogate key) or a bridge (its
+    group key), shortened so it fits the platform's identifier limit; ``None`` for a fact."""
+    if kind not in ("dimension", "bridge"):
+        return None
+    suffix = "_group_key" if kind == "bridge" else "_key"
+    room = max_identifier_length(platform) - len(suffix)  # type: ignore[arg-type]
+    return f"{table_name[:room]}{suffix}"
+
+
+def audit_columns(rules: NamingRules) -> tuple[tuple[str, dict[str, Any], bool], ...]:
+    """Name, neutral type and nullability of the audit columns DAWAM adds to every Core and
+    Mart table: when the row was created and last updated, and its source system."""
+    return (
+        (rules.created_ts_column, {"type": "timestamp"}, False),
+        (rules.updated_ts_column, {"type": "timestamp"}, False),
+        (rules.source_system_column, {"type": "string", "length": SOURCE_SYSTEM_LENGTH}, False),
+    )
+
+
+def check_column_shape(table_kind: str, column: Mapping[str, Any]) -> None:
+    """The rules that need only the column and its table's kind (422 ``invalid_model``):
+    shared by the model editor, the Change Set handlers and generation planning."""
+    role = column["role"]
+    if role in ("measure", "degenerate_dimension") and table_kind != "fact":
+        raise _invalid("role", f"Only a fact has a {role.replace('_', ' ')} column.")
+    if column.get("additivity") is not None and role != "measure":
+        raise _invalid("additivity", "Only a measure has an additivity.")
+    if column.get("scd_type_override") is not None and not (
+        table_kind == "dimension" and role == "attribute"
+    ):
+        raise _invalid(
+            "scd_type_override", "Only a dimension's attributes have an SCD type override."
+        )
+    if role != "fk":
+        if column.get("references_table_id") is not None:
+            raise _invalid("references_table_id", "Only a foreign key references a table.")
+        if column.get("role_name") is not None:
+            raise _invalid("role_name", "Only a foreign key has a role name.")
 
 
 @dataclass(frozen=True)
@@ -1006,18 +1051,16 @@ class ModelService:
         now: datetime,
     ) -> DwColumnRecord | None:
         """A dimension's surrogate key or a bridge's group key, which DAWAM adds."""
-        if table.kind not in ("dimension", "bridge"):
+        name = key_name(table.name, table.kind, warehouse.target_platform)
+        if name is None:
             return None
-        suffix = "_group_key" if table.kind == "bridge" else "_key"
-        # Shortened so the key fits the platform's identifier limit.
-        room = max_identifier_length(warehouse.target_platform) - len(suffix)  # type: ignore[arg-type]
         return self._add_column(
             db,
             user,
             workspace_id,
             table,
             {
-                "name": f"{table.name[:room]}{suffix}",
+                "name": name,
                 "data_type": {"type": "bigint"},
                 "is_nullable": False,
                 "role": "sk",
@@ -1205,24 +1248,10 @@ class ModelService:
         final: dict[str, Any],
     ) -> None:
         """Rules that look at the whole column and its table."""
-        role = final["role"]
         if any(s.name.lower() == final["name"].lower() for s in siblings):
             raise _name_taken("column in this table")
-        if role in ("measure", "degenerate_dimension") and table.kind != "fact":
-            raise _invalid("role", f"Only a fact has a {role.replace('_', ' ')} column.")
-        if final["additivity"] is not None and role != "measure":
-            raise _invalid("additivity", "Only a measure has an additivity.")
-        if final["scd_type_override"] is not None and not (
-            table.kind == "dimension" and role == "attribute"
-        ):
-            raise _invalid(
-                "scd_type_override", "Only a dimension's attributes have an SCD type override."
-            )
-        if role != "fk":
-            if final["references_table_id"] is not None:
-                raise _invalid("references_table_id", "Only a foreign key references a table.")
-            if final["role_name"] is not None:
-                raise _invalid("role_name", "Only a foreign key has a role name.")
+        check_column_shape(table.kind, final)
+        if final["role"] != "fk":
             return
         if final["references_table_id"] is None:
             raise _invalid("references_table_id", "A foreign key must reference a dimension.")
@@ -1351,7 +1380,7 @@ class ModelService:
         needed = table.kind == "dimension" and (
             table.scd_type == 2 or any(c.scd_type_override == 2 for c in columns)
         )
-        present = {c.role: c for c in columns if c.is_system}
+        present = {c.role: c for c in columns if c.is_system and c.role in HOUSEKEEPING_NAMES}
         if needed:
             taken = {c.name.lower() for c in columns}
             for name, data_type, nullable in _HOUSEKEEPING:
@@ -1404,6 +1433,49 @@ class ModelService:
                 db.flush()
                 for ordinal, remaining in enumerate(self._columns(db, table.id), start=1):
                     remaining.ordinal = ordinal
+
+    def _sync_audit(
+        self,
+        db: Session,
+        user: User | None,
+        workspace_id: uuid.UUID,
+        warehouse: DataWarehouseRecord,
+        table: DwTableRecord,
+        now: datetime,
+    ) -> list[str]:
+        """Add the audit columns a Core or Mart table lacks (system columns, role ``audit``,
+        named by the naming rules); a column that already has one of those names is kept
+        and gets no duplicate. The names added."""
+        columns = self._columns(db, table.id)
+        taken = {c.name.lower() for c in columns}
+        added: list[str] = []
+        for name, data_type, nullable in audit_columns(_rules(warehouse)):
+            if name.lower() in taken:
+                continue
+            column = DwColumnRecord(
+                id=uuid.uuid4(),
+                table_id=table.id,
+                name=name,
+                ordinal=len(columns) + len(added) + 1,
+                data_type={"length": None, "precision": None, "scale": None, **data_type},
+                is_nullable=nullable,
+                role="audit",
+                additivity=None,
+                scd_type_override=None,
+                references_table_id=None,
+                role_name=None,
+                description="",
+                semantic_type=None,
+                is_system=True,
+                created_at=now,
+                updated_at=now,
+                version=1,
+            )
+            db.add(column)
+            db.flush()
+            self._audit_column_created(db, user, workspace_id, column, now)
+            added.append(name)
+        return added
 
     # --- bookkeeping -----------------------------------------------------------------
 
@@ -1501,7 +1573,8 @@ def _system_column() -> ApiError:
     return ApiError(
         422,
         "system_column",
-        "DAWAM maintains this column (SCD2 housekeeping); change the dimension's SCD type instead.",
+        "DAWAM maintains this column (SCD2 housekeeping or audit); for housekeeping, change the "
+        "dimension's SCD type instead.",
         {"field": "id"},
     )
 
