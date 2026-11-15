@@ -1103,6 +1103,7 @@ class ModelService:
             .where(
                 DwColumnRecord.references_table_id == table.id,
                 DwTableRecord.layer != table.layer,
+                DwTableRecord.status != DELETED,
             )
         )
         if used:

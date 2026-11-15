@@ -452,13 +452,10 @@ class GenerationService:
             out["is_conformed"] = True
         if table.kind == "generated":
             return out  # DAWAM maintains its columns
-        audit = {name.lower() for name, _, _ in audit_columns(_rules(model.warehouse))}
         out["dawam_columns"] = [
             c.name
             for c in model.columns[table.id]
-            if c.is_system
-            or (c.role == "sk" and table.kind in ("dimension", "bridge"))
-            or (c.role == "audit" and c.name.lower() in audit)
+            if c.is_system or (c.role == "sk" and table.kind in ("dimension", "bridge"))
         ]
         out["columns"] = [
             {
@@ -627,7 +624,7 @@ class _Planner:
                 for table in model.tables:
                     if table.layer == layer and table.id not in planned:
                         items += self._untouched_table(table)
-        items = self._after_conformed(items)
+        items = self._unconform_last(self._after_conformed(items))
         if not self._problems:
             self._dry_run(items)
         if self._problems:
@@ -664,10 +661,22 @@ class _Planner:
             else:
                 continue
             in_plan.add(own)
+            handles = (
+                {model.handle_of[c.id] for c in model.columns[record.id] if not c.is_system}
+                if record is not None
+                else set()
+            )
             for column in spec.columns:
-                if column.role == "fk" and column.references:
-                    target = targets.get(column.references.lower())
-                    add(target.id if target else None, own)
+                if column.role != "fk" or not column.references:
+                    continue
+                if (
+                    record is not None
+                    and column.handle not in handles
+                    and f"{record.layer}.{record.name}.{column.name}".lower() in model.tombstoned
+                ):
+                    continue  # a user deleted it: the plan does not add it again
+                target = targets.get(column.references.lower())
+                add(target.id if target else None, own)
             if record is not None:
                 kept = {c.handle for c in spec.columns if c.handle}
                 for existing in model.columns[record.id]:
@@ -681,7 +690,8 @@ class _Planner:
             if target.kind != "dimension":
                 continue
             target.derived_conformed = len(refs.get(target.id, ())) >= 2
-            if target.keeps_conformed:
+            if target.keeps_conformed or (self._scoped and target.id not in in_plan):
+                # A member's flag stands; a one-table regeneration changes no other table.
                 assert target.record is not None
                 target.is_conformed = target.record.is_conformed
             else:
@@ -778,6 +788,36 @@ class _Planner:
                     item = replace(item, depends_on=[*item.depends_on, *extra])
             out.append(item)
         return out
+
+    @staticmethod
+    def _unconform_last(items: list[ProposedItem]) -> list[ProposedItem]:
+        """A dimension stops being conformed only after every other item: a Mart item of
+        the plan may first move the reference that kept it conformed elsewhere."""
+        out: list[ProposedItem] = []
+        last: list[ProposedItem] = []
+        for item in items:
+            if (
+                item.object_type == TABLE
+                and item.operation == "update"
+                and not item.is_conflict
+                and item.payload.get("is_conformed") is False
+            ):
+                rest = {k: v for k, v in item.payload.items() if k != "is_conformed"}
+                base = dict(item.base_values or {})
+                last.append(
+                    replace(
+                        item,
+                        key=f"{item.key}:unconform",
+                        payload={"is_conformed": False, PROVENANCE: GENERATION},
+                        base_values={"is_conformed": base.pop("is_conformed", True)},
+                        depends_on=[],
+                    )
+                )
+                if set(rest) - {PROVENANCE}:
+                    out.append(replace(item, payload=rest, base_values=base))
+                continue
+            out.append(item)
+        return out + last
 
     def _dry_run(self, items: Sequence[ProposedItem]) -> None:
         """Apply the items with the real handlers, in the Change Set engine's order, and roll

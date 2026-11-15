@@ -17,7 +17,8 @@ from dawam.modules.changesets.api import change_set_service
 from dawam.modules.jobs import JobService
 from dawam.modules.llm import LlmError, Reply
 from dawam.modules.warehouse import GenerationService
-from dawam.modules.warehouse.generation import DwTableHandler, GenerationPlan
+from dawam.modules.warehouse.generation import DwTableHandler, GenerationPlan, _Planner
+from dawam.modules.warehouse.score_trigger import ScoreScheduler
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.errors import ApiError
 from tests.assistant.test_chat import ask, conversation, tool
@@ -712,14 +713,114 @@ def test_two_foreign_keys_to_one_dimension_need_role_names(staged):
     apply_plan(staged, planned)
 
 
-def test_a_plan_applies_cleanly_through_the_handlers(staged):
-    planned = plan(staged, [customer(), sales(), sales(name="fact_returns"), mart_sales()])
+def as_is(roles: RoleClients, of: str, **overrides: Any) -> dict[str, Any]:
+    """An existing table as a regeneration describes it unchanged: by handle, with its
+    columns by handle (DAWAM's own left out)."""
+    table = next(t for t in inputs(roles)["existing"] if t["name"] == of)
+    spec = {
+        k: v
+        for k, v in {
+            "handle": table["handle"],
+            "layer": table["layer"],
+            "name": table["name"],
+            "kind": table["kind"],
+            "description": table.get("description"),
+            "grain": table.get("grain"),
+            "fact_type": table.get("fact_type"),
+            "is_aggregate": table.get("is_aggregate"),
+            "scd_type": table.get("scd_type"),
+            "columns": [
+                {
+                    k: v
+                    for k, v in {
+                        "handle": c["handle"],
+                        "name": c["name"],
+                        "data_type": c["type"],
+                        "role": c["role"],
+                        "additivity": c.get("additivity"),
+                        "references": c.get("references"),
+                        "role_name": c.get("role_name"),
+                    }.items()
+                    if v is not None
+                }
+                for c in table["columns"]
+                if c["role"] != "sk" or table["kind"] == "fact"
+            ],
+        }.items()
+        if v is not None
+    }
+    return spec | overrides
+
+
+def numeric(name: str, role: str = "attribute", **extra: Any) -> dict[str, Any]:
+    return {"name": name, "data_type": {"type": "integer"}, "role": role} | extra
+
+
+def account(**overrides: Any) -> dict[str, Any]:
+    return {
+        "layer": "core",
+        "name": "dim_account",
+        "kind": "dimension",
+        "columns": [
+            column_of("account_no", "nk"),
+            column_of("tier", scd_type_override=2),  # SCD2 history on a type-1 dimension
+        ],
+    } | overrides
+
+
+def bridge(**overrides: Any) -> dict[str, Any]:
+    return {
+        "layer": "core",
+        "name": "bridge_account_customer",
+        "kind": "bridge",
+        "columns": [
+            numeric("account_key", "fk", references="dim_account"),
+            numeric("customer_key", "fk", references="dim_customer"),
+            numeric("share_pct"),
+        ],
+    } | overrides
+
+
+VARIED = {
+    "role-playing dates": lambda: [
+        customer(),
+        with_columns(
+            sales(),
+            numeric("opened", "fk", references="date", role_name="opened"),
+            numeric("closed", "fk", references="date", role_name="closed"),
+        ),
+    ],
+    "a bridge and an SCD2 override": lambda: [customer(), account(), bridge(), sales()],
+    "a Mart fact on a conformed Core dimension": lambda: [
+        customer(),
+        sales(),
+        sales(name="fact_returns"),
+        mart_sales(),
+    ],
+}
+
+
+@pytest.mark.parametrize("name", list(VARIED))
+def test_a_plan_applies_cleanly_through_the_handlers(staged, name):
+    planned = plan(staged, VARIED[name]())
 
     apply_plan(staged, planned)
 
-    model_tables = tables(staged)
-    assert {"core.dim_customer", "core.fact_sales", "core.fact_returns"} <= set(model_tables)
-    assert "mart.fact_daily_sales" in model_tables
+    assert {i.label.split(" (")[0] for i in planned.items if i.operation == "create"} <= set(
+        tables(staged)
+    )
+
+
+def test_a_regeneration_with_update_items_applies_cleanly(staged):
+    apply_plan(staged, plan(staged, [customer(), sales()]))
+    dim = as_is(staged, "dim_customer", description="Customers, renamed.", name="dim_client")
+    dim["columns"].append(column_of("segment"))
+
+    planned = plan(staged, [dim, as_is(staged, "fact_sales"), sales(name="fact_returns")])
+
+    assert {i.operation for i in planned.items} == {"create", "update"}
+    apply_plan(staged, planned)
+    assert "segment" in {c["name"] for c in tables(staged)["core.dim_client"]["columns"]}
 
 
 def test_a_rule_nobody_listed_still_stops_the_plan_through_the_dry_run(staged, monkeypatch):
@@ -755,20 +856,36 @@ def counts(roles: RoleClients) -> dict[str, int]:
         }
 
 
-def test_the_dry_run_leaves_no_trace_and_holds_no_lock(staged):
+def test_the_dry_run_leaves_no_trace_and_asks_for_no_score(staged, monkeypatch):
+    requested: list[Any] = []  # a score asked for now would run later, in the background
+    monkeypatch.setattr(ScoreScheduler, "request", lambda _self, w: requested.append(w))
     before = counts(staged)
 
     plan(staged, [customer(), sales(), mart_sales(), sales(name="fact_returns")])
     plan(staged, [customer(), sales()])  # again, in one job
 
     assert counts(staged) == before
+    assert requested == []
+
+
+def test_the_dry_run_releases_its_locks_before_planning_goes_on(staged, monkeypatch):
     apply_plan(staged, plan(staged, [customer(), sales()]))
-    plan(staged, [again(staged, description="Regenerated.")])  # locks existing rows
-    with staged.app.state.engine.connect() as connection:
-        locked = connection.execute(
-            sa.text("select id from dw_tables for update nowait")
-        ).all()  # would fail if planning still held a row lock
-    assert locked
+    dry_run = _Planner._dry_run
+    locked: list[int] = []
+
+    def then_lock(self: Any, items: Any) -> None:
+        dry_run(self, items)
+        # Planning's session is still open: the rows the dry run touched must be free.
+        with staged.app.state.engine.connect() as connection:
+            for table in ("data_warehouses", "dw_tables", "dw_columns"):
+                rows = connection.execute(sa.text(f"select id from {table} for update nowait"))
+                locked.append(len(rows.all()))
+
+    monkeypatch.setattr(_Planner, "_dry_run", then_lock)
+
+    plan(staged, [again(staged, description="Regenerated."), as_is(staged, "fact_sales")])
+
+    assert len(locked) == 3 and all(locked)
 
 
 def test_the_dry_run_runs_no_commit_hook(staged):
@@ -961,6 +1078,8 @@ def test_an_existing_hand_made_design_regenerates_and_gains_dawams_audit_columns
         references_table_id=dim["id"],
     )
     read = {t["name"]: t for t in inputs(staged)["existing"]}
+    # The member's own audit column is theirs, not one DAWAM added.
+    assert "dw_created_ts" not in read["dim_customer"]["dawam_columns"]
     as_is = [
         {
             k: v
@@ -1032,3 +1151,160 @@ def test_the_inputs_list_the_columns_dawam_adds(app, services, staged, model, fa
         "dw_updated_ts",
         "source_system",
     }
+
+
+# -- review round 1 (#617) ----------------------------------------------------------------
+
+
+def delete_table(roles: RoleClients, name: str) -> None:
+    response = roles.client("owner").delete(f"{dw(roles)}/tables/{tables(roles)[name]['id']}")
+    assert response.status_code == 204, response.text
+
+
+def conformed(roles: RoleClients, name: str = "core.dim_customer") -> bool:
+    return tables(roles)[name]["is_conformed"]
+
+
+def region() -> dict[str, Any]:
+    return {
+        "layer": "mart",
+        "name": "dim_region",
+        "kind": "dimension",
+        "columns": [column_of("region_code", "nk")],
+    }
+
+
+def test_a_dimension_stops_being_conformed_after_the_mart_moves_its_reference(staged):
+    apply_plan(staged, plan(staged, [customer(), sales(), mart_sales()]))
+    assert conformed(staged)
+    mart = as_is(staged, "fact_daily_sales")
+    for column in mart["columns"]:
+        if column["role"] == "fk":
+            column["references"] = "mart.dim_region"  # kept by handle, pointed elsewhere
+
+    planned = plan(
+        staged,
+        [as_is(staged, "dim_customer"), as_is(staged, "fact_sales"), region(), mart],
+    )
+
+    assert planned.items[-1].key.endswith(":unconform")  # after the Mart item
+    apply_plan(staged, planned)
+    assert conformed(staged) is False
+
+
+def test_a_deleted_mart_table_does_not_keep_a_dimension_conformed(staged):
+    apply_plan(staged, plan(staged, [customer(), sales(), mart_sales()]))
+    delete_table(staged, "mart.fact_daily_sales")
+
+    planned = plan(staged, [as_is(staged, "dim_customer"), as_is(staged, "fact_sales")])
+
+    apply_plan(staged, planned)
+    assert conformed(staged) is False
+
+
+def test_a_one_table_regeneration_keeps_the_stored_flag_of_other_dimensions(staged):
+    apply_plan(staged, plan(staged, [customer(), sales(), mart_sales()]))
+    delete_table(staged, "core.fact_sales")  # derived: no longer conformed; stored: still
+    mart = as_is(staged, "fact_daily_sales", description="Daily sales.")
+
+    planned = plan(staged, [mart], table=mart["handle"])
+
+    assert all(i.label.startswith("mart.fact_daily_sales") for i in planned.items)
+    apply_plan(staged, planned)
+    assert conformed(staged) is True
+
+
+def test_a_one_table_regeneration_reports_a_dimension_that_is_not_conformed(staged):
+    from tests.warehouse.test_core_mart_model import column, fact
+
+    apply_plan(staged, plan(staged, [customer(), sales()]))
+    other = fact(staged, name="fact_visits")  # by hand: derived conformed, stored not
+    column(
+        staged,
+        other["id"],
+        name="dim_customer_key",
+        data_type={"type": "bigint"},
+        role="fk",
+        references_table_id=tables(staged)["core.dim_customer"]["id"],
+    )
+    fact(staged, name="fact_m", layer="mart")
+    mart = with_columns(
+        as_is(staged, "fact_m"), numeric("customer_key", "fk", references="core.dim_customer")
+    )
+
+    found = problems_of(staged, [mart], table=mart["handle"])
+
+    assert has_problem(found, "mart.fact_m.customer_key", "reference it from Core as well"), found
+
+
+def problems_of(roles: RoleClients, model_tables: list[dict[str, Any]], **kwargs: Any) -> list:
+    with pytest.raises(ApiError) as caught:
+        plan(roles, model_tables, **kwargs)
+    assert caught.value.code == "invalid_generation"
+    return caught.value.details["problems"]
+
+
+def test_a_foreign_key_a_user_deleted_does_not_count_as_a_reference(staged):
+    apply_plan(staged, plan(staged, [customer(), sales()]))
+    fact_table = tables(staged)["core.fact_sales"]
+    fk = next(c for c in fact_table["columns"] if c["name"] == "dim_customer_key")
+    response = staged.client("editor").delete(
+        f"{dw(staged)}/tables/{fact_table['id']}/columns/{fk['id']}"
+    )
+    assert response.status_code == 204, response.text
+    again_sales = with_columns(
+        as_is(staged, "fact_sales"),
+        numeric("dim_customer_key", "fk", references="dim_customer"),  # tombstoned
+    )
+
+    planned = plan(staged, [as_is(staged, "dim_customer"), again_sales, sales(name="fact_returns")])
+
+    assert not any(i.payload.get("is_conformed") for i in planned.items)
+
+
+def test_a_one_table_regeneration_changes_only_that_table(staged):
+    apply_plan(staged, plan(staged, [customer(), sales()]))
+    with staged.app.state.engine.begin() as connection:  # saved before DAWAM added them
+        connection.execute(sa.text("delete from dw_columns where is_system and role = 'audit'"))
+    fact_sales = as_is(staged, "fact_sales")
+
+    planned = plan(staged, [fact_sales], table=fact_sales["handle"])
+
+    fact_id = tables(staged)["core.fact_sales"]["id"]
+    assert [i.key for i in planned.items] == [f"a:{fact_id}"]
+
+
+def test_a_whole_regeneration_recomputes_a_generated_dimensions_flag(staged):
+    apply_plan(staged, plan(staged, [customer(), sales()]))
+    dim_id = tables(staged)["core.dim_customer"]["id"]
+
+    planned = plan(
+        staged,
+        [as_is(staged, "dim_customer"), as_is(staged, "fact_sales"), sales(name="fact_returns")],
+    )
+
+    [item] = [i for i in planned.items if i.key == f"u:{dim_id}"]
+    assert item.payload["is_conformed"] is True and item.is_conflict is False
+
+
+def test_a_hand_made_dimensions_flag_is_never_changed(staged):
+    from tests.warehouse.test_core_mart_model import column, dimension
+
+    dim = dimension(staged)
+    column(staged, dim["id"], **column_of("customer_no", "nk"))
+
+    planned = plan(staged, [sales(), sales(name="fact_returns")])  # derived conformed
+
+    assert not any("is_conformed" in i.payload for i in planned.items if i.object_id == dim["id"])
+    apply_plan(staged, planned)
+    assert conformed(staged) is False
+
+
+def test_the_built_in_date_dimension_gets_no_audit_columns(staged):
+    apply_plan(staged, plan(staged, [customer(), sales()]))  # generation adds it
+    by_generation = tables(staged)["core.dim_date"]
+    response = staged.client("editor").post(f"{dw(staged)}/tables/generated", json={"kind": "time"})
+    assert response.status_code == 201, response.text
+
+    for detail in (by_generation, response.json()):
+        assert not [c for c in detail["columns"] if c["role"] == "audit"]
