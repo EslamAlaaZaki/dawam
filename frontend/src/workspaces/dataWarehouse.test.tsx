@@ -52,6 +52,8 @@ const SET_UP: DataWarehouse = {
     bridge_prefix: "b_",
     load_ts_column: "load_ts",
     source_system_column: "source_system",
+    created_ts_column: "etl_created",
+    updated_ts_column: "etl_updated",
   },
   date_dimension: {
     start_year: 2010,
@@ -279,6 +281,26 @@ describe("the Data Warehouse folder after setup", () => {
       naming_rules: { fact_prefix: "fct_" },
     });
     expect(sent[0]!.body).not.toHaveProperty("target_platform");
+  });
+
+  it("keeps the audit column names the form does not show", async () => {
+    const sent: Sent[] = [];
+    open("editor", SET_UP, "dw", sent);
+
+    fireEvent.change(await screen.findByLabelText("Fact prefix"), {
+      target: { value: "fct_" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]!.body).toMatchObject({
+      naming_rules: {
+        load_ts_column: "load_ts",
+        source_system_column: "source_system",
+        created_ts_column: "etl_created",
+        updated_ts_column: "etl_updated",
+      },
+    });
   });
 
   it("stays in the Data Warehouse folder after the setup succeeds", async () => {

@@ -6648,7 +6648,7 @@ export interface components {
             semantic_type: string | null;
             /**
              * Is System
-             * @description DAWAM maintains it (SCD2 housekeeping).
+             * @description DAWAM maintains it (SCD2 housekeeping or audit).
              */
             is_system: boolean;
             /** Version */
@@ -9089,10 +9089,22 @@ export interface components {
             load_ts_column: string;
             /**
              * Source System Column
-             * @description Name of the System Code audit column of Staging Tables.
+             * @description Name of the System Code audit column of Staging Tables, and of the source-system audit column of Core and Mart tables.
              * @default source_system
              */
             source_system_column: string;
+            /**
+             * Created Ts Column
+             * @description Name of the row-created audit column of Core and Mart tables.
+             * @default dw_created_ts
+             */
+            created_ts_column: string;
+            /**
+             * Updated Ts Column
+             * @description Name of the row-updated audit column of Core and Mart tables.
+             * @default dw_updated_ts
+             */
+            updated_ts_column: string;
         };
         /** NamingViolation */
         NamingViolation: {
@@ -10713,7 +10725,9 @@ export interface components {
              *       "fact_prefix": "fact_",
              *       "bridge_prefix": "bridge_",
              *       "load_ts_column": "load_ts",
-             *       "source_system_column": "source_system"
+             *       "source_system_column": "source_system",
+             *       "created_ts_column": "dw_created_ts",
+             *       "updated_ts_column": "dw_updated_ts"
              *     }
              */
             naming_rules: components["schemas"]["NamingRules"];

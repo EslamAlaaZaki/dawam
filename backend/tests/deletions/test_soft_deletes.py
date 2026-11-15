@@ -267,7 +267,8 @@ def test_purging_a_table_names_the_kpis_that_lose_their_links(warehouse: RoleCli
 
     preview = owner.get(f"{deleted(warehouse)}/tables/{sales['id']}").json()
 
-    assert preview["column_names"] == ["amount"]
+    # Every column the purge takes: DAWAM's audit columns, then the measure.
+    assert preview["column_names"] == ["dw_created_ts", "dw_updated_ts", "source_system", "amount"]
     assert [k["name"] for k in preview["unlinked_kpis"]] == ["Revenue"]
     assert owner.delete(f"{deleted(warehouse)}/tables/{sales['id']}").status_code == 204
     links = owner.get(f"{kpis_path(warehouse)}/{kpi['id']}/links").json()

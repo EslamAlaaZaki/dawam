@@ -18,6 +18,12 @@ model then reads what that table's mapping reads and describes only that table, 
 Change Set's scope names it. Only an item of a generation Change Set applies as the
 generator's (an item of any other Change Set, e.g. from ``propose_changes``, is a user edit).
 
+A plan that is collected always applies (#617): planning checks the rules the handlers
+enforce, then dry-runs the items through the handlers in a savepoint it always rolls back.
+DAWAM adds what is mechanical: the audit columns of every Core and Mart table, the names of
+new foreign keys (after the key they point to) and ``is_conformed`` (two or more tables
+reference the dimension); the model never sends them.
+
 ``DwTableHandler`` and ``DwColumnHandler`` are the ``changesets`` engine's handlers for
 ``dw_table`` and ``dw_column`` items (Core and Mart creates and updates).
 """
@@ -29,10 +35,11 @@ import hashlib
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
@@ -40,10 +47,12 @@ from dawam.modules.changesets import AppliedChange, ProposedItem
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.errors import ApiError
 
+from .calendar import DATE_KEY
 from .mapping_service import MappingService
 from .model_service import (
     GENERATED_COLUMN_FIELDS,
     GENERATED_TABLE_FIELDS,
+    HOUSEKEEPING_NAMES,
     MODEL_KINDS,
     MODEL_LAYERS,
     _column_snapshot,
@@ -51,12 +60,19 @@ from .model_service import (
     _plain,
     _rules,
     _table_snapshot,
+    audit_columns,
+    check_column_shape,
     editing_rules,
     generated_table_name,
+    key_name,
     mark_edited,
+    share_lock,
+    warehouse_query,
 )
 from .platforms import max_identifier_length
 from .regeneration import table_inputs
+from .service import NamingRules
+from .staging_naming import stable_hash
 from .tables import (
     DELETED,
     ColumnMappingRecord,
@@ -68,6 +84,9 @@ from .tables import (
 
 TABLE = "dw_table"
 COLUMN = "dw_column"
+AUDIT_COLUMNS = "audit_columns"
+"""``payload[AUDIT_COLUMNS]`` of a table create or update: DAWAM adds the audit columns the
+naming rules name (a column that already has one of those names is kept)."""
 SCOPE: Mapping[str, Any] = {"kind": "dw_generation"}
 """The scope of a generation Change Set: a newer generation supersedes a pending one."""
 PROVENANCE = "provenance"
@@ -117,8 +136,8 @@ class GeneratedTable:
     fact_type: str | None = None
     is_aggregate: bool = False
     scd_type: int | None = None
-    is_conformed: bool = False
     columns: Sequence[GeneratedColumn] = ()
+    """``is_conformed`` is not the model's: DAWAM derives it from the references."""
 
 
 @dataclass(frozen=True)
@@ -152,6 +171,18 @@ class GenerationPlan:
 
 def _invalid(message: str, problems: Sequence[str] = ()) -> ApiError:
     return ApiError(422, "invalid_generation", message, {"problems": list(problems)})
+
+
+def _reserved_message(name: str) -> str:
+    return f"DAWAM adds a column named {name} to this table itself; leave it out."
+
+
+def _fk_collision(name: str) -> str:
+    return (
+        f"DAWAM names this foreign key {name}, after the key it points to, and another "
+        "column of the table has that name: rename that column, or give the foreign key a "
+        "role name."
+    )
 
 
 def _handles(prefix: str, ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
@@ -301,6 +332,26 @@ def _free_name(name: str, taken: set[str], limit: int) -> str:
     raise _invalid(f"No free name for {name}.")  # pragma: no cover
 
 
+def _dawam_adds(rules: NamingRules, platform: str) -> dict[str, Any]:
+    """What DAWAM adds to the tables the model describes, so the model never adds it."""
+    history = list(HOUSEKEEPING_NAMES)
+    return {
+        "dimension": {
+            "key": key_name("<table name>", "dimension", platform),
+            "history_columns": history,
+            "history_note": "Added to a dimension with scd_type 2 or an attribute with "
+            "scd_type_override 2.",
+        },
+        "bridge": {"key": key_name("<table name>", "bridge", platform)},
+        "every_core_and_mart_table": [name for name, _, _ in audit_columns(rules)],
+        "foreign_key_names": "DAWAM names every new foreign key after the key it points to "
+        "(dim_customer_key), or <role_name>_<key name> with a role name; the name you send is "
+        "replaced.",
+        "is_conformed": "DAWAM derives it: a dimension is conformed when two or more tables "
+        "reference it. Do not send it.",
+    }
+
+
 class GenerationService:
     def __init__(self, engine: sa.Engine, *, workspaces: WorkspaceService) -> None:
         self._engine = engine
@@ -363,6 +414,7 @@ class GenerationService:
                     "bridge_prefix": rules.bridge_prefix,
                 },
                 "staging": [{"name": n, "columns": cs} for n, cs in staged.items()],
+                "dawam_adds": _dawam_adds(rules, warehouse.target_platform),
                 "existing": [self._existing(model, t) for t in model.tables],
                 "date_dimension": {
                     "handle": model.handle_of[date.id] if date else DATE_HANDLE,
@@ -402,6 +454,11 @@ class GenerationService:
             out["is_conformed"] = True
         if table.kind == "generated":
             return out  # DAWAM maintains its columns
+        out["dawam_columns"] = [
+            c.name
+            for c in model.columns[table.id]
+            if c.is_system or (c.role == "sk" and table.kind in ("dimension", "bridge"))
+        ]
         out["columns"] = [
             {
                 k: v
@@ -453,8 +510,9 @@ class GenerationService:
                     f"This regeneration is limited to {only.layer}.{only.name}: describe only "
                     f"that table, with its handle {model.handle_of[only.id]!r}."
                 )
-            plan = _Planner(db, model).plan(tables)
-            return replace(plan, table_id=only.id) if only is not None else plan
+            only_id = only.id if only is not None else None
+            plan = _Planner(db, model, scoped=only is not None).plan(tables)
+            return replace(plan, table_id=only_id) if only_id is not None else plan
 
 
 @dataclass
@@ -469,19 +527,37 @@ class _Target:
     nk_count: int
     item_key: str | None
     """The create item it depends on, when the plan creates it."""
+    key: str | None = None
+    """The name of its key, which a foreign key to it is named after."""
+    record: DwTableRecord | None = None
+    derived_conformed: bool = False
+    """Two or more tables reference it once the plan is applied."""
+
+    @property
+    def keeps_conformed(self) -> bool:
+        """A member set the flag of this existing table (by hand, or on a table they made):
+        it is kept, as other hand-edited fields are."""
+        record = self.record
+        return record is not None and (
+            record.generation_key is None or "is_conformed" in record.edited_fields
+        )
 
 
 class _Planner:
-    def __init__(self, db: Session, model: _Model) -> None:
+    def __init__(self, db: Session, model: _Model, *, scoped: bool = False) -> None:
         self._db = db
         self._model = model
+        self._scoped = scoped
+        """A regeneration of one table: the other existing tables are left as they are."""
         self._warehouse = model.warehouse
         self._platform = model.warehouse.target_platform
         self._rules = editing_rules(lambda: datetime.min)
         self._limit = max_identifier_length(self._platform)  # type: ignore[arg-type]
+        self._audit = [name for name, _, _ in audit_columns(_rules(model.warehouse))]
         self._problems: list[str] = []
         self._notes: list[GenerationNote] = []
         self._renamed: set[tuple[str, str]] = set()  # (layer, name) a rename of the plan takes
+        self._by_id: dict[uuid.UUID, _Target] = {}
 
     def _problem(self, where: str, message: str) -> None:
         self._problems.append(f"{where}: {message}")
@@ -526,21 +602,33 @@ class _Planner:
 
         creates = self._creates(matched)
         targets = self._targets(matched, creates)
+        self._conform(matched, creates, targets)
         date_item = self._date_item(matched, targets)
         items: list[ProposedItem] = []
         if date_item is not None:
             items.append(date_item)
-        new_items: list[tuple[str, str, int, ProposedItem]] = []
-        for index, (spec, record) in enumerate(matched):
-            if record is None and index in creates:
-                item = self._create_table(spec, creates[index], targets)
-                if item is not None:
-                    new_items.append((spec.layer, spec.kind, index, item))
-        new_items.sort(key=lambda t: (t[0] != "core", _KIND_ORDER[t[1]], t[2]))
-        items += [i for *_, i in new_items]
-        for spec, record in matched:
-            if record is not None:
-                items += self._update_table(spec, record, targets)
+        # Layer by layer, creates before updates: a Mart table may need a Core dimension
+        # created, or made conformed, before it.
+        planned = {r.id for _, r in matched if r is not None}
+        for layer in MODEL_LAYERS:
+            new_items: list[tuple[str, int, ProposedItem]] = []
+            for index, (spec, record) in enumerate(matched):
+                if record is None and index in creates and spec.layer == layer:
+                    item = self._create_table(spec, creates[index], targets)
+                    if item is not None:
+                        new_items.append((spec.kind, index, item))
+            new_items.sort(key=lambda t: (_KIND_ORDER[t[0]], t[1]))
+            items += [i for *_, i in new_items]
+            for spec, record in matched:
+                if record is not None and record.layer == layer:
+                    items += self._update_table(spec, record, targets)
+            if not self._scoped:
+                for table in model.tables:
+                    if table.layer == layer and table.id not in planned:
+                        items += self._untouched_table(table)
+        items = self._unconform_last(self._after_conformed(items))
+        if not self._problems:
+            self._dry_run(items)
         if self._problems:
             raise _invalid(
                 f"The model has {len(self._problems)} problem(s); fix them and call again.",
@@ -548,6 +636,253 @@ class _Planner:
             )
         origin = "regeneration" if any(t.generation_key for t in model.tables) else "ai"
         return GenerationPlan(origin, items, self._notes)
+
+    # -- what DAWAM derives and adds ------------------------------------------------
+
+    def _conform(
+        self,
+        matched: Sequence[tuple[GeneratedTable, DwTableRecord | None]],
+        creates: Mapping[int, tuple[uuid.UUID, str, list[dict[str, str]]]],
+        targets: Mapping[str, _Target],
+    ) -> None:
+        """Derive each dimension's ``is_conformed`` from the model as it will be after the
+        plan: conformed when two or more tables reference it. A member's flag is kept."""
+        model = self._model
+        refs: dict[uuid.UUID, set[uuid.UUID]] = {}
+
+        def add(dimension_id: uuid.UUID | None, table_id: uuid.UUID) -> None:
+            if dimension_id is not None and dimension_id != table_id:
+                refs.setdefault(dimension_id, set()).add(table_id)
+
+        in_plan: set[uuid.UUID] = set()
+        for index, (spec, record) in enumerate(matched):
+            if record is not None:
+                own = record.id
+            elif index in creates:
+                own = creates[index][0]
+            else:
+                continue
+            in_plan.add(own)
+            handles = (
+                {model.handle_of[c.id] for c in model.columns[record.id] if not c.is_system}
+                if record is not None
+                else set()
+            )
+            for column in spec.columns:
+                if column.role != "fk" or not column.references:
+                    continue
+                if (
+                    record is not None
+                    and column.handle not in handles
+                    and f"{record.layer}.{record.name}.{column.name}".lower() in model.tombstoned
+                ):
+                    continue  # a user deleted it: the plan does not add it again
+                target = targets.get(column.references.lower())
+                add(target.id if target else None, own)
+            if record is not None:
+                kept = {c.handle for c in spec.columns if c.handle}
+                for existing in model.columns[record.id]:
+                    if model.handle_of.get(existing.id) not in kept:
+                        add(existing.references_table_id, record.id)
+        for table in model.tables:
+            if table.id not in in_plan:
+                for existing in model.columns[table.id]:
+                    add(existing.references_table_id, table.id)
+        for target in self._by_id.values():
+            if target.kind != "dimension":
+                continue
+            target.derived_conformed = len(refs.get(target.id, ())) >= 2
+            if target.keeps_conformed or (self._scoped and target.id not in in_plan):
+                # A member's flag stands; a one-table regeneration changes no other table.
+                assert target.record is not None
+                target.is_conformed = target.record.is_conformed
+            else:
+                target.is_conformed = target.derived_conformed
+
+    def _reserved(
+        self,
+        kind: str,
+        name: str,
+        history: bool,
+        existing: Sequence[DwColumnRecord] | None = None,
+    ) -> dict[str, str]:
+        """The columns DAWAM adds to a table (lower-cased name -> name): its key, the SCD2
+        housekeeping columns of a dimension that keeps history and the audit columns; for
+        an existing table, also the ones it already added."""
+        out: dict[str, str] = {}
+        key = key_name(name, kind, self._platform)
+        if key is not None and existing is None:
+            out[key.lower()] = key
+        if kind == "dimension" and history:
+            out |= {n.lower(): n for n in HOUSEKEEPING_NAMES}
+        out |= {n.lower(): n for n in self._audit}
+        for column in existing or ():
+            if column.is_system or (column.role == "sk" and kind in ("dimension", "bridge")):
+                out[column.name.lower()] = column.name
+        return out
+
+    def _audit_item(self, record: DwTableRecord) -> ProposedItem | None:
+        """DAWAM's audit columns for an existing table that lacks them. A column that
+        already has one of those names is kept, and gets no duplicate."""
+        if record.kind == "generated":
+            return None
+        have = {c.name.lower(): c for c in self._model.columns[record.id]}
+        missing: list[str] = []
+        for name in self._audit:
+            column = have.get(name.lower())
+            if column is None:
+                missing.append(name)
+            elif not column.is_system:
+                self._note(
+                    "audit_column_kept",
+                    f"{record.layer}.{record.name}.{column.name}",
+                    "The table already has a column of this name, so DAWAM keeps it and adds "
+                    "no audit column of that name.",
+                )
+        if not missing:
+            return None
+        return ProposedItem(
+            key=f"a:{record.id}",
+            object_type=TABLE,
+            operation="update",
+            object_id=record.id,
+            label=f"{record.layer}.{record.name} (audit columns {', '.join(missing)})",
+            payload={AUDIT_COLUMNS: True, PROVENANCE: GENERATION},
+            base_values={},
+        )
+
+    def _untouched_table(self, record: DwTableRecord) -> list[ProposedItem]:
+        """An existing table the model left out still gets what DAWAM derives and adds."""
+        items: list[ProposedItem] = []
+        target = self._by_id.get(record.id)
+        if record.kind == "dimension" and target is not None and not target.keeps_conformed:
+            plain, conflict = self._split(record, {"is_conformed": target.derived_conformed})
+            label = f"{record.layer}.{record.name}"
+            items += self._items(TABLE, record, label, plain, conflict, [])
+        audit = self._audit_item(record)
+        if audit is not None:
+            items.append(audit)
+        return items
+
+    @staticmethod
+    def _after_conformed(items: list[ProposedItem]) -> list[ProposedItem]:
+        """A Mart item that references a Core dimension this plan makes conformed depends on
+        that item, so it never applies before it."""
+        conformed = {
+            str(i.object_id): i.key
+            for i in items
+            if i.object_type == TABLE
+            and i.operation == "update"
+            and not i.is_conflict
+            and i.payload.get("is_conformed") is True
+        }
+        if not conformed:
+            return items
+        out: list[ProposedItem] = []
+        for item in items:
+            if item.label.startswith("mart."):
+                refs = [item.payload.get("references_table_id")] + [
+                    c.get("references_table_id") for c in item.payload.get("columns") or []
+                ]
+                extra = [conformed[r] for r in refs if r in conformed]
+                extra = [k for k in dict.fromkeys(extra) if k not in item.depends_on]
+                if extra:
+                    item = replace(item, depends_on=[*item.depends_on, *extra])
+            out.append(item)
+        return out
+
+    @staticmethod
+    def _unconform_last(items: list[ProposedItem]) -> list[ProposedItem]:
+        """A dimension stops being conformed only after every other item: a Mart item of
+        the plan may first move the reference that kept it conformed elsewhere, and it
+        depends on those items: accepting it applies them too, rejecting them rejects it.
+        (A plan never deletes a column or a table, so moving a reference is the only way.)"""
+        out: list[ProposedItem] = []
+        last: list[ProposedItem] = []
+
+        def moving_away(dimension_id: str) -> list[str]:
+            return [
+                i.key
+                for i in items
+                if i.object_type == COLUMN
+                and i.operation == "update"
+                and "references_table_id" in i.payload
+                and (i.base_values or {}).get("references_table_id") == dimension_id
+                and i.payload["references_table_id"] != dimension_id
+            ]
+
+        for item in items:
+            if (
+                item.object_type == TABLE
+                and item.operation == "update"
+                and not item.is_conflict
+                and item.payload.get("is_conformed") is False
+            ):
+                rest = {k: v for k, v in item.payload.items() if k != "is_conformed"}
+                base = dict(item.base_values or {})
+                last.append(
+                    replace(
+                        item,
+                        key=f"{item.key}:unconform",
+                        payload={"is_conformed": False, PROVENANCE: GENERATION},
+                        base_values={"is_conformed": base.pop("is_conformed", True)},
+                        depends_on=moving_away(str(item.object_id)),
+                    )
+                )
+                if set(rest) - {PROVENANCE}:
+                    out.append(replace(item, payload=rest, base_values=base))
+                continue
+            out.append(item)
+        return out + last
+
+    def _dry_run(self, items: Sequence[ProposedItem]) -> None:
+        """Apply the items with the real handlers, in the Change Set engine's order, and roll
+        everything back: whatever an apply would refuse becomes a problem. Planning leaves no
+        trace and holds no lock once it returns.
+
+        No savepoint is ever released: SQLAlchemy runs a session's commit hooks on a
+        RELEASE too, and the score trigger's hook then scores the warehouse from another
+        connection, which waits forever on the rows this transaction holds. A savepoint is
+        rolled back when its item fails and otherwise stays open under the next one."""
+        db = self._db
+        workspace_id = self._warehouse.workspace_id
+        handlers: dict[str, DwTableHandler | DwColumnHandler] = {
+            TABLE: DwTableHandler(),
+            COLUMN: DwColumnHandler(),
+        }
+        at = datetime.now(UTC)
+        failed: set[str] = set()
+        try:
+            for item in items:
+                if any(d in failed for d in item.depends_on):
+                    failed.add(item.key)
+                    continue
+                handler = handlers[item.object_type]
+                where = item.label.split(" (")[0]
+                savepoint = db.begin_nested()
+                try:
+                    handler.validate(db, workspace_id, item.operation, item.object_id, item.payload)
+                    handler.apply(
+                        db,
+                        workspace_id,
+                        item.operation,
+                        item.object_id,
+                        item.payload,
+                        at=at,
+                        scope=SCOPE,
+                    )
+                    db.flush()
+                except ApiError as exc:
+                    savepoint.rollback()
+                    failed.add(item.key)
+                    column = exc.details.get("column")
+                    self._problem(f"{where}.{column}" if column else where, exc.message)
+                except IntegrityError:
+                    savepoint.rollback()
+                    failed.add(item.key)
+                    self._problem(where, "A name it uses is already taken.")
+        finally:
+            db.rollback()  # the whole transaction, with every savepoint: no trace, no lock
 
     # -- tables to create -----------------------------------------------------------
 
@@ -648,7 +983,15 @@ class _Planner:
                 scd = 1
             if record is not None:
                 target = _Target(
-                    record.id, record.layer, record.kind, spec.is_conformed, scd, nk, None
+                    record.id,
+                    record.layer,
+                    record.kind,
+                    record.is_conformed,
+                    scd,
+                    nk,
+                    None,
+                    key=self._key_of(record),
+                    record=record,
                 )
                 out[model.handle_of[record.id]] = target
                 add(target, spec.layer, spec.name, record.name)
@@ -658,17 +1001,32 @@ class _Planner:
                     table_id,
                     spec.layer,
                     spec.kind,
-                    spec.is_conformed,
+                    False,
                     scd,
                     nk,
                     f"t:{table_id}",
+                    key=key_name(name, spec.kind, self._platform),
                 )
                 add(target, spec.layer, spec.name, name)
+            else:
+                continue
+            self._by_id[target.id] = target
         for table in model.tables:
-            nk = sum(1 for c in model.columns[table.id] if c.role == "nk" and not c.is_system)
-            target = _Target(
-                table.id, table.layer, table.kind, table.is_conformed, table.scd_type, nk, None
-            )
+            target = self._by_id.get(table.id)
+            if target is None:
+                nk = sum(1 for c in model.columns[table.id] if c.role == "nk" and not c.is_system)
+                target = _Target(
+                    table.id,
+                    table.layer,
+                    table.kind,
+                    table.is_conformed,
+                    table.scd_type,
+                    nk,
+                    None,
+                    key=self._key_of(table),
+                    record=table,
+                )
+                self._by_id[table.id] = target
             out.setdefault(model.handle_of[table.id], target)
             add(target, table.layer, table.name)
         date = model.date_dimension()
@@ -676,10 +1034,17 @@ class _Planner:
             out.setdefault(DATE_HANDLE, out[model.handle_of[date.id]])
         else:
             name = generated_table_name(_rules(self._warehouse), "date")
-            target = _Target(uuid.uuid4(), "core", "generated", True, None, 0, "date")
+            target = _Target(uuid.uuid4(), "core", "generated", True, None, 0, "date", key=DATE_KEY)
             out[DATE_HANDLE] = target
             add(target, "core", name)
         return out
+
+    def _key_of(self, table: DwTableRecord) -> str | None:
+        """The name of an existing dimension's key (its surrogate key column)."""
+        for column in self._model.columns[table.id]:
+            if column.role == "sk":
+                return column.name
+        return None
 
     def _date_item(
         self,
@@ -736,9 +1101,15 @@ class _Planner:
         if target.kind not in ("dimension", "generated"):
             self._problem(where, f"References {column.references!r}, which is not a dimension.")
             return None
-        if target.layer != layer and not (
-            layer == "mart" and target.layer == "core" and target.is_conformed
-        ):
+        if layer == "mart" and target.layer == "core" and not target.is_conformed:
+            self._problem(
+                where,
+                f"{column.references!r} is a Core dimension that is not conformed (DAWAM "
+                "makes a dimension conformed when two or more tables reference it): reference "
+                "it from Core as well, or model it in the Mart Layer.",
+            )
+            return None
+        if target.layer != layer and not (layer == "mart" and target.layer == "core"):
             self._problem(
                 where,
                 "A table references dimensions of its own Layer; a Mart table may also "
@@ -800,8 +1171,15 @@ class _Planner:
         own_id: uuid.UUID,
         column: GeneratedColumn,
         targets: Mapping[str, _Target],
-    ) -> tuple[dict[str, Any], str | None] | None:
-        """A checked column for a create, and the create item its foreign key needs."""
+        *,
+        new: bool,
+    ) -> tuple[dict[str, Any], str | None, _Target | None] | None:
+        """A checked column, the create item its foreign key needs and the table it points
+        at. A ``new`` column (one the model adds) also follows what DAWAM decides: no audit
+        columns, foreign keys named by DAWAM, a Core fact's foreign key with a lookup."""
+        if new and column.role == "audit":
+            self._problem(where, "DAWAM adds the audit columns itself; leave this one out.")
+            return None
         if column.role == "measure" and not column.additivity:
             self._problem(where, "A measure declares its additivity.")
         target = self._reference(where, layer, own_id, column, targets)
@@ -821,14 +1199,61 @@ class _Planner:
                 },
                 partial=False,
             )
+            check_column_shape(kind, {**fields, "references_table_id": None})
         except ApiError as exc:
             self._problem(where, exc.message)
             return None
         fields["references_table_id"] = str(target.id) if target else None
+        if new and target is not None and not self._name_foreign_key(where, target, fields):
+            return None
         lookup = self._lookup(where, layer, kind, column, target)
         if lookup is not None:
             fields["lookup"] = lookup
-        return fields, target.item_key if target else None
+        elif (
+            new
+            and not column.lookup
+            and layer == "core"
+            and kind == "fact"
+            and target is not None
+            and target.kind != "generated"
+            and target is not targets.get(DATE_HANDLE)
+        ):
+            self._problem(
+                where,
+                "A Core fact's foreign key gives a `lookup`: the staging natural-key column(s) "
+                "of the dimension, in order (and the as-of date column for an SCD2 one).",
+            )
+        return fields, target.item_key if target else None, target
+
+    def _name_foreign_key(self, where: str, target: _Target, fields: dict[str, Any]) -> bool:
+        """DAWAM names a new foreign key after the key it points to, prefixed with its role
+        name; over the platform's limit it is shortened with a stable hash and flagged."""
+        key = target.key or fields["name"]
+        wanted = f"{fields['role_name']}_{key}" if fields["role_name"] else key
+        name = wanted
+        if len(wanted.encode()) > self._limit:
+            suffix = "_" + stable_hash(wanted)
+            name = wanted[: self._limit - len(suffix)].rstrip("_") + suffix
+            fields["review_flags"] = [
+                {
+                    "code": "truncated",
+                    "message": f"The name {wanted} is over the platform's {self._limit}-byte "
+                    "limit.",
+                }
+            ]
+        try:
+            name = _identifier(self._platform, name, "name", "column name")
+        except ApiError as exc:
+            self._problem(where, exc.message)
+            return False
+        if name != fields["name"]:
+            self._note(
+                "foreign_key_named",
+                where,
+                f"DAWAM names this foreign key {name}, after the key it points to.",
+            )
+        fields["name"] = name
+        return True
 
     def _create_table(
         self,
@@ -840,23 +1265,47 @@ class _Planner:
         where = f"{spec.layer}.{spec.name}"
         if spec.kind == "fact" and (not spec.grain or not spec.fact_type):
             self._problem(where, "A fact states its grain and fact type.")
+        history = spec.scd_type == 2 or any(c.scd_type_override == 2 for c in spec.columns)
+        reserved = self._reserved(spec.kind, name, history)
         columns: list[dict[str, Any]] = []
         depends: list[str] = []
-        names: set[str] = set()
+        names: dict[str, str] = {}  # lower-cased name -> role
+        roles: set[tuple[uuid.UUID, str]] = set()  # (dimension, role name) of each FK
         for column in spec.columns:
             if column.role == "sk" and spec.kind in ("dimension", "bridge"):
                 continue  # DAWAM adds the surrogate (or group) key
             col_where = f"{where}.{column.name}"
-            if column.name.lower() in names:
-                self._problem(col_where, "Two columns have this name.")
+            if column.name.lower() in reserved:
+                self._problem(col_where, _reserved_message(column.name))
                 continue
-            names.add(column.name.lower())
             checked = self._column_payload(
-                col_where, spec.layer, spec.kind, table_id, column, targets
+                col_where, spec.layer, spec.kind, table_id, column, targets, new=True
             )
             if checked is None:
                 continue
-            fields, needs = checked
+            fields, needs, target = checked
+            if target is not None:
+                role = (fields["role_name"] or "").lower()
+                if (target.id, role) in roles:
+                    self._problem(
+                        col_where,
+                        "This table already has a foreign key to that dimension"
+                        + (
+                            f" in the role {fields['role_name']!r}."
+                            if role
+                            else "; give each a role name."
+                        ),
+                    )
+                    continue
+                roles.add((target.id, role))
+            final = fields["name"].lower()
+            if final in reserved or final in names:
+                if column.role == "fk" or names.get(final) == "fk":
+                    self._problem(col_where, _fk_collision(fields["name"]))
+                else:
+                    self._problem(col_where, "Two columns have this name.")
+                continue
+            names[final] = column.role
             fields["generation_key"] = uuid.uuid4().hex
             columns.append(fields)
             if needs and needs not in depends:
@@ -870,6 +1319,7 @@ class _Planner:
             "description": spec.description or "",
             "review_flags": flags,
             "columns": columns,
+            AUDIT_COLUMNS: True,
             PROVENANCE: GENERATION,
         }
         if spec.kind == "fact":
@@ -881,7 +1331,7 @@ class _Planner:
         if spec.kind == "dimension":
             payload |= {
                 "scd_type": 1 if spec.scd_type is None else spec.scd_type,
-                "is_conformed": spec.is_conformed,
+                "is_conformed": self._by_id[table_id].is_conformed,
             }
         label = f"{spec.layer}.{name}"
         if flags:
@@ -976,19 +1426,22 @@ class _Planner:
                 "is_aggregate": spec.is_aggregate,
             }
         if spec.kind == "dimension":
-            wanted |= {
-                "scd_type": 1 if spec.scd_type is None else spec.scd_type,
-                "is_conformed": spec.is_conformed,
-            }
+            wanted["scd_type"] = 1 if spec.scd_type is None else spec.scd_type
+            target = self._by_id[record.id]
+            if not target.keeps_conformed:
+                wanted["is_conformed"] = target.derived_conformed
         label = f"{record.layer}.{record.name}"
         plain, conflict = self._split(record, wanted)
         items = self._items(TABLE, record, label, plain, conflict, [])
-        own = {
-            self._model.handle_of[c.id]: c
-            for c in self._model.columns[record.id]
-            if not c.is_system
-        }
-        names = {c.name.lower() for c in self._model.columns[record.id]}
+        existing_columns = self._model.columns[record.id]
+        own = {self._model.handle_of[c.id]: c for c in existing_columns if not c.is_system}
+        names = {c.name.lower() for c in existing_columns}
+        history = (
+            wanted.get("scd_type") == 2
+            or any(c.scd_type_override == 2 for c in spec.columns)
+            or any(c.scd_type_override == 2 for c in existing_columns)
+        )
+        reserved = self._reserved(record.kind, record.name, history, existing_columns)
         seen: set[uuid.UUID] = set()
         for column in spec.columns:
             col_where = f"{where}.{column.name}"
@@ -1013,13 +1466,19 @@ class _Planner:
                     "A user deleted this generated column, so it is not proposed again.",
                 )
                 continue
+            if column.name.lower() in reserved:
+                self._problem(col_where, _reserved_message(column.name))
+                continue
             checked = self._column_payload(
-                col_where, record.layer, record.kind, record.id, column, targets
+                col_where, record.layer, record.kind, record.id, column, targets, new=True
             )
             if checked is None:
                 continue
-            fields, needs = checked
-            flags: list[dict[str, str]] = []
+            fields, needs, _ = checked
+            flags: list[dict[str, str]] = list(fields.pop("review_flags", []))
+            if column.role == "fk" and fields["name"].lower() in names | set(reserved):
+                self._problem(col_where, _fk_collision(fields["name"]))
+                continue
             if fields["name"].lower() in names:
                 flags.append(
                     {
@@ -1034,13 +1493,15 @@ class _Planner:
                     "name (give its handle to change it instead).",
                 )
                 fields["name"] = _free_name(fields["name"], names, self._limit)
+            names_taken = any(f["code"] == "possible_duplicate" for f in flags)
             names.add(fields["name"].lower())
             items.append(
                 ProposedItem(
                     key=f"c:{record.id}:{fields['name'].lower()}",
                     object_type=COLUMN,
                     operation="create",
-                    label=f"{label}.{fields['name']}" + (" (possible duplicate)" if flags else ""),
+                    label=f"{label}.{fields['name']}"
+                    + (" (possible duplicate)" if names_taken else ""),
                     payload={
                         "table_id": str(record.id),
                         **fields,
@@ -1051,6 +1512,9 @@ class _Planner:
                     depends_on=[needs] if needs else [],
                 )
             )
+        audit = self._audit_item(record)
+        if audit is not None:
+            items.append(audit)
         return items
 
     def _update_column(
@@ -1062,10 +1526,12 @@ class _Planner:
         column: GeneratedColumn,
         targets: Mapping[str, _Target],
     ) -> list[ProposedItem]:
-        checked = self._column_payload(where, table.layer, table.kind, table.id, column, targets)
+        checked = self._column_payload(
+            where, table.layer, table.kind, table.id, column, targets, new=False
+        )
         if checked is None:
             return []
-        fields, needs = checked
+        fields, needs, _ = checked
         lookup = fields.pop("lookup", None)
         if lookup is not None:
             self._note(
@@ -1099,10 +1565,12 @@ def _uuid(value: Any) -> uuid.UUID | None:
         return None
 
 
-def _warehouse_of(db: Session, workspace_id: uuid.UUID) -> DataWarehouseRecord:
-    warehouse = db.scalars(
-        sa.select(DataWarehouseRecord).where(DataWarehouseRecord.workspace_id == workspace_id)
-    ).first()
+def _warehouse_of(
+    db: Session, workspace_id: uuid.UUID, *, share: bool = False
+) -> DataWarehouseRecord:
+    """With ``share``, locked FOR SHARE and read afresh: a table item names audit columns
+    by the naming rules, which must not change under it (see ``ModelService._warehouse``)."""
+    warehouse = db.scalars(share_lock(warehouse_query(workspace_id), share)).first()
     if warehouse is None:
         raise _invalid_item("The Data Warehouse is not set up.")
     return warehouse
@@ -1150,7 +1618,7 @@ def _model_column(
     return None if row is None else (row[0], row[1])
 
 
-_COLUMN_SPEC_KEYS = {*GENERATED_COLUMN_FIELDS, "generation_key", "lookup"}
+_COLUMN_SPEC_KEYS = {*GENERATED_COLUMN_FIELDS, "generation_key", "lookup", "review_flags"}
 
 
 def _generated_values(column: DwColumnRecord) -> dict[str, Any]:
@@ -1256,7 +1724,7 @@ class DwTableHandler(_Handler):
     and Mart tables."""
 
     object_type = TABLE
-    _UPDATABLE = (*GENERATED_TABLE_FIELDS, PROVENANCE)
+    _UPDATABLE = (*GENERATED_TABLE_FIELDS, AUDIT_COLUMNS, PROVENANCE)
 
     def validate(
         self,
@@ -1321,7 +1789,7 @@ class DwTableHandler(_Handler):
         at: datetime,
         scope: Mapping[str, Any] | None = None,
     ) -> AppliedChange:
-        warehouse = _warehouse_of(db, workspace_id)
+        warehouse = _warehouse_of(db, workspace_id, share=True)
         rules = editing_rules(lambda: at)
         if operation == "create":
             return self._create(db, workspace_id, warehouse, payload, at)
@@ -1337,17 +1805,20 @@ class DwTableHandler(_Handler):
         changed = [f for f in GENERATED_TABLE_FIELDS if before[f] != after[f]]
         _take_generated(table, before, after, changed, GENERATED_TABLE_FIELDS, payload, scope)
         rules._sync_scd2(db, None, workspace_id, table, at)
-        if changed:
+        added = (
+            rules._sync_audit(db, None, workspace_id, warehouse, table, at)
+            if payload.get(AUDIT_COLUMNS)
+            else []
+        )
+        if changed or added:
             table.version += 1
             table.updated_at = at
         db.flush()
-        return AppliedChange(
-            TABLE,
-            table.id,
-            {f: before[f] for f in changed},
-            {f: after[f] for f in changed},
-            f"{table.layer}.{table.name}",
-        )
+        old: dict[str, Any] = {f: before[f] for f in changed}
+        new: dict[str, Any] = {f: after[f] for f in changed}
+        if added:
+            old[AUDIT_COLUMNS], new[AUDIT_COLUMNS] = [], added
+        return AppliedChange(TABLE, table.id, old, new, f"{table.layer}.{table.name}")
 
     def _create(
         self,
@@ -1398,14 +1869,24 @@ class DwTableHandler(_Handler):
         rules._scaffold_key(db, None, workspace_id, warehouse, table, at)
         lookups: list[tuple[DwColumnRecord, Mapping[str, Any]]] = []
         for spec in payload["columns"]:
-            column = rules._add_column(
-                db, None, workspace_id, table, _given_fields(spec), at, scaffold=True
-            )
+            try:
+                column = rules._add_column(
+                    db, None, workspace_id, table, _given_fields(spec), at, scaffold=True
+                )
+            except ApiError as exc:  # name the column the table's create failed on
+                raise ApiError(
+                    exc.status_code,
+                    exc.code,
+                    exc.message,
+                    {**exc.details, "column": spec.get("name")},
+                ) from None
             column.generation_key = spec.get("generation_key")
             column.generated = _generated_values(column)
+            column.review_flags = list(spec.get("review_flags") or [])
             if spec.get("lookup"):
                 lookups.append((column, spec["lookup"]))
         rules._sync_scd2(db, None, workspace_id, table, at)
+        rules._sync_audit(db, None, workspace_id, warehouse, table, at)  # every table has them
         table.generated = {f: _plain(getattr(table, f)) for f in GENERATED_TABLE_FIELDS}
         db.flush()
         for column, lookup in lookups:

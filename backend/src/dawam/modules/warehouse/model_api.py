@@ -107,7 +107,7 @@ class DwColumn(BaseModel):
     role_name: str | None
     description: str
     semantic_type: str | None
-    is_system: bool = Field(description="DAWAM maintains it (SCD2 housekeeping).")
+    is_system: bool = Field(description="DAWAM maintains it (SCD2 housekeeping or audit).")
     version: int
     naming_violations: list[NamingViolation] = Field(
         description="The Data Warehouse's naming rules this name breaks (a warning, not an error)."

@@ -521,7 +521,8 @@ def dw_column_id(roles: RoleClients) -> str:
     table = dw_table_id(roles)
     owner = roles.client("owner")
     path = f"/api/v1/workspaces/{roles.workspace_id}/data-warehouse/tables/{table}"
-    columns = owner.get(path).json()["columns"]
+    # Not one of DAWAM's audit columns, which nobody edits, deletes or maps per branch.
+    columns = [c for c in owner.get(path).json()["columns"] if not c["is_system"]]
     if columns:
         return columns[0]["id"]
     response = owner.post(

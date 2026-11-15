@@ -59,7 +59,7 @@ def sales_draft() -> dict[str, Any]:
                 "driving_input": ORDERS,
                 "columns": [
                     {
-                        "column": "customer_key",
+                        "column": "dim_customer_key",
                         "mapping_type": "lookup",
                         "lookup": {
                             "nk_inputs": [f"{CUSTOMERS}.customer_no"],
@@ -207,7 +207,7 @@ def test_several_tables_run_as_a_job_that_ends_in_one_change_set(
 
     [branch] = mapping(staged, core["core.fact_sales"]["id"])["branches"]
     by_name = {c["column_name"]: c for c in branch["columns"]}
-    lookup = by_name["customer_key"]
+    lookup = by_name["dim_customer_key"]
     assert lookup["mapping_type"] == "lookup"
     assert lookup["lookup"]["nk_inputs"] == [f"{CUSTOMERS}.customer_no"]
     assert lookup["lookup"]["dimension_name"] == "dim_customer"

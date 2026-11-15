@@ -211,9 +211,9 @@ def test_sql_that_names_a_missing_column_fails_validation(warehouse, model):
 def test_a_mapping_the_tool_makes_cannot_be_replaced_by_an_import(warehouse, model):
     two_branches(warehouse, model)
     mapping, _ = exported(warehouse)
-    [system] = [
+    system = next(  # the surrogate key; DAWAM's audit columns are system-mapped too
         r for r in mapping if r["mapping_type"] == "system" and r["target_table"] == "dim_customer"
-    ]
+    )
 
     response = upload(
         warehouse,

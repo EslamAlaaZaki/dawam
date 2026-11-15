@@ -89,7 +89,17 @@ class NamingRules(BaseModel):
         "load_ts", description="Name of the load-timestamp audit column of Staging Tables."
     )
     source_system_column: AuditName = Field(
-        "source_system", description="Name of the System Code audit column of Staging Tables."
+        "source_system",
+        description="Name of the System Code audit column of Staging Tables, and of the "
+        "source-system audit column of Core and Mart tables.",
+    )
+    created_ts_column: AuditName = Field(
+        "dw_created_ts",
+        description="Name of the row-created audit column of Core and Mart tables.",
+    )
+    updated_ts_column: AuditName = Field(
+        "dw_updated_ts",
+        description="Name of the row-updated audit column of Core and Mart tables.",
     )
 
 
