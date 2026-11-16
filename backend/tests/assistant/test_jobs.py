@@ -85,30 +85,53 @@ def submit(
     )
 
 
-def propose(table: str, system: str, key: str, text: str = "x"):
+def propose(relationship: str, system: str, key: str, text: str = "x"):
+    """A ``propose_changes`` call that accepts one inferred relationship (``key`` is its
+    call id); table and column text is ``suggest_catalog_entries``', not a Change Set's."""
     return tool(
         "propose_changes",
         key,
-        title=f"Describe {key}",
+        title=f"Decide {key}",
         source_system_id=system,
-        items=[
+        relationships=[
             {
-                "key": key,
-                "object_type": "source_table",
-                "object_id": table,
-                "changes": {"description": text},
-                "label": "core.customers",
+                "relationship_id": relationship,
+                "decision": "accept",
+                "reason": text,
+                "label": "orders -> customer",
             }
         ],
     )
 
 
 def schema_ids(roles: RoleClients) -> tuple[str, str]:
-    from tests.authz.matrix import table_id
+    """The id of an inferred relationship, and its Source System's."""
+    system, first, _ = two_relationships(roles)
+    return first, system
 
-    table = table_id(roles)
-    systems = roles.client("owner").get(f"/api/v1/workspaces/{roles.workspace_id}/systems")
-    return table, systems.json()["items"][0]["id"]
+
+def two_relationships(roles: RoleClients) -> tuple[str, str, str]:
+    """A Source System from a Schema Import (no Connection) with two inferred relationships:
+    ``(system id, one relationship's id, the other's)``."""
+    from tests.sources.test_extraction import add_system
+    from tests.sources.test_relationship_inference import listed, run
+    from tests.sources.test_schema_import import COLUMNS, csvs, upload
+
+    system = add_system(roles)
+    sheets = csvs(
+        tables="schema,table,kind,definition\n"
+        "sales,Customer,table,\nsales,Orders,table,\n"
+        "sales,Totals,view,SELECT 1 FROM sales.Orders o JOIN sales.Customer c ON o.cref = c.id\n",
+        columns=COLUMNS + "sales,Orders,id,integer\nsales,Orders,customer_id,integer\n"
+        "sales,Orders,cref,integer\nsales,Orders,note,text\nsales,Totals,x,integer\n",
+        constraints="schema,table,constraint,type,columns\n"
+        "sales,Customer,pk,pk,id\nsales,Orders,pk,pk,id\n",
+    )
+    assert upload(roles, system, sheets)["imported"]
+    run(roles, system)
+    found = [r["id"] for r in listed(roles, system)]
+    assert len(found) == 2, found
+    return system.rsplit("/", 1)[1], found[0], found[1]
 
 
 # -- handing a request to a job ------------------------------------------------------------
@@ -175,10 +198,10 @@ def test_a_job_has_a_higher_tool_call_cap_than_the_chat(app, services, roles, mo
 
 
 def test_a_job_ends_in_one_change_set_however_many_proposals_it_made(roles, model, fake_llm):
-    table, system = schema_ids(roles)
+    system, table, other = two_relationships(roles)
     fake_llm.script(
         Reply(tool_calls=(tool("start_job", title="Describe", task="Describe tables"),)),
-        Reply(tool_calls=(propose(table, system, "a"), propose(table, system, "b"))),
+        Reply(tool_calls=(propose(table, system, "a"), propose(other, system, "b"))),
         Reply(text="Proposed."),
         Reply(text="Started."),
     )
@@ -386,12 +409,12 @@ class _DyingAdapter(FakeAdapter):
 def test_a_job_whose_worker_died_resumes_without_repeating_finished_tool_calls(
     app, services, roles, model
 ):
-    table, system = schema_ids(roles)
+    system, table, other = two_relationships(roles)
     kpi = add_kpi(roles)
     adapter = _DyingAdapter(at=3).script(
         Reply(tool_calls=(propose(table, system, "a"),)),
         Reply(tool_calls=(tool("get_object", "c2", kind="kpi", id=kpi),)),
-        Reply(tool_calls=(propose(table, system, "b", "y"),)),  # after the restart
+        Reply(tool_calls=(propose(other, system, "b", "y"),)),  # after the restart
         Reply(text="Described both."),
     )
     services.llm_adapters = lambda kind, config: adapter

@@ -28,6 +28,7 @@ from tests.assistant.test_jobs import (
     propose,
     schema_ids,
     submit,
+    two_relationships,
 )
 from tests.assistant.test_jobs import model as model
 
@@ -161,13 +162,13 @@ def test_a_specialist_keeps_the_members_authorisation(roles, model, fake_llm):
 def test_a_specialist_whose_worker_died_resumes_without_repeating_its_finished_calls(
     app, services, roles, model
 ):
-    table, system = schema_ids(roles)
+    system, table, other = two_relationships(roles)
     kpi = add_kpi(roles)
     adapter = _DyingAdapter(at=4).script(
         Reply(tool_calls=(delegate("source_analyst", "Describe core.customers"),)),
         Reply(tool_calls=(propose(table, system, "a"),)),
         Reply(tool_calls=(tool("get_object", "c2", kind="kpi", id=kpi),)),
-        Reply(tool_calls=(propose(table, system, "b", "y"),)),  # after the restart
+        Reply(tool_calls=(propose(other, system, "b", "y"),)),  # after the restart
         Reply(text="Described both."),
         Reply(text="The table is described."),
     )

@@ -725,7 +725,8 @@ Disabled checks are excluded from the formula and listed separately with their r
 | `generate_dw_schema` | write (change set) | Generate or regenerate Core/Mart tables |
 | `draft_mappings` | write (change set) | Draft mappings for a target table |
 | `evaluate_dw` | read (stores result) | Advisory evaluation of a Layer; allowed for Viewers, blocked in archived Workspaces |
-| `propose_changes` | write (change set) | Propose creates, updates and deletes on Source Schema enhancements, DW Schema, mappings, KPIs and PII settings |
+| `propose_changes` | write (change set) | Accept or reject a Source System's inferred relationships. Table and column descriptions, classifications and SCD hints are not proposed here (see `suggest_catalog_entries`) |
+| `suggest_catalog_entries` | write (job) | Start the data catalog suggestion job for a Source System (§6.19); the member reviews the results in Source schema › Data catalog. Same permissions as starting it there; makes no Change Set, and says so when a run is already going |
 | `generate_file` | write (file) | Create a file (through the exporters for DDL and XLSX; free text for Markdown) |
 | `update_file` | write (file) | Propose a new content for a text file, shown as a diff and saved only when accepted |
 

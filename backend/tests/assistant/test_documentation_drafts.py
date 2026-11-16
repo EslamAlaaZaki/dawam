@@ -1,8 +1,8 @@
 """AI documentation drafts for a Source System (spec §6.8, story 70).
 
-The model drafts descriptions (including what codes and statuses mean), classifications and
-SCD hints, and accepts or rejects inferred relationships, all through ``propose_changes``:
-the drafts arrive as one ``ai`` Change Set against the Source Schema enhancements. A
+The model accepts or rejects inferred relationships through ``propose_changes``: the
+decisions arrive as one ``ai`` Change Set against the Source Schema enhancements (table and
+column text is ``suggest_catalog_entries``' job, #627). A
 relationship decision may cite the run's COUNT queries, whose counts (never values) become
 its evidence. Model-written text is redacted with the PII validators before it is saved, and
 the drafting works at every data-sharing level. The source is a scratch PostgreSQL database
@@ -14,7 +14,6 @@ customer, so its counts keep it below the threshold).
 from __future__ import annotations
 
 import itertools
-import json
 from typing import Any
 
 import pytest
@@ -30,7 +29,6 @@ from tests.roles import RoleClients
 from tests.sources import test_extraction
 from tests.sources.test_extraction import add_system, connect, extract
 from tests.sources.test_relationship_inference import SOURCE, by_link, listed, run
-from tests.sources.test_schema_browser import schema
 
 scratch_source = test_extraction.scratch_source
 model = test_chat.model
@@ -120,65 +118,6 @@ def accept(roles: RoleClients, change_set: dict[str, Any]) -> dict[str, Any]:
 
 
 # -- drafts as a Change Set ----------------------------------------------------------------
-
-
-def test_drafts_arrive_as_an_ai_change_set_with_model_text_redacted(roles, model, fake_llm, source):
-    tables = {t["name"]: t for t in schema(roles, source)["tables"]}
-    orders = tables["orders"]
-    [quantity] = [c for c in orders["columns"] if c["name"] == "quantity"]
-
-    [(status, seen)] = chat(
-        roles,
-        fake_llm,
-        propose(
-            source,
-            title=f"Drafts (asked by {EMAIL})",
-            items=[
-                {
-                    "key": "orders",
-                    "object_type": "source_table",
-                    "object_id": orders["id"],
-                    "changes": {
-                        "description": f"Customer orders, e.g. the one for Iqama {IQAMA}.",
-                        "classification": "transactional",
-                        "scd_hint": f"Append-only; contact {EMAIL} for corrections.",
-                        "tags": ["sales", f"owner {EMAIL}"],
-                    },
-                    "label": "public.orders",
-                },
-                {
-                    "key": "quantity",
-                    "object_type": "source_column",
-                    "object_id": quantity["id"],
-                    "changes": {"description": "Units ordered; 0 means a cancelled line."},
-                    "depends_on": ["orders"],
-                },
-            ],
-        ),
-    )
-
-    assert status == "ok", seen
-    detail = only_change_set(roles)
-    assert detail["change_set"]["origin"] == "ai"
-    assert detail["change_set"]["scope"] == {
-        "kind": "source_enhancements",
-        "source_system_id": system_id(source),
-    }
-    stored = json.dumps(detail)
-    assert IQAMA not in stored and EMAIL not in stored
-    table_item, column_item = detail["items"]
-    assert table_item["payload"]["classification"] == "transactional"
-    assert "[redacted: " in table_item["payload"]["description"]
-    assert "[redacted: " in table_item["payload"]["scd_hint"]
-    assert table_item["payload"]["tags"][0] == "sales"
-    assert column_item["payload"] == {"description": "Units ordered; 0 means a cancelled line."}
-    assert "[redacted: " in detail["change_set"]["title"]
-
-    accept(roles, detail)
-
-    documented = {t["name"]: t for t in schema(roles, source)["tables"]}["orders"]
-    assert documented["classification"] == "transactional"
-    assert documented["description"].startswith("Customer orders, e.g. the one for Iqama [")
 
 
 # -- relationships -------------------------------------------------------------------------

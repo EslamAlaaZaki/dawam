@@ -18,6 +18,7 @@ from dawam.modules.llm import AdapterFactory, ProviderService, RoleService, Work
 from dawam.modules.memory import MemoryService
 from dawam.modules.notifications import NotificationService
 from dawam.modules.sources import (
+    CatalogSuggestionService,
     ConnectionService,
     DataDictionaryService,
     PiiService,
@@ -157,6 +158,9 @@ def build_assistant_service(
                 engine, workspaces=workspaces, encryption_key=encryption_key, clock=clock
             ),
             model=model,
+            catalog_suggestions=CatalogSuggestionService(
+                engine, workspaces=workspaces, jobs=jobs, clock=clock
+            ),
             web=WebService(
                 engine,
                 encryption_key=encryption_key,

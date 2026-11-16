@@ -492,9 +492,9 @@ flowchart TD
 
 - A `ToolContext` per run holds the user, Workspace, services, data-sharing policy, a **source-query time budget** (default 120 s per run), proposal collection for jobs, and the run's count-query evidence.
 
-### 6.2 The tool catalogue (35 tools)
+### 6.2 The tool catalogue (36 tools)
 
-There are 35 tools.
+There are 36 tools.
 
 **Read: catalog, profiling, lineage, scoring**
 
@@ -545,7 +545,8 @@ There are 35 tools.
 
 | Tool | What it does |
 |---|---|
-| `propose_changes` | Propose descriptions, tags, sensitivity flags, classifications, SCD hints for source tables/columns, and accept/reject inferred relationships → **Change Set** |
+| `propose_changes` | Accept or reject a Source System's inferred relationships → **Change Set**. It takes `relationships` only: table and column items are refused (`items` is an unknown argument), because descriptions, classifications and SCD hints go through `suggest_catalog_entries` (#627). In a job (`ctx.proposals`) the decisions are collected into the job's one Change Set |
+| `suggest_catalog_entries` | Start the `catalog_suggest` job (§9) for a whole Source System, through `CatalogSuggestionService.start` (same permissions as the start endpoint: edit Source enhancements and ask the assistant). In `BASE_TOOLS`, like `propose_changes`, so it is offered on every page. The result says the job started and that the member reviews it in Source schema › Data catalog; no Change Set. A run already going comes back as `already_running` with its `job_id`, not an error (#627) |
 | `propose_check_fix` | Propose the exact changes that fix a failed score check → Change Set |
 | `propose_kpi_links` | Propose KPI → DW column links and formula SQL → Change Set |
 | `suggest_kpis` | Create **suggested** KPIs with a rationale and the source tables each is `based_on`, waiting in the Suggested tab for an owner or editor to accept or reject (existing KPIs are never changed). Called first without suggestions it returns every KPI of the scope in every review state. Under a Source System a suggestion based on no table, or on a table outside it, is dropped and counted (`dropped`); a name already in the scope is skipped (#597). Under the Data Warehouse (no `system_id`) only cross-system KPIs count: the first call returns every KPI in the Workspace, and a suggestion must be based on tables of two or more Source Systems (`SYSTEM.schema.table`) or on DW model tables (`core.table`, `mart.table`), or it is dropped; once the DW model exists its `formula_sql` is validated (`validate_formula`) and linked to the columns it reads, SQL that does not fit leaves it words only (`without_sql`) (#599) |
@@ -878,6 +879,8 @@ RAG over documents is only one source. The agent also grounds its answers throug
 
 **KPI suggestion jobs (#597).** Besides `assistant_task`, the `kpi_suggest` job (`assistant/kpi_suggestions.py`, `KpiSuggestionJobs`) suggests KPIs for one Source System, started by the **Suggest KPIs** button (`POST /workspaces/{id}/systems/{id}/kpi-suggestions`, owners and editors who may ask the assistant). One runs per system at a time (an advisory lock plus `JobService.latest`, 409 `kpi_suggestions_running`). The handler re-checks the member, then runs `run_agent` with `SYSTEM_PROMPT + KPI_JOB_PROMPT` over `ScopedKpiTools`: the job's bound tools narrowed to `search_catalog`, `get_object` (source objects only), `get_profile`, `get_relationships`, `search_documents` and `suggest_kpis`, with `system_id` removed from their schemas and set by the job on every call, so the model cannot choose the scope. The task (quoted as data) names the system, its tables and every KPI under it in every review state. A cap of 40 tool calls, no checkpoint or plan. It ends with `JobContext.set_result({"created", "dropped", "skipped"})` (kept as `jobs.result`), which `GET .../kpi-suggestions` returns with the newest job; zero created is a success.
 
+**Catalog suggestion jobs (#626, #627).** The `catalog_suggest` job (`sources/catalog_suggestion_service.py`, `CatalogSuggestionService`) suggests descriptions, classifications and SCD hints for the tables and columns of one Source System, one run per system at a time (an advisory lock plus `JobService.latest`; 409 `catalog_suggestions_running`, and 409 `no_snapshot` before the first Snapshot). It is started by the Data catalog tab (`POST .../systems/{id}/catalog-suggestions`) or by the assistant's `suggest_catalog_entries` tool, which calls the same `start`, so both need editing Source enhancements and asking the assistant. The results are not a Change Set: they are catalog suggestions the member accepts or rejects in Source schema › Data catalog, which fill only empty fields. The tool therefore returns at once with the job id and says where to review; the chat's answer is the job card. A model asked to describe tables in chat or in a job calls this tool, not `propose_changes`, which keeps relationship decisions only.
+
 **Cross-system KPI suggestions (#599).** The same `kpi_suggest` job runs at Data Warehouse scope (params `{"scope": "data_warehouse"}`), started by **Suggest cross-system KPIs** (`POST /workspaces/{id}/data-warehouse/kpi-suggestions`, `KpiSuggestionJobs.start_dw`), one per Workspace at a time (the same lock and `JobService.latest`). It starts, and runs, only when `KpiService.cross_system_readiness` says the Workspace has two or more Source Systems or a DW model (409 `kpi_suggestions_unavailable`; the GET returns `available`, `source_systems`, `dw_model` for the button). The handler uses `SYSTEM_PROMPT + DW_JOB_PROMPT` over `ScopedKpiTools(system_id=None)`: `workspace_overview`, `search_catalog`, `search_workspace`, `get_object` (source objects only), `get_relationships`, `search_documents` with the model choosing the Source System, and `suggest_kpis` with `system_id` removed and dropped from every call, so its KPIs go under the Data Warehouse. The task (quoted as data) lists the Source Systems (System Code, id, name), the DW model's Core and Mart tables with their columns when it exists, every KPI in the Workspace in every review state, and `CROSS_SYSTEM_KPI_RULES`; summaries of each system and their relationships are fetched with the lookups, not pasted in. `KpiService.suggest` enforces the cross-system based-on rule and the formula SQL and links, as in the `suggest_kpis` row of §6.2.
 
 - The model calls `start_job` with a complete task (or a long tool like `generate_dw_schema` starts one); a row is queued in the `jobs` table with type `assistant_task`.
@@ -1032,7 +1035,7 @@ Model prices (cost per million tokens, per currency) are set by system admins in
 | Prompts and quoting | `assistant/internal/prompt.py` |
 | Limited mode | `assistant/internal/prompted.py`, `assistant/internal/json_schema.py` |
 | Context management | `assistant/internal/context.py` |
-| Tools | `assistant/internal/tools.py`, `assistant/internal/file_query.py` (`query_file` engine), `assistant/internal/diagrams.py` (`render_diagram` Mermaid builders) |
+| Tools (`propose_changes`, `suggest_catalog_entries`, ...) | `assistant/internal/tools.py`, `assistant/internal/file_query.py` (`query_file` engine), `assistant/internal/diagrams.py` (`render_diagram` Mermaid builders) |
 | Web access (search providers, fetch, value stripping) | `web/service.py`, `web/api.py`, `web/tables.py`, `web/internal/{providers,fetch,crawl4ai,jina,network,strip}.py` |
 | Conversations, runs, jobs | `assistant/service.py`, `assistant/api.py`, `assistant/assembly.py`, `assistant/tables.py` |
 | RAG: extraction | `files/internal/content.py` |
@@ -1043,6 +1046,7 @@ Model prices (cost per million tokens, per currency) are set by system admins in
 | PII validators and redaction | `platform/pii_validators.py`, `sources/internal/pii*.py` |
 | AI PII detection job | `sources/pii_ai_service.py`, `sources/pii_scan_service.py` (`start_detection`), `wiring.py` (`PiiDocuments`) |
 | AI relationship guessing (in `infer_relationships`) | `sources/relationship_ai.py`, `sources/relationship_service.py` (`run_inference`), `sources/internal/inference.py` (union, `count_sql`, confidence) |
+| Catalog suggestion job and review API | `sources/catalog_suggestion_service.py`, `sources/catalog_suggestion_api.py`, `sources/catalog_ai.py` |
 | Worker and jobs | `worker.py`, `job_handlers.py`, `modules/jobs/` |
 | Frontend | `frontend/src/api/assistant.ts`, `frontend/src/workspaces/AssistantPanel.tsx`, `frontend/src/workspaces/MermaidDiagram.tsx`, `frontend/src/admin/WebAccessPage.tsx`, `frontend/src/api/web.ts` |
 | Decisions | `docs/adr/0002-ai-may-read-source-sample-rows.md`, `docs/adr/0005-workspace-embedding-model-fixed-at-creation.md` (superseded), `docs/adr/0006-reembed-when-workspace-embedding-model-changes.md`, `docs/adr/0008-assistant-outbound-web-access.md`, `docs/adr/0009-supervisor-and-specialists-on-our-own-loop.md`; spec §6.16 (assistant), §6.17 (files and search), §6.18 (LLM gateway) in `docs/spec.md` |
