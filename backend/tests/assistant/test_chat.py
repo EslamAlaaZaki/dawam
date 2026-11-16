@@ -825,8 +825,9 @@ def test_a_stray_conversation_id_is_a_404(roles, model):
     ("role", "allowed"), [("viewer", False), ("editor", True), ("owner", True)]
 )
 def test_propose_changes_is_a_write_tool_that_only_proposes(roles, model, fake_llm, role, allowed):
-    systems = roles.client("owner").get(f"/api/v1/workspaces/{roles.workspace_id}/systems")
-    system = systems.json()["items"][0]["id"]
+    from tests.authz.matrix import system_id
+
+    system = str(system_id(roles))
     client = roles.client(role)
     propose = tool(
         "propose_changes",

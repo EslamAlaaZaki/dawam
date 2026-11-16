@@ -539,7 +539,8 @@ def test_a_job_cannot_mix_generation_with_source_changes(app, services, staged, 
 
     assert job.status == "succeeded"
     assert "one_change_set" in (fake_llm.calls[-1].messages[-1].content or "")
-    [change_set] = change_sets(staged)
+    # the schema import behind the relationship made a sync Change Set; the job's is the AI's
+    [change_set] = [c for c in change_sets(staged) if c["origin"] == "ai"]
     assert change_set["scope"] == {"kind": "dw_generation"}
 
 
