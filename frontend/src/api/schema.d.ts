@@ -1852,6 +1852,142 @@ export interface paths {
         patch: operations["updateColumnEnhancements"];
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Catalog Suggestion Job
+         * @description The newest catalog suggestion run of this Source System, with how many suggestions it
+         *     made and skipped once it has succeeded (owners and editors).
+         */
+        get: operations["getCatalogSuggestionJob"];
+        put?: never;
+        /**
+         * Start Catalog Suggestions
+         * @description Suggest the empty descriptions, classifications and SCD hints of this Source System's
+         *     tables and columns with the AI, as a background job (owners and editors who may ask the
+         *     assistant). It fills gaps only and replaces the pending suggestions of the run before.
+         *     409 `no_snapshot` before the first Snapshot; 409 `catalog_suggestions_running` while a
+         *     run is going for this system.
+         */
+        post: operations["startCatalogSuggestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Catalog Suggestions
+         * @description The Source System's suggestions in one status (default `pending`), of one table when
+         *     `table_id` is given, ordered by table, table fields first (owners and editors).
+         */
+        get: operations["listCatalogSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Catalog Suggestions
+         * @description Accept one or many pending suggestions as the AI wrote them (owners and editors): each
+         *     value is saved on its table or column, audited as the AI's, and shows an AI tag until
+         *     someone edits it. Ones no longer pending are skipped; 404 for an id not of this system.
+         */
+        post: operations["acceptCatalogSuggestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/accept-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept All Catalog Suggestions
+         * @description Accept every pending suggestion of this Source System, or of one table (owners and
+         *     editors).
+         */
+        post: operations["acceptAllCatalogSuggestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/accept-edited": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Edited Catalog Suggestion
+         * @description Accept one pending suggestion with your own value instead (owners and editors): it
+         *     counts as a person's value, with no AI tag. 409 `suggestion_not_pending`; 422
+         *     `invalid_enhancement` for a value the field does not take.
+         */
+        post: operations["acceptEditedCatalogSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Catalog Suggestions
+         * @description Reject one or many pending suggestions (owners and editors); a rejected value is never
+         *     suggested again for that object and field. Ones no longer pending are skipped.
+         */
+        post: operations["rejectCatalogSuggestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings": {
         parameters: {
             query?: never;
@@ -4921,6 +5057,27 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcceptAll */
+        AcceptAll: {
+            /**
+             * Table Id
+             * @description Accept only this table's pending suggestions.
+             */
+            table_id?: string | null;
+        };
+        /** AcceptEdited */
+        AcceptEdited: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Value
+             * @description The value to save instead of the AI's: a person's value, with no AI mark.
+             */
+            value: string;
+        };
         /** AcceptInvitationRequest */
         AcceptInvitationRequest: {
             /** Token */
@@ -5418,6 +5575,128 @@ export interface components {
         BuiltInSwitch: {
             /** Enabled */
             enabled: boolean;
+        };
+        /** CatalogSuggestion */
+        CatalogSuggestion: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Db Schema */
+            db_schema: string;
+            /** Table */
+            table: string;
+            /**
+             * Column Id
+             * @description Null for a suggestion on the table.
+             */
+            column_id: string | null;
+            /** Column */
+            column: string | null;
+            /**
+             * Field
+             * @description A column's suggestions are `description` only.
+             * @enum {string}
+             */
+            field: "description" | "classification" | "scd_hint";
+            /**
+             * Value
+             * @description What the AI suggested.
+             */
+            value: string;
+            /**
+             * Edited Value
+             * @description What a person accepted instead (edit-then-accept); null otherwise.
+             */
+            edited_value: string | null;
+            /**
+             * Current Value
+             * @description The object's value for the field now.
+             */
+            current_value: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "accepted" | "rejected" | "expired";
+            /**
+             * Job Id
+             * @description The run that made it.
+             */
+            job_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+        };
+        /** CatalogSuggestionCounts */
+        CatalogSuggestionCounts: {
+            /** Pending */
+            pending: number;
+            /** Accepted */
+            accepted: number;
+            /** Rejected */
+            rejected: number;
+            /** Expired */
+            expired: number;
+        };
+        /** CatalogSuggestionJob */
+        CatalogSuggestionJob: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
+            /**
+             * Progress
+             * @description Percent done, 0 to 100.
+             */
+            progress: number;
+            /**
+             * Error
+             * @description Why the job failed; null otherwise.
+             */
+            error: string | null;
+            /**
+             * Made
+             * @description Suggestions the run made; null until the job has succeeded.
+             */
+            made: number | null;
+            /**
+             * Skipped
+             * @description Fields the run skipped because they already had a value or the AI repeated a value people rejected; null until the job has succeeded.
+             */
+            skipped: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** CatalogSuggestionPage */
+        CatalogSuggestionPage: {
+            /** Items */
+            items: components["schemas"]["CatalogSuggestion"][];
+            /** @description The Source System's suggestions in each status, with no filter. */
+            counts: components["schemas"]["CatalogSuggestionCounts"];
         };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
@@ -6444,6 +6723,16 @@ export interface components {
             change: "added" | "removed" | "changed";
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
+        };
+        /** DecidedSuggestions */
+        DecidedSuggestions: {
+            /** Decided */
+            decided: components["schemas"]["CatalogSuggestion"][];
+            /**
+             * Skipped
+             * @description Suggestions asked for that were no longer pending (decided or expired).
+             */
+            skipped: string[];
         };
         /** DecisionRequest */
         DecisionRequest: {
@@ -7905,6 +8194,11 @@ export interface components {
         KpiSuggestions: {
             /** Items */
             items: components["schemas"]["KpiSuggestion"][];
+        };
+        /** LatestCatalogSuggestionJob */
+        LatestCatalogSuggestionJob: {
+            /** @description The newest run; null if none ran yet. */
+            job: components["schemas"]["CatalogSuggestionJob"] | null;
         };
         /** LatestDwKpiSuggestionJob */
         LatestDwKpiSuggestionJob: {
@@ -10872,6 +11166,11 @@ export interface components {
              * @description `is_sensitive` or a `suggested`/`accepted` PII finding; set only in the Source Schema.
              */
             is_protected?: boolean | null;
+            /**
+             * Ai Fields
+             * @description `description` when an accepted AI suggestion wrote it and nobody has changed it since (show an AI tag); set only in the Source Schema.
+             */
+            ai_fields?: "description"[] | null;
         };
         /** SnapshotConstraint */
         SnapshotConstraint: {
@@ -11135,6 +11434,11 @@ export interface components {
              * @description Send it back when editing the enhancements; set only in the Source Schema.
              */
             version?: number | null;
+            /**
+             * Ai Fields
+             * @description The data catalog fields an accepted AI suggestion wrote and nobody has changed since (show an AI tag); set only in the Source Schema.
+             */
+            ai_fields?: ("description" | "classification" | "scd_hint")[] | null;
             /**
              * Profiled At
              * @description When the table was last profiled, null if never; set only in the Source Schema.
@@ -11623,6 +11927,11 @@ export interface components {
              * @default 30
              */
             timeout_seconds: number;
+        };
+        /** SuggestionIds */
+        SuggestionIds: {
+            /** Ids */
+            ids: string[];
         };
         /** SuggestionKeyRequest */
         SuggestionKeyRequest: {
@@ -17010,6 +17319,312 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ColumnEnhancements"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getCatalogSuggestionJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LatestCatalogSuggestionJob"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startCatalogSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogSuggestionJob"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listCatalogSuggestions: {
+        parameters: {
+            query?: {
+                status?: "pending" | "accepted" | "rejected" | "expired";
+                table_id?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogSuggestionPage"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptCatalogSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestionIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecidedSuggestions"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptAllCatalogSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptAll"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecidedSuggestions"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    acceptEditedCatalogSuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptEdited"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogSuggestion"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rejectCatalogSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                system_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestionIds"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecidedSuggestions"];
                 };
             };
             /** @description Validation error */
