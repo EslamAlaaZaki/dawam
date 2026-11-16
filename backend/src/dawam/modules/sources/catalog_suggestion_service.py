@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
-from dawam.modules.jobs import Job, JobContext, JobRunner, JobService
+from dawam.modules.jobs import FinishedNotice, Job, JobContext, JobRunner, JobService
 from dawam.modules.llm import (
     DataSharingLevel,
     DataSharingPolicy,
@@ -206,7 +206,7 @@ class CatalogSuggestionService:
                 workspace_id,
                 CATALOG_SUGGEST_JOB,
                 {**scope, "workspace_id": str(workspace_id), "user_id": str(user.id)},
-                title=f"Suggest catalog entries: {system.name}",
+                title=f"Suggest catalog entries · {system.name}",
                 created_by=user.id,
                 db=db,
             )
@@ -505,6 +505,20 @@ class CatalogSuggestionService:
         return system
 
     # -- the job ------------------------------------------------------------------------
+
+    @staticmethod
+    def finished_notice(
+        title: str, params: Mapping[str, Any], result: Mapping[str, Any] | None
+    ) -> FinishedNotice:
+        """The finish notification of a ``catalog_suggest`` job: how many suggestions are
+        ready, linked to its Source System (the bell opens the Data catalog tab)."""
+        made = int((result or {}).get("made", 0))
+        noun = "suggestion" if made == 1 else "suggestions"
+        return FinishedNotice(
+            f'Job "{title}" finished with {made} {noun}.',
+            "source_system",
+            uuid.UUID(str(params["source_system_id"])),
+        )
 
     def run(self, params: Mapping[str, Any], ctx: JobContext) -> None:
         """The ``catalog_suggest`` job handler (see the module docstring)."""

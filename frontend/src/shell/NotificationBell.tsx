@@ -26,29 +26,49 @@ import {
 } from "../api/notifications";
 import { useMe } from "../api/queries";
 import { Button } from "../components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../components/ui/popover";
 import { isToday, relativeTime } from "../lib/relativeTime";
 
-const KINDS: Record<Notification["kind"], { icon: LucideIcon; tile: string }> = {
-  mention: { icon: AtSign, tile: "bg-muted text-muted-foreground" },
-  impact_alert: {
-    icon: TriangleAlert,
-    tile: "bg-warning-subtle text-warning-strong",
-  },
-  sync_alert: { icon: RefreshCw, tile: "bg-info-subtle text-info-strong" },
-  ownership: { icon: UserRound, tile: "bg-muted text-muted-foreground" },
-  needs_owner: {
-    icon: UserRoundSearch,
-    tile: "bg-warning-subtle text-warning-strong",
-  },
-  job: { icon: Cog, tile: "bg-muted text-muted-foreground" },
-  regeneration: { icon: RotateCw, tile: "bg-muted text-muted-foreground" },
-};
+/** Where a notification opens: the Workspace home, or for a finished catalog job (it
+ * points at its Source System) that system's Source schema on the Data catalog tab. */
+export function notificationHref(
+  notification: Notification,
+  workspaceId: string,
+): string {
+  const home = `/workspaces/${workspaceId}`;
+  if (notification.ref_type === "source_system" && notification.ref_id) {
+    return `${home}?folder=systems/${notification.ref_id}/source-schema&tab=data-catalog`;
+  }
+  return home;
+}
+
+const KINDS: Record<Notification["kind"], { icon: LucideIcon; tile: string }> =
+  {
+    mention: { icon: AtSign, tile: "bg-muted text-muted-foreground" },
+    impact_alert: {
+      icon: TriangleAlert,
+      tile: "bg-warning-subtle text-warning-strong",
+    },
+    sync_alert: { icon: RefreshCw, tile: "bg-info-subtle text-info-strong" },
+    ownership: { icon: UserRound, tile: "bg-muted text-muted-foreground" },
+    needs_owner: {
+      icon: UserRoundSearch,
+      tile: "bg-warning-subtle text-warning-strong",
+    },
+    job: { icon: Cog, tile: "bg-muted text-muted-foreground" },
+    regeneration: { icon: RotateCw, tile: "bg-muted text-muted-foreground" },
+  };
 
 /** The top bar's Notifications: a bell with an unread dot, and the list in a Popover. */
 export function NotificationBell() {
   const me = useMe();
-  const notifications = useNotifications(!!me.data && !me.data.must_change_password);
+  const notifications = useNotifications(
+    !!me.data && !me.data.must_change_password,
+  );
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
 
@@ -128,12 +148,20 @@ export function NotificationBell() {
         </div>
         {items.length === 0 ? (
           <div className="flex flex-col items-center gap-1 px-3 py-8 text-center">
-            <BellOff aria-hidden className="mb-1 size-6 text-subtle-foreground" />
+            <BellOff
+              aria-hidden
+              className="mb-1 size-6 text-subtle-foreground"
+            />
             <p className="font-medium">You&apos;re all caught up</p>
-            <p className="text-sm text-muted-foreground">You have no notifications.</p>
+            <p className="text-sm text-muted-foreground">
+              You have no notifications.
+            </p>
           </div>
         ) : (
-          <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto py-1">
+          <div
+            ref={setScroller}
+            className="min-h-0 flex-1 overflow-y-auto py-1"
+          >
             <Group
               label="Today"
               items={today}
@@ -186,7 +214,9 @@ function Group({
   }
   return (
     <section>
-      <h4 className="px-3 pt-2 pb-1 text-xs font-medium text-subtle-foreground">{label}</h4>
+      <h4 className="px-3 pt-2 pb-1 text-xs font-medium text-subtle-foreground">
+        {label}
+      </h4>
       <ul className="flex flex-col">
         {items.map((notification) => {
           const { icon: Icon, tile } = KINDS[notification.kind];
@@ -202,20 +232,28 @@ function Group({
                 }
               }}
             >
-              <span className={`grid size-7 shrink-0 place-items-center rounded-md ${tile}`}>
+              <span
+                className={`grid size-7 shrink-0 place-items-center rounded-md ${tile}`}
+              >
                 <Icon aria-hidden className="size-4" />
               </span>
               <div className="min-w-0 flex-1">
                 {notification.workspace_id ? (
                   <Link
-                    href={`/workspaces/${notification.workspace_id}`}
+                    href={notificationHref(
+                      notification,
+                      notification.workspace_id,
+                    )}
                     title={notification.message}
                     className={`line-clamp-2 text-sm ${text} no-underline after:absolute after:inset-0 after:content-['']`}
                   >
                     {notification.message}
                   </Link>
                 ) : (
-                  <p title={notification.message} className={`line-clamp-2 text-sm ${text}`}>
+                  <p
+                    title={notification.message}
+                    className={`line-clamp-2 text-sm ${text}`}
+                  >
                     {notification.message}
                   </p>
                 )}
@@ -225,7 +263,10 @@ function Group({
               </div>
               {!read && (
                 <>
-                  <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
+                  <span
+                    aria-hidden
+                    className="mt-2 size-1.5 shrink-0 rounded-full bg-primary"
+                  />
                   <Button
                     variant="ghost"
                     size="icon"

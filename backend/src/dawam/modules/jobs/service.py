@@ -137,10 +137,32 @@ class JobRunner(Protocol):
         """The hook of ``job_type``, if any."""
         ...
 
+    def on_finished(self, job_type: str, hook: FinishedHook) -> None:
+        """Register how a succeeded job of ``job_type`` words and links its notification."""
+        ...
+
+    def finished(self, job_type: str) -> FinishedHook | None:
+        """The hook of ``job_type``, if any."""
+        ...
+
 
 AbandonedHook = Callable[[Session, Mapping[str, Any], str], None]
 """``hook(db, params, reason)``: a job of the type ended without its handler finishing
 (cancelled before or while it ran, or its worker was lost), in ``db``'s transaction."""
+
+
+@dataclass(frozen=True)
+class FinishedNotice:
+    """What a succeeded job's notification says and points at instead of the default."""
+
+    message: str
+    ref_type: str
+    ref_id: uuid.UUID
+
+
+FinishedHook = Callable[[str, Mapping[str, Any], Mapping[str, Any] | None], FinishedNotice | None]
+"""``hook(title, params, result)``: the notification of a succeeded job, or ``None`` for
+the default ("finished", ``ref_type="job"``)."""
 
 
 class _Handlers:
@@ -149,6 +171,15 @@ class _Handlers:
     def __init__(self) -> None:
         self._handlers: dict[str, JobHandler] = {}
         self._abandoned: dict[str, AbandonedHook] = {}
+        self._finished: dict[str, FinishedHook] = {}
+
+    def on_finished(self, job_type: str, hook: FinishedHook) -> None:
+        """Let a module word and link the notification of its succeeded jobs. The first
+        hook for a type stays."""
+        self._finished.setdefault(job_type, hook)
+
+    def finished(self, job_type: str) -> FinishedHook | None:
+        return self._finished.get(job_type)
 
     def on_abandoned(self, job_type: str, hook: AbandonedHook) -> None:
         """Tell a module when its jobs of ``job_type`` are cancelled or lost. The first
@@ -685,12 +716,17 @@ class JobService:
                 if status == "succeeded"
                 else f'Job "{record.title}" failed: {record.error}'
             )
+            ref_type, ref_id = "job", record.id
+            hook = self._runner.finished(record.type) if status == "succeeded" else None
+            notice = hook(record.title, record.params, record.result) if hook else None
+            if notice is not None:
+                message, ref_type, ref_id = notice.message, notice.ref_type, notice.ref_id
             self._notifications.notify(
                 [record.created_by],
                 kind="job",
                 message=message,
                 workspace_id=record.workspace_id,
-                ref_type="job",
-                ref_id=record.id,
+                ref_type=ref_type,
+                ref_id=ref_id,
                 db=db,
             )

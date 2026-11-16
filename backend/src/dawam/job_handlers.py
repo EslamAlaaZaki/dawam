@@ -201,6 +201,7 @@ def _service_handlers(
     )
     runner.on_abandoned(INDEX_JOB, documents.abandon_index)
     runner.on_abandoned(REINDEX_JOB, documents.abandon_reindex)
+    runner.on_finished(CATALOG_SUGGEST_JOB, catalog.finished_notice)
     assistant = build_assistant_service(
         engine,
         settings,

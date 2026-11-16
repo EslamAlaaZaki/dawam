@@ -97,6 +97,8 @@ function SnapshotCounts({ snapshot }: { snapshot: SnapshotSummary }) {
  * Connection, profile every table and view and find relationships, each as a background
  * job; the page refreshes once a job finishes. The Relationships tab reviews the inferred
  * relationships (`?tab=relationships` opens it, as the ER diagram's link does).
+ * `?tab=data-catalog` (a finished catalog job's notification) opens the browser until the
+ * Data catalog tab exists.
  */
 export function SourceSchemaPanel({
   workspace,

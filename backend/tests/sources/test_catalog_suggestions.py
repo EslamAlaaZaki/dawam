@@ -149,6 +149,21 @@ FULL = (
 # -- the job: fills gaps only --------------------------------------------------------------
 
 
+def test_the_finish_notification_links_the_source_system_and_counts_suggestions(
+    roles: RoleClients, model, fake_llm
+):
+    system = imported(roles)
+    fake_llm.script(answer(*FULL))
+
+    job = run(roles, system)
+
+    notes = roles.client("editor").get("/api/v1/notifications").json()["items"]
+    [note] = [n for n in notes if n["kind"] == "job"]
+    assert (note["ref_type"], note["ref_id"]) == ("source_system", system.rsplit("/", 1)[-1])
+    assert note["message"].startswith('Job "Suggest catalog entries · ')
+    assert note["message"].endswith(f"finished with {job['made']} suggestions.")
+
+
 def test_the_job_fills_only_empty_fields_and_a_rerun_replaces_the_pending_ones(
     roles: RoleClients, model, fake_llm
 ):
