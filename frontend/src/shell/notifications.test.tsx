@@ -33,14 +33,8 @@ function note(id: string, message: string): Notification {
   };
 }
 
-const FIRST = note(
-  "a0000000-0000-4000-8000-000000000001",
-  "Grace is the new owner of Retail DW.",
-);
-const SECOND = note(
-  "a0000000-0000-4000-8000-000000000002",
-  "Alan is the new owner of Sales DW.",
-);
+const FIRST = note("a0000000-0000-4000-8000-000000000001", "Grace is the new owner of Retail DW.");
+const SECOND = note("a0000000-0000-4000-8000-000000000002", "Alan is the new owner of Sales DW.");
 
 const PAGE = 2;
 
@@ -84,9 +78,7 @@ describe("the notification bell in the header", () => {
   it("shows the unread count and lists the notifications when opened", async () => {
     renderApp(backend([FIRST, SECOND]), "/");
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Notifications (2)" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Notifications (2)" }));
 
     const list = screen.getByRole("region", { name: "Notifications" });
     expect(list).toHaveTextContent(FIRST.message);
@@ -100,28 +92,20 @@ describe("the notification bell in the header", () => {
   it("opens a finished catalog job on its Source System's Data catalog tab, other jobs on the Workspace home", async () => {
     const system = "22222222-2222-4222-8222-222222222222";
     const catalog: Notification = {
-      ...note(
-        "a0000000-0000-4000-8000-000000000003",
-        'Job "Suggest catalog entries" finished with 59 suggestions.',
-      ),
+      ...note("a0000000-0000-4000-8000-000000000003", 'Job "Suggest catalog entries" finished with 59 suggestions.'),
       kind: "job",
       ref_type: "source_system",
       ref_id: system,
     };
     const other: Notification = {
-      ...note(
-        "a0000000-0000-4000-8000-000000000004",
-        'Job "Profile" finished.',
-      ),
+      ...note("a0000000-0000-4000-8000-000000000004", 'Job "Profile" finished.'),
       kind: "job",
       ref_type: "job",
       ref_id: "33333333-3333-4333-8333-333333333333",
     };
     renderApp(backend([catalog, other]), "/");
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Notifications (2)" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Notifications (2)" }));
 
     expect(screen.getByRole("link", { name: catalog.message })).toHaveAttribute(
       "href",
@@ -135,22 +119,14 @@ describe("the notification bell in the header", () => {
 
   it("marks one notification read but keeps it listed, styled as read", async () => {
     const requests = renderApp(backend([FIRST, SECOND]), "/");
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Notifications (2)" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Notifications (2)" }));
 
     fireEvent.click(screen.getAllByRole("button", { name: "Mark read" })[0]!);
 
-    expect(
-      await screen.findByRole("button", { name: "Notifications (1)" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Notifications (1)" })).toBeInTheDocument();
     expect(screen.getByText(FIRST.message)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: FIRST.message })).toHaveClass(
-      "text-muted-foreground",
-    );
-    expect(screen.getAllByRole("button", { name: "Mark read" })).toHaveLength(
-      1,
-    );
+    expect(screen.getByRole("link", { name: FIRST.message })).toHaveClass("text-muted-foreground");
+    expect(screen.getAllByRole("button", { name: "Mark read" })).toHaveLength(1);
     expect(requests.find((r) => r.method === "POST")).toMatchObject({
       path: `/api/v1/notifications/${FIRST.id}/read`,
       csrf: CSRF_TOKEN,
@@ -159,15 +135,11 @@ describe("the notification bell in the header", () => {
 
   it("marks a notification read when its row is clicked", async () => {
     const requests = renderApp(backend([FIRST, SECOND]), "/");
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Notifications (2)" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Notifications (2)" }));
 
     fireEvent.click(screen.getByText(SECOND.message));
 
-    expect(
-      await screen.findByRole("button", { name: "Notifications (1)" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Notifications (1)" })).toBeInTheDocument();
     expect(requests.filter((r) => r.method === "POST")).toHaveLength(1);
     expect(requests.find((r) => r.method === "POST")?.path).toBe(
       `/api/v1/notifications/${SECOND.id}/read`,
@@ -176,29 +148,19 @@ describe("the notification bell in the header", () => {
 
   it("marks them all read and keeps them listed", async () => {
     renderApp(backend([FIRST, SECOND]), "/");
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Notifications (2)" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Notifications (2)" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Mark all read" }));
 
-    expect(
-      await screen.findByRole("button", { name: "Notifications (0)" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Notifications (0)" })).toBeInTheDocument();
     expect(screen.getByText(FIRST.message)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Mark all read" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Mark read" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark all read" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark read" })).not.toBeInTheDocument();
   });
 
   it("says so when there are no notifications at all", async () => {
     renderApp(backend([]), "/");
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Notifications (0)" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Notifications (0)" }));
 
     expect(screen.getByText("You have no notifications.")).toBeInTheDocument();
   });
@@ -209,9 +171,7 @@ describe("the notification bell in the header", () => {
       vi.stubGlobal(
         "IntersectionObserver",
         class {
-          constructor(
-            callback: (entries: { isIntersecting: boolean }[]) => void,
-          ) {
+          constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
             intersect = () => callback([{ isIntersecting: true }]);
           }
           observe() {}
@@ -231,13 +191,9 @@ describe("the notification bell in the header", () => {
       );
       const visited: ApiRequest[] = [];
       renderApp(backend([FIRST, SECOND, third], visited), "/");
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Notifications (3)" }),
-      );
+      fireEvent.click(await screen.findByRole("button", { name: "Notifications (3)" }));
       expect(screen.queryByText(third.message)).not.toBeInTheDocument();
-      expect(
-        screen.queryByText("No older notifications"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("No older notifications")).not.toBeInTheDocument();
 
       await waitFor(() => expect(intersect).toBeDefined());
       act(() => intersect!());
