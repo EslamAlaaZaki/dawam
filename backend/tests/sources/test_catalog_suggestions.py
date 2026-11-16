@@ -9,6 +9,7 @@ The audit trail is read through its service.
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -85,6 +86,7 @@ def path(system: str) -> str:
 
 def run(roles: RoleClients, system: str, as_role: str = "editor") -> dict:
     client = roles.client(as_role)
+    roles.app.state.services.clock.advance(timedelta(seconds=1))  # the newest run is this one
     started = client.post(path(system))
     assert started.status_code == 202, started.text
     latest = client.get(path(system))
@@ -521,7 +523,7 @@ def test_documents_are_searched_only_when_shared_and_indexed(roles: RoleClients,
     share_documents(roles, True)
     fake_llm.calls.clear()
     fake_llm.script(
-        Reply(tool_calls=(ToolCall("s1", "search_documents", {"query": "customer"}),)),
+        Reply(tool_calls=(ToolCall("s1", "search_documents", {"query": "cust_ref"}),)),
         answer({"table": "sales.customer", "description": "From the dictionary."}),
     )
 

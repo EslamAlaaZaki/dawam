@@ -252,13 +252,12 @@ class CatalogSuggestionService:
                 query = query.where(CatalogSuggestionRecord.src_table_id == table_id)
             items = self._views(db, list(db.scalars(query)))
             counts = dict.fromkeys(CATALOG_SUGGESTION_STATUSES, 0)
-            counts.update(
-                db.execute(
-                    sa.select(CatalogSuggestionRecord.status, sa.func.count())
-                    .where(CatalogSuggestionRecord.source_system_id == system_id)
-                    .group_by(CatalogSuggestionRecord.status)
-                ).tuples()
-            )
+            for found, count in db.execute(
+                sa.select(CatalogSuggestionRecord.status, sa.func.count())
+                .where(CatalogSuggestionRecord.source_system_id == system_id)
+                .group_by(CatalogSuggestionRecord.status)
+            ):
+                counts[found] = count
         return CatalogSuggestionPage(items=items, counts=counts)
 
     def accept(
@@ -453,7 +452,7 @@ class CatalogSuggestionService:
                 sa.select(SrcTableRecord, SrcDbSchemaRecord.name)
                 .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
                 .where(SrcTableRecord.id.in_(chunk))
-            ).tuples()
+            )
         }
         columns = {
             c.id: c
@@ -810,7 +809,7 @@ def _catalog(
                 SrcTableRecord.status == "present",
             )
             .order_by(SrcDbSchemaRecord.name, SrcTableRecord.name)
-        ).tuples()
+        )
     )
     column_ids = sa.select(SnapshotColumnRecord.src_column_id).where(
         SnapshotColumnRecord.snapshot_id == snapshot_id
@@ -834,7 +833,7 @@ def _catalog(
                     ColumnProfileRecord.null_pct,
                     ColumnProfileRecord.distinct_count,
                 ).where(ColumnProfileRecord.src_column_id.in_(column_ids))
-            ).tuples()
+            )
             if column_id not in protected
         }
     constraints: dict[uuid.UUID, list[dict[str, Any]]] = {}
