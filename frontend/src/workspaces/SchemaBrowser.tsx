@@ -886,6 +886,7 @@ function TablePage({
                   pending={pendingFor(null, "description")}
                   canEdit={canEdit}
                   empty="No description"
+                  subject={title}
                 />
               </dd>
               <dt className="text-muted-foreground">Classification</dt>
@@ -900,6 +901,7 @@ function TablePage({
                   pending={classPending}
                   canEdit={canEdit}
                   empty="Not classified"
+                  subject={title}
                 />
               </dd>
               {hasScd && (
@@ -916,6 +918,7 @@ function TablePage({
                       pending={pendingFor(null, "scd_hint")}
                       canEdit={canEdit}
                       empty="No hint"
+                      subject={title}
                     />
                   </dd>
                 </>
@@ -1032,6 +1035,7 @@ function TablePage({
                         pending={pendingFor(column.id, "description")}
                         canEdit={canEdit}
                         empty="—"
+                        subject={`${title}.${column.name}`}
                       />
                     </TableCell>
                   </TableRow>

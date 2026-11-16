@@ -18,7 +18,6 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
-import { cn } from "../lib/utils";
 import { NativeSelect } from "./parts";
 
 /** The dashed mark of a pending AI suggestion: neutral, never the Assistant's gradient or ✦. */
@@ -112,6 +111,7 @@ export function CatalogValue({
   pending,
   canEdit,
   empty,
+  subject,
 }: {
   workspaceId: string;
   systemId: string;
@@ -122,6 +122,8 @@ export function CatalogValue({
   pending: CatalogSuggestion | undefined;
   canEdit: boolean;
   empty: string;
+  /** What the field belongs to, e.g. `customers.city`, named by the buttons. */
+  subject: string;
 }) {
   const accept = useAcceptSuggestions(workspaceId, systemId);
   const reject = useRejectSuggestions(workspaceId, systemId);
@@ -129,7 +131,7 @@ export function CatalogValue({
   const edit = useEditCatalogField(workspaceId, systemId);
   const [editing, setEditing] = useState<"suggestion" | "value" | null>(null);
   const [draft, setDraft] = useState("");
-  const label = FIELD_LABELS[field].toLowerCase();
+  const label = `${subject} ${FIELD_LABELS[field].toLowerCase()}`;
   const onError = (error: Error) => toast.error(error.message);
   const busy =
     accept.isPending || reject.isPending || acceptEdited.isPending || edit.isPending;
@@ -249,7 +251,7 @@ export function CatalogValue({
           {ai && <AiTag />}
         </>
       ) : (
-        <span className={cn("text-subtle-foreground")}>{empty}</span>
+        <span className="text-subtle-foreground">{empty}</span>
       )}
       {canEdit && (
         <IconAction label={`Edit ${label}`} onClick={() => begin("value")}>

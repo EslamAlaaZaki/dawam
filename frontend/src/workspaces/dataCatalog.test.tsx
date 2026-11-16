@@ -265,14 +265,6 @@ function openTab(name: RegExp | string) {
   fireEvent.click(tab);
 }
 
-function nth<T>(list: T[], index: number): T {
-  const item = list[index];
-  if (item === undefined) {
-    throw new Error(`No item ${index} in a list of ${list.length}`);
-  }
-  return item;
-}
-
 const bodyOf = (writes: { path: string; body: unknown }[], path: string) =>
   writes.find((w) => w.path === path)?.body;
 
@@ -454,7 +446,7 @@ describe("Suggestions in place", () => {
     const writes: { path: string; body: unknown }[] = [];
     const page = await openCustomers(OWNER, writes);
 
-    fireEvent.click(await within(page).findByRole("button", { name: "Accept the suggested classification" }));
+    fireEvent.click(await within(page).findByRole("button", { name: "Accept the suggested core.customers classification" }));
     await waitFor(() =>
       expect(bodyOf(writes, "/catalog-suggestions/accept")).toEqual({ ids: ["s2"] }),
     );
@@ -464,10 +456,12 @@ describe("Suggestions in place", () => {
     const writes: { path: string; body: unknown }[] = [];
     const page = await openCustomers(OWNER, writes);
 
-    const edit = await within(page).findAllByRole("button", {
-      name: "Edit the suggested description before accepting",
-    });
-    fireEvent.click(nth(edit, 1));
+    await within(page).findByText("The customer number");
+    fireEvent.click(
+      within(page).getByRole("button", {
+        name: "Edit the suggested core.customers.cust_no description before accepting",
+      }),
+    );
     fireEvent.change(within(page).getByLabelText("Description"), {
       target: { value: "Key of the customer" },
     });
@@ -484,10 +478,11 @@ describe("Suggestions in place", () => {
     const writes: { path: string; body: unknown }[] = [];
     const page = await openCustomers(OWNER, writes);
 
-    const reject = await within(page).findAllByRole("button", {
-      name: "Reject the suggested description",
-    });
-    fireEvent.click(nth(reject, 0));
+    fireEvent.click(
+      await within(page).findByRole("button", {
+        name: "Reject the suggested core.customers description",
+      }),
+    );
     await waitFor(() =>
       expect(bodyOf(writes, "/catalog-suggestions/reject")).toEqual({ ids: ["s1"] }),
     );
@@ -527,7 +522,7 @@ describe("Editing by hand", () => {
     const writes: { path: string; body: unknown }[] = [];
     const page = await openSaved(OWNER, writes);
 
-    fireEvent.click(nth(within(page).getAllByRole("button", { name: "Edit description" }), 0));
+    fireEvent.click(within(page).getByRole("button", { name: "Edit core.customers description" }));
     fireEvent.change(within(page).getByLabelText("Description"), { target: { value: "New text" } });
     fireEvent.click(within(page).getByRole("button", { name: "Save" }));
 
@@ -540,14 +535,14 @@ describe("Editing by hand", () => {
     const writes: { path: string; body: unknown }[] = [];
     const page = await openSaved(OWNER, writes);
 
-    fireEvent.click(within(page).getByRole("button", { name: "Edit classification" }));
+    fireEvent.click(within(page).getByRole("button", { name: "Edit core.customers classification" }));
     fireEvent.change(within(page).getByLabelText("Classification"), { target: { value: "master" } });
     fireEvent.click(within(page).getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(bodyOf(writes, "/tables/t1")).toEqual({ version: 2, classification: "master" }),
     );
 
-    fireEvent.click(nth(within(page).getAllByRole("button", { name: "Edit description" }), 1));
+    fireEvent.click(within(page).getByRole("button", { name: "Edit core.customers.cust_no description" }));
     fireEvent.change(within(page).getByLabelText("Description"), { target: { value: "Cust key" } });
     fireEvent.click(within(page).getByRole("button", { name: "Save" }));
     await waitFor(() =>
@@ -562,7 +557,7 @@ describe("Editing by hand", () => {
     const writes: { path: string; body: unknown }[] = [];
     const page = await openSaved(OWNER, writes);
 
-    fireEvent.click(nth(within(page).getAllByRole("button", { name: "Edit description" }), 0));
+    fireEvent.click(within(page).getByRole("button", { name: "Edit core.customers description" }));
     fireEvent.change(within(page).getByLabelText("Description"), { target: { value: " " } });
     fireEvent.click(within(page).getByRole("button", { name: "Save" }));
     await waitFor(() =>

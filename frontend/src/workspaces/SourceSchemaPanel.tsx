@@ -139,9 +139,9 @@ function CatalogJobStrip({
             {(job.skipped ?? 0) > 0 &&
               `, ${plural(job.skipped ?? 0, "field", "fields")} skipped (already filled or rejected)`}
           </span>
-          {pending > 0 && (
+          {(job.made ?? 0) > 0 && (
             <button type="button" className={linkButtonClasses} onClick={onReview}>
-              Review {pending} pending
+              {pending > 0 ? `Review ${pending} pending` : "Open Data catalog"}
             </button>
           )}
         </>
