@@ -718,7 +718,12 @@ class JobService:
             )
             ref_type, ref_id = "job", record.id
             hook = self._runner.finished(record.type) if status == "succeeded" else None
-            notice = hook(record.title, record.params, record.result) if hook else None
+            notice = None
+            if hook is not None:
+                try:
+                    notice = hook(record.title, record.params, record.result)
+                except Exception:
+                    logger.exception("finish notice of %s job %s failed", record.type, record.id)
             if notice is not None:
                 message, ref_type, ref_id = notice.message, notice.ref_type, notice.ref_id
             self._notifications.notify(
