@@ -16,6 +16,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { useCatalogSuggestions } from "../api/catalogSuggestions";
 import {
   useImportStatus,
   useStartProfiling,
@@ -66,6 +67,7 @@ import {
   CodePreview,
 } from "./parts";
 import { Loading } from "../shell/Loading";
+import { CatalogValue } from "./CatalogValue";
 import { TableRelationships } from "./RelationshipReview";
 
 type SchemaTable = SourceSchema["tables"][number];
@@ -819,6 +821,24 @@ function TablePage({
       .map((c) => c.name),
   );
   const title = `${table.db_schema}.${table.name}`;
+  // Owners and editors see the pending AI suggestions in place and edit values by hand.
+  const canEdit =
+    workspace.status !== "archived" && allows(workspace, "source_schema.enhance");
+  const pendingList = useCatalogSuggestions(
+    workspace.id,
+    systemId,
+    "pending",
+    table.id,
+    canEdit,
+  );
+  const pendingFor = (columnId: string | null, field: string) =>
+    pendingList.data?.items.find(
+      (s) => s.column_id === columnId && s.field === field,
+    );
+  const tableTarget = { kind: "table", tableId: table.id, version: table.version ?? 0 } as const;
+  const classPending = pendingFor(null, "classification");
+  const classValue = classPending?.value ?? table.classification;
+  const hasScd = classValue === "master" || classValue === "reference";
   const pks = table.constraints.filter((k) => k.type === "pk").length;
   const fks = table.constraints.filter((k) => k.type === "fk").length;
   // Suggested inferred relationships from or to this table wait for a decision.
@@ -853,9 +873,54 @@ function TablePage({
                 </Stat>
               )}
             </dl>
-            {table.comment && (
-              <p className="text-sm text-muted-foreground">{table.comment}</p>
-            )}
+            <dl className="grid grid-cols-[max-content_1fr] items-center gap-x-4 gap-y-1.5 text-sm">
+              <dt className="text-muted-foreground">Description</dt>
+              <dd>
+                <CatalogValue
+                  workspaceId={workspace.id}
+                  systemId={systemId}
+                  target={tableTarget}
+                  field="description"
+                  value={table.description}
+                  ai={table.ai_fields?.includes("description") ?? false}
+                  pending={pendingFor(null, "description")}
+                  canEdit={canEdit}
+                  empty="No description"
+                />
+              </dd>
+              <dt className="text-muted-foreground">Classification</dt>
+              <dd>
+                <CatalogValue
+                  workspaceId={workspace.id}
+                  systemId={systemId}
+                  target={tableTarget}
+                  field="classification"
+                  value={table.classification}
+                  ai={table.ai_fields?.includes("classification") ?? false}
+                  pending={classPending}
+                  canEdit={canEdit}
+                  empty="Not classified"
+                />
+              </dd>
+              {hasScd && (
+                <>
+                  <dt className="text-muted-foreground">SCD hint</dt>
+                  <dd>
+                    <CatalogValue
+                      workspaceId={workspace.id}
+                      systemId={systemId}
+                      target={tableTarget}
+                      field="scd_hint"
+                      value={table.scd_hint}
+                      ai={table.ai_fields?.includes("scd_hint") ?? false}
+                      pending={pendingFor(null, "scd_hint")}
+                      canEdit={canEdit}
+                      empty="No hint"
+                    />
+                  </dd>
+                </>
+              )}
+            </dl>
           </>
         }
         actions={
@@ -914,7 +979,7 @@ function TablePage({
                   <TableHead>Nullable</TableHead>
                   <TableHead>Key</TableHead>
                   <TableHead>Default</TableHead>
-                  <TableHead>Comment</TableHead>
+                  <TableHead>Description</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -951,8 +1016,23 @@ function TablePage({
                         <Truncated text={String(column.default)} />
                       )}
                     </TableCell>
-                    <TableCell className="max-w-64">
-                      {column.comment && <Truncated text={column.comment} />}
+                    <TableCell className="min-w-64 whitespace-normal">
+                      <CatalogValue
+                        workspaceId={workspace.id}
+                        systemId={systemId}
+                        target={{
+                          kind: "column",
+                          tableId: table.id,
+                          columnId: column.id,
+                          version: column.version ?? 0,
+                        }}
+                        field="description"
+                        value={column.description}
+                        ai={column.ai_fields?.includes("description") ?? false}
+                        pending={pendingFor(column.id, "description")}
+                        canEdit={canEdit}
+                        empty="—"
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

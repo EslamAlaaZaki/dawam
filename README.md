@@ -75,7 +75,8 @@ Across all stages:
   schema, statistics and data rather than guesses. It runs on any model: OpenAI-compatible
   servers (Ollama, vLLM, SGLang, OpenAI), Anthropic, Azure OpenAI, Gemini or AWS Bedrock.
 - **Nothing changes silently.** AI output, regenerations, syncs and propagated changes all
-  arrive as Change Sets. Fields you override are remembered and never silently undone.
+  arrive as Change Sets, except suggested KPIs and data catalog suggestions, which wait for your
+  accept or reject in their own review. Fields you override are remembered and never silently undone.
 - **Collaboration.** Workspaces with Owner, Editor and Viewer roles, invitations, activity,
   notifications and an audit trail.
 - **Source engines.** Live connections to PostgreSQL, SQL Server, MySQL/MariaDB and Oracle.

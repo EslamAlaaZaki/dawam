@@ -104,7 +104,7 @@ function Details({
   const protectedCount = columns.filter((c) => c.is_protected).length;
   const pk = columns.filter((c) => c.is_pk).map((c) => c.name);
   const estimate = rows(table.row_estimate);
-  const description = table.description ?? table.comment;
+  const description = table.description;
   const link = (id: string) => {
     const target = tables.get(id);
     return target ? (
@@ -136,7 +136,7 @@ function Details({
         </div>
       </DialogHeader>
       <p className={description ? "text-muted-foreground" : "text-subtle-foreground"}>
-        {description || "No description yet."}
+        {description || "—"}
       </p>
 
       <Section title="Columns" empty={columns.length === 0}>
@@ -200,7 +200,7 @@ function Details({
                   {column.default ?? <span className="font-sans text-subtle-foreground">none</span>}
                 </TableCell>
                 <TableCell className="min-w-48 whitespace-normal text-muted-foreground">
-                  {column.description ?? column.comment ?? ""}
+                  {column.description || "—"}
                 </TableCell>
               </TableRow>
             ))}
