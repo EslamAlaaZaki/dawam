@@ -20,7 +20,13 @@ from dawam.modules.changesets import AppliedChange
 from dawam.modules.workspaces import Action
 from dawam.platform.errors import ApiError
 
-from .enhancement_service import COLUMN_FIELDS, TABLE_FIELDS, _snapshot, set_fields
+from .enhancement_service import (
+    COLUMN_FIELDS,
+    TABLE_FIELDS,
+    _snapshot,
+    expire_pending_suggestions,
+    set_fields,
+)
 from .tables import SourceSystemRecord, SrcColumnRecord, SrcDbSchemaRecord, SrcTableRecord
 
 TABLE = "source_table"
@@ -120,6 +126,8 @@ class SourceEnhancementHandler:
         changed = [f for f in self._fields if before[f] != after[f]]
         if changed:
             record.version += 1
+            # A person accepted it: their values make pending catalog suggestions moot.
+            expire_pending_suggestions(db, record, changed, person=True)
         db.flush()
         return AppliedChange(
             entity_type=self.object_type,

@@ -9,7 +9,7 @@ transaction that makes it. Reading them is part of the Source Schema.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -25,11 +25,13 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .tables import (
+    CATALOG_FIELDS,
     CLASSIFICATIONS,
     DESCRIPTION_MAX_LENGTH,
     MAX_TAGS,
     SCD_HINT_MAX_LENGTH,
     TAG_MAX_LENGTH,
+    CatalogSuggestionRecord,
     SourceSystemRecord,
     SrcColumnRecord,
     SrcDbSchemaRecord,
@@ -45,6 +47,8 @@ TABLE_FIELDS = (
     "include_view_in_staging",
 )
 COLUMN_FIELDS = ("description", "tags", "is_sensitive")
+SCD_CLASSES = ("master", "reference")
+"""The classifications an SCD hint is suggested for (spec §6.19)."""
 """The enhancements of a table and of a column: what the audit trail records."""
 
 
@@ -135,6 +139,41 @@ def set_fields(
             raise ValueError(f"cannot change {entity_type} field {field!r}")
         if getattr(record, field) != before and field in (record.ai_fields or []):
             record.ai_fields = [f for f in record.ai_fields if f != field]
+
+
+def expire_pending_suggestions(
+    db: Session,
+    record: SrcTableRecord | SrcColumnRecord,
+    changed: Sequence[str],
+    *,
+    person: bool,
+    keep: uuid.UUID | None = None,
+) -> None:
+    """Expire the pending data catalog suggestions of ``record`` that a change of its
+    ``changed`` fields makes moot (spec §6.19): a person's value on a field (``person``), and
+    the SCD hint of a table no longer classified ``master`` or ``reference`` (any change).
+    ``keep`` (the suggestion being accepted) stays as it is."""
+    fields = {f for f in changed if f in CATALOG_FIELDS} if person else set()
+    is_table = isinstance(record, SrcTableRecord)
+    if is_table and "classification" in changed and record.classification not in SCD_CLASSES:
+        fields.add("scd_hint")
+    if not fields:
+        return
+    query = sa.update(CatalogSuggestionRecord).where(
+        CatalogSuggestionRecord.status == "pending",
+        CatalogSuggestionRecord.field.in_(sorted(fields)),
+    )
+    if is_table:
+        query = query.where(
+            CatalogSuggestionRecord.src_table_id == record.id,
+            CatalogSuggestionRecord.src_column_id.is_(None),
+        )
+    else:
+        query = query.where(CatalogSuggestionRecord.src_column_id == record.id)
+    if keep is not None:
+        query = query.where(CatalogSuggestionRecord.id != keep)
+    # "evaluate": suggestions this session already loaded (an accept batch) see it too.
+    db.execute(query.values(status="expired").execution_options(synchronize_session="evaluate"))
 
 
 def _not_found(what: str) -> ApiError:
@@ -263,10 +302,13 @@ def write_enhancements(
     changes: Mapping[str, Any],
     at: datetime,
     via: str = "user",
+    keep: uuid.UUID | None = None,
 ) -> list[str]:
     """Validate and set ``changes`` on the locked ``record``; when a value changes, bump its
     version, audit the change (``via``) and record it in the activity feed. The fields that
-    changed. No version check: the caller decides whether the record may change."""
+    changed. No version check: the caller decides whether the record may change. Pending
+    catalog suggestions the change makes moot expire (``expire_pending_suggestions``), but
+    ``keep``, the suggestion being accepted."""
     fields = TABLE_FIELDS if entity_type == "source_table" else COLUMN_FIELDS
     before = _snapshot(record, fields)
     set_fields(record, entity_type, changes)
@@ -275,6 +317,7 @@ def write_enhancements(
     if not changed:
         return []
     record.version += 1
+    expire_pending_suggestions(db, record, changed, person=via == "user", keep=keep)
     db.flush()
     record_audit(
         db,

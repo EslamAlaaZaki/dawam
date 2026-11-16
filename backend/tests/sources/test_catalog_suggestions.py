@@ -586,3 +586,114 @@ def test_model_text_is_redacted_before_it_is_saved(roles: RoleClients, model, fa
 
     [made] = listed(roles, system)
     assert "leak.example" not in made["value"] and "[redacted" in made["value"]
+
+
+# -- a person's value wins -----------------------------------------------------------------
+
+
+def test_accepting_never_overwrites_a_value_a_person_set_meanwhile(
+    roles: RoleClients, model, fake_llm
+):
+    system = imported(roles)
+    fake_llm.script(answer(*FULL))
+    run(roles, system)
+    pending = by_key(listed(roles, system))
+    description = pending["orders", None, "description"]
+    name = pending["customer", "name", "description"]
+    orders = table_of(roles, system, "orders")
+    editor = roles.client("editor")
+    assert editor.patch(
+        f"{system}/tables/{orders['id']}",
+        json={"version": orders["version"], "description": "A person's words."},
+    ).is_success
+    customer = table_of(roles, system, "customer")
+    column = next(c for c in customer["columns"] if c["name"] == "name")
+    assert editor.patch(
+        f"{system}/tables/{customer['id']}/columns/{column['id']}",
+        json={"version": column["version"], "description": "Typed by hand."},
+    ).is_success
+
+    accepted = editor.post(f"{path(system)}/accept", json={"ids": [description["id"]]})
+    edited = editor.post(
+        f"{path(system)}/accept-edited", json={"id": name["id"], "value": "Something else."}
+    )
+
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json() == {"decided": [], "skipped": [description["id"]]}
+    assert edited.status_code == 409
+    assert edited.json()["error"]["code"] == "suggestion_not_pending"
+    assert table_of(roles, system, "orders")["description"] == "A person's words."
+    after = next(c for c in table_of(roles, system, "customer")["columns"] if c["name"] == "name")
+    assert after["description"] == "Typed by hand."
+    expired = by_key(listed(roles, system, "expired"))
+    assert ("orders", None, "description") in expired
+    assert ("customer", "name", "description") in expired
+    assert listed(roles, system, "accepted") == []
+
+
+def test_a_persons_edit_expires_only_the_pending_suggestion_of_that_field(
+    roles: RoleClients, model, fake_llm
+):
+    system = imported(roles)
+    fake_llm.script(answer(*FULL))
+    run(roles, system)
+    customer = table_of(roles, system, "customer")
+
+    response = roles.client("editor").patch(
+        f"{system}/tables/{customer['id']}",
+        json={"version": customer["version"], "description": "Ours."},
+    )
+
+    assert response.status_code == 200, response.text
+    assert list(by_key(listed(roles, system, "expired"))) == [("customer", None, "description")]
+    pending = by_key(listed(roles, system))
+    assert ("customer", None, "classification") in pending
+    assert ("customer", "name", "description") in pending
+
+
+def test_an_scd_hint_needs_a_master_or_reference_classification_when_accepted(
+    roles: RoleClients, model, fake_llm
+):
+    system = imported(roles)
+    fake_llm.script(answer(*FULL))
+    run(roles, system)
+    pending = by_key(listed(roles, system))
+    editor = roles.client("editor")
+
+    # Accepted together, the classification goes first and the hint may follow.
+    both = [pending["customer", None, f]["id"] for f in ("scd_hint", "classification")]
+    response = editor.post(f"{path(system)}/accept", json={"ids": both})
+    assert response.status_code == 200, response.text
+    assert response.json()["skipped"] == []
+    assert table_of(roles, system, "customer")["scd_hint"].startswith("Names change")
+
+    # A classification that is no longer master or reference expires a pending hint.
+    fake_llm.script(
+        answer({"table": "sales.country", "classification": "reference", "scd_hint": "Fixed list."})
+    )
+    run(roles, system)
+    country = table_of(roles, system, "country")
+    changed = editor.patch(
+        f"{system}/tables/{country['id']}",
+        json={"version": country["version"], "classification": "log"},
+    )
+    assert changed.status_code == 200, changed.text
+    assert ("country", None, "scd_hint") in by_key(listed(roles, system, "expired"))
+    hint = by_key(listed(roles, system, "expired"))["country", None, "scd_hint"]
+    refused = editor.post(f"{path(system)}/accept", json={"ids": [hint["id"]]})
+    assert refused.json() == {"decided": [], "skipped": [hint["id"]]}
+    assert table_of(roles, system, "country")["scd_hint"] is None
+
+
+def test_an_scd_hint_alone_is_not_accepted_for_an_unclassified_table(
+    roles: RoleClients, model, fake_llm
+):
+    system = imported(roles)
+    fake_llm.script(answer(*FULL))
+    run(roles, system)
+    hint = by_key(listed(roles, system))["customer", None, "scd_hint"]
+
+    response = roles.client("editor").post(f"{path(system)}/accept", json={"ids": [hint["id"]]})
+
+    assert response.json() == {"decided": [], "skipped": [hint["id"]]}
+    assert table_of(roles, system, "customer")["scd_hint"] is None

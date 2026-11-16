@@ -88,7 +88,11 @@ ACTIVE = ("queued", "running", "paused")
 PASSAGES_PER_SEARCH = 5
 DISTINCT_LIMIT = 50
 """The most distinct values one ``distinct_values`` call shows the model."""
-_CODE_TYPE = re.compile(r"char|text|string|int|number|numeric|decimal", re.IGNORECASE)
+_CODE_TYPE = re.compile(
+    r"^\s*(?:n?(?:var)?char\d*|character|n?text|string|"
+    r"(?:tiny|small|medium|big)?int(?:eger)?\d*|number|numeric|decimal)\b",
+    re.IGNORECASE,
+)
 """Data types a code column may have: characters or whole numbers."""
 
 
@@ -355,6 +359,9 @@ class CatalogSuggestionService:
                 raise _not_found("Suggestion")
             decided: list[CatalogSuggestionRecord] = []
             skipped: list[uuid.UUID] = []
+            # A table's classification first, so an SCD hint accepted with it may follow.
+            order = {"description": 0, "classification": 1, "scd_hint": 2}
+            wanted.sort(key=lambda i: order.get(records[i].field, 9))
             for suggestion_id in wanted:
                 record = records[suggestion_id]
                 if record.status != "pending":
@@ -391,7 +398,10 @@ class CatalogSuggestionService:
         now: datetime,
     ) -> bool:
         """Copy an accepted suggestion's value onto its object; ``False`` (and the suggestion
-        expired) when the object is no longer present."""
+        expired) when the object is no longer present, the field has a value already (accepting
+        never overwrites one), or it is an SCD hint of a table not classified ``master`` or
+        ``reference``. An ``edited`` value equal to the AI's (after trimming) is accepted as
+        the AI's: audited ``via=ai`` and marked in ``ai_fields``."""
         target: SrcTableRecord | SrcColumnRecord | None
         if suggestion.src_column_id is not None:
             target = db.get(SrcColumnRecord, suggestion.src_column_id, with_for_update=True)
@@ -399,7 +409,15 @@ class CatalogSuggestionService:
         else:
             target = db.get(SrcTableRecord, suggestion.src_table_id, with_for_update=True)
             entity_type = "source_table"
-        if target is None or target.status != "present":
+        if (
+            target is None
+            or target.status != "present"
+            or getattr(target, suggestion.field) is not None
+            or (
+                suggestion.field == "scd_hint"
+                and getattr(target, "classification", None) not in SCD_CLASSIFICATIONS
+            )
+        ):
             suggestion.status = "expired"
             return False
         person = edited is not None and edited.strip() != suggestion.value
@@ -417,6 +435,7 @@ class CatalogSuggestionService:
             changes={suggestion.field: value},
             at=now,
             via="user" if person else "ai",
+            keep=suggestion.id,
         )
         if changed and not person:
             target.ai_fields = [*(target.ai_fields or []), suggestion.field]
@@ -684,7 +703,9 @@ class CatalogSuggestionService:
         column = columns.get(ref) or columns.get(ref.casefold())
         if column is None:
             return json.dumps({"error": "There is no such column: name it schema.table.column."})
-        if column.protected:
+        with Session(self._engine) as db:  # again now: a finding may have come since the start
+            protected = column.protected or bool(protected_column_ids(db, [column.id]))
+        if protected:
             return json.dumps({"error": "That column holds personal data: it is not queried."})
         if not _CODE_TYPE.search(column.data_type or ""):
             return json.dumps({"error": "Only code columns (text or whole numbers) are queried."})
@@ -721,6 +742,7 @@ class CatalogSuggestionService:
 
 @dataclass(frozen=True)
 class _Column:
+    id: uuid.UUID
     schema: str
     table: str
     name: str
@@ -848,7 +870,12 @@ def _catalog(
         for column in by_table.get(table.id, []):
             definition = column.current_definition or {}
             refs[f"{ref}.{column.name}"] = _Column(
-                schema, table.name, column.name, definition.get("data_type"), column.id in protected
+                column.id,
+                schema,
+                table.name,
+                column.name,
+                definition.get("data_type"),
+                column.id in protected,
             )
             refs.setdefault(f"{ref}.{column.name}".casefold(), refs[f"{ref}.{column.name}"])
             if column.description is None:

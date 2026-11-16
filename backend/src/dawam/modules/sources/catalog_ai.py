@@ -42,12 +42,13 @@ from dawam.modules.llm import (
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_text
 
+from .enhancement_service import SCD_CLASSES
 from .tables import CLASSIFICATIONS, DESCRIPTION_MAX_LENGTH, SCD_HINT_MAX_LENGTH
 
 TABLES_PER_BATCH = 10
 MAX_TOOL_CALLS = 6
 """Document searches and source queries one batch may make before it must answer."""
-SCD_CLASSIFICATIONS = ("master", "reference")
+SCD_CLASSIFICATIONS = SCD_CLASSES
 """The classifications an SCD hint is suggested for."""
 SEARCH_TOOL = "search_documents"
 DISTINCT_TOOL = "distinct_values"
