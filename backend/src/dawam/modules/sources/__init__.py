@@ -19,6 +19,16 @@ Public interface. Other modules import only what is re-exported here:
 - ``EnhancementService``: owners and editors add descriptions, tags, a sensitivity flag,
   and (tables) a classification and SCD hint to Source Objects; each change is audited
   (``source_table`` / ``source_column`` entities) and appears in the activity feed.
+- ``CatalogSuggestionService``: data catalog suggestions (spec §6.19). Owners and editors who
+  may ask the assistant ``start`` a ``catalog_suggest`` job (``CATALOG_SUGGEST_JOB``, one per
+  Source System at a time; ``run`` is its handler, which ``dawam.job_handlers`` registers with
+  the agent model's ``RoleService``, the ``PiiDocumentSearch`` port and the member lookup).
+  The AI (``catalog_ai``) fills only empty table descriptions, classifications and SCD hints
+  (``master`` and ``reference`` tables) and column descriptions, from metadata plus, as the
+  AI privacy settings allow, profile statistics, Documents and guarded ``DISTINCT`` source
+  queries. Owners and editors list (``CatalogSuggestion``), accept (as written: audited
+  ``via=ai`` and marked in ``ai_fields``; or edited: a person's value), reject and accept all;
+  a new Snapshot expires pending suggestions of objects it lacks.
 - ``SourceEnhancementHandler(object_type)``: the ``changesets`` engine's handler for
   ``source_table`` and ``source_column`` items (enhancement updates); the composition root
   registers one of each.
@@ -101,6 +111,9 @@ Public interface. Other modules import only what is re-exported here:
   ``GET .../systems/{system_id}/import[/template]``, ``POST .../import/validate``,
   ``POST .../import/upload``, ``POST .../import/connection-requests``,
   ``PATCH .../systems/{system_id}/tables/{table_id}[/columns/{column_id}]``,
+  ``GET|POST .../systems/{system_id}/catalog-suggestions``,
+  ``GET .../catalog-suggestions/items``,
+  ``POST .../catalog-suggestions/accept|accept-all|accept-edited|reject``,
   ``GET .../systems/{system_id}/pii-findings``,
   ``GET|POST .../systems/{system_id}/pii-columns``,
   ``POST .../systems/{system_id}/pii-columns/{column_id}/accept|reject|accept-rejected|remove``,
@@ -125,6 +138,11 @@ model) and ``workspaces``.
 from fastapi import APIRouter
 
 from .api import router as _systems_router
+from .catalog_suggestion_service import (
+    CATALOG_SUGGEST_JOB,
+    CatalogSuggestion,
+    CatalogSuggestionService,
+)
 from .connection_service import Connection, ConnectionService, ConnectionStatus
 from .deletion import (
     SourceSystemContents,
@@ -203,6 +221,7 @@ router.include_router(_systems_router)
 router.include_router(_pii_rules_router)
 
 __all__ = [
+    "CATALOG_SUGGEST_JOB",
     "DEFAULT_BUDGET_SECONDS",
     "EXTRACT_JOB",
     "INFER_JOB",
@@ -211,6 +230,8 @@ __all__ = [
     "PII_SCAN_JOB",
     "PROFILE_JOB",
     "AcceptedPiiColumn",
+    "CatalogSuggestion",
+    "CatalogSuggestionService",
     "Connection",
     "ConnectionService",
     "ConnectionStatus",

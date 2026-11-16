@@ -117,6 +117,11 @@ class SnapshotColumn(BaseModel):
         description="`is_sensitive` or a `suggested`/`accepted` PII finding; set only in the "
         "Source Schema.",
     )
+    ai_fields: list[Literal["description"]] | None = Field(
+        default=None,
+        description="`description` when an accepted AI suggestion wrote it and nobody has "
+        "changed it since (show an AI tag); set only in the Source Schema.",
+    )
 
 
 class SnapshotConstraint(BaseModel):
@@ -171,6 +176,11 @@ class SnapshotTable(BaseModel):
     version: int | None = Field(
         default=None,
         description="Send it back when editing the enhancements; set only in the Source Schema.",
+    )
+    ai_fields: list[Literal["description", "classification", "scd_hint"]] | None = Field(
+        default=None,
+        description="The data catalog fields an accepted AI suggestion wrote and nobody has "
+        "changed since (show an AI tag); set only in the Source Schema.",
     )
     profiled_at: datetime | None = Field(
         default=None,

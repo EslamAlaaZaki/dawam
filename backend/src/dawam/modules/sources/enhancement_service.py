@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -111,8 +112,11 @@ def _snapshot(record: Any, fields: tuple[str, ...]) -> dict[str, Any]:
 def set_fields(
     record: SrcTableRecord | SrcColumnRecord, entity_type: str, changes: Mapping[str, Any]
 ) -> None:
-    """Validate ``changes`` and set them on ``record`` (no version check, audit or flush)."""
+    """Validate ``changes`` and set them on ``record`` (no version check, audit or flush). A
+    field whose value changes loses its AI mark (``ai_fields``): the value is no longer the
+    AI's as accepted."""
     for field, value in changes.items():
+        before = getattr(record, field, None)
         if field == "description":
             record.description = _text(value, "description", field, DESCRIPTION_MAX_LENGTH)
         elif field == "tags":
@@ -129,6 +133,8 @@ def set_fields(
             record.scd_hint = _text(value, "SCD hint", field, SCD_HINT_MAX_LENGTH)
         else:  # pragma: no cover - a programming error
             raise ValueError(f"cannot change {entity_type} field {field!r}")
+        if getattr(record, field) != before and field in (record.ai_fields or []):
+            record.ai_fields = [f for f in record.ai_fields if f != field]
 
 
 def _not_found(what: str) -> ApiError:
@@ -236,33 +242,60 @@ class EnhancementService:
                 "Someone else changed this object since you loaded it. Reload and try again.",
                 {"current_version": record.version},
             )
-        before = _snapshot(record, fields)
-        set_fields(record, entity_type, changes)
-        after = _snapshot(record, fields)
-        changed = [f for f in fields if before[f] != after[f]]
-        if not changed:
-            return
-        record.version += 1
-        now = self._clock()
-        db.flush()
-        record_audit(
+        write_enhancements(
             db,
-            workspace_id=system.workspace_id,
             actor_id=user.id,
+            system=system,
+            record=record,
             entity_type=entity_type,
-            entity_id=record.id,
-            old={f: before[f] for f in changed},
-            new={f: after[f] for f in changed},
-            at=now,
+            changes=changes,
+            at=self._clock(),
         )
-        record_activity(
-            db,
-            workspace_id=system.workspace_id,
-            actor_id=user.id,
-            verb=f"{entity_type}.enhanced",
-            object_type=entity_type,
-            object_id=record.id,
-            object_label=record.name,
-            details={"source_system_id": str(system.id), "fields": changed},
-            at=now,
-        )
+
+
+def write_enhancements(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    system: SourceSystemRecord,
+    record: SrcTableRecord | SrcColumnRecord,
+    entity_type: str,
+    changes: Mapping[str, Any],
+    at: datetime,
+    via: str = "user",
+) -> list[str]:
+    """Validate and set ``changes`` on the locked ``record``; when a value changes, bump its
+    version, audit the change (``via``) and record it in the activity feed. The fields that
+    changed. No version check: the caller decides whether the record may change."""
+    fields = TABLE_FIELDS if entity_type == "source_table" else COLUMN_FIELDS
+    before = _snapshot(record, fields)
+    set_fields(record, entity_type, changes)
+    after = _snapshot(record, fields)
+    changed = [f for f in fields if before[f] != after[f]]
+    if not changed:
+        return []
+    record.version += 1
+    db.flush()
+    record_audit(
+        db,
+        workspace_id=system.workspace_id,
+        actor_id=actor_id,
+        entity_type=entity_type,
+        entity_id=record.id,
+        old={f: before[f] for f in changed},
+        new={f: after[f] for f in changed},
+        at=at,
+        via=via,
+    )
+    record_activity(
+        db,
+        workspace_id=system.workspace_id,
+        actor_id=actor_id,
+        verb=f"{entity_type}.enhanced",
+        object_type=entity_type,
+        object_id=record.id,
+        object_label=record.name,
+        details={"source_system_id": str(system.id), "fields": changed},
+        at=at,
+    )
+    return changed

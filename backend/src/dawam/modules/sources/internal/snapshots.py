@@ -16,7 +16,8 @@ writes the immutable ``Snapshot*`` rows that point at them:
 - a catalog identical to the latest Snapshot's (same content hash) creates nothing;
 - view and routine text is stored once per content hash (``definition_texts``);
 - every new Snapshot's column names are scanned for PII (``pii.scan_columns``), with no
-  load on the source.
+  load on the source;
+- pending data catalog suggestions on objects the new Snapshot lacks become ``expired``.
 
 The caller holds the Source System's row lock, so extractions of one system never
 interleave.
@@ -37,6 +38,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from ..tables import (
+    CatalogSuggestionRecord,
     DefinitionTextRecord,
     RenameCandidateRecord,
     SnapshotColumnRecord,
@@ -449,6 +451,7 @@ def store_catalog(
         )
     _insert(db, SnapshotTableRecord, table_rows)
     _insert(db, SnapshotColumnRecord, column_rows)
+    expire_catalog_suggestions(db, source_system_id, sid)
     workspace_id = db.scalars(
         sa.select(SourceSystemRecord.workspace_id).where(SourceSystemRecord.id == source_system_id)
     ).one()
@@ -478,6 +481,37 @@ def store_catalog(
         ],
     )
     return snapshot
+
+
+def expire_catalog_suggestions(
+    db: Session, source_system_id: uuid.UUID, snapshot_id: uuid.UUID
+) -> int:
+    """Mark ``expired`` the Source System's pending data catalog suggestions whose table (or
+    column) is missing from ``snapshot_id``: they can no longer be accepted (spec §6.19). How
+    many expired."""
+    in_tables = sa.select(SnapshotTableRecord.src_table_id).where(
+        SnapshotTableRecord.snapshot_id == snapshot_id
+    )
+    in_columns = sa.select(SnapshotColumnRecord.src_column_id).where(
+        SnapshotColumnRecord.snapshot_id == snapshot_id
+    )
+    result = db.execute(
+        sa.update(CatalogSuggestionRecord)
+        .where(
+            CatalogSuggestionRecord.source_system_id == source_system_id,
+            CatalogSuggestionRecord.status == "pending",
+            sa.or_(
+                CatalogSuggestionRecord.src_table_id.not_in(in_tables),
+                sa.and_(
+                    CatalogSuggestionRecord.src_column_id.is_not(None),
+                    CatalogSuggestionRecord.src_column_id.not_in(in_columns),
+                ),
+            ),
+        )
+        .values(status="expired")
+        .execution_options(synchronize_session=False)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def _propose_renames(
