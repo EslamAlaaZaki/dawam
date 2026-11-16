@@ -70,7 +70,7 @@ Stages 1–3 and everything below are in scope for Release 1. Stage 4 is the nex
 
 - **Software first, AI where software can't.** Anything deterministic (extraction, profiling, PII regex, staging generation, scoring, lineage, validation) is done by software. The AI handles understanding, drafting, generating and judging. AI prompts are grounded by tools that fetch real schema, statistics and data rather than guessing.
 - **AI is required.** An installation needs at least one configured model; self-hosted models (vLLM, SGLang, Ollama) are fully supported, so the whole tool can run air-gapped.
-- **Nothing changes silently.** Every change to the Source Schema enhancements, DW Schema or mappings that comes from the AI, a regeneration, a Snapshot sync, a mapping import or change propagation arrives as a **Change Set** the user accepts in full or in part. The one exception is AI-suggested KPIs, which arrive as **suggested** KPIs in the KPIs folder's Suggested tab (§6.13) rather than as a Change Set: create-only, never updating or deleting existing KPIs, skipping names that already exist in any review state, audited as `via=ai`, and counting nowhere until an owner or editor accepts them.
+- **Nothing changes silently.** Every change to the Source Schema enhancements, DW Schema or mappings that comes from the AI, a regeneration, a Snapshot sync, a mapping import or change propagation arrives as a **Change Set** the user accepts in full or in part. There are two exceptions. AI-suggested KPIs arrive as **suggested** KPIs in the KPIs folder's Suggested tab (§6.13) rather than as a Change Set: create-only, never updating or deleting existing KPIs, skipping names that already exist in any review state, audited as `via=ai`, and counting nowhere until an owner or editor accepts them. AI suggestions for the **data catalog** (table descriptions, classifications and SCD hints, column descriptions) arrive as catalog suggestions in the Source schema's Data catalog tab (§6.19): they fill only empty fields, never overwrite a value, and change nothing until an owner or editor accepts them one by one, audited as `via=ai`.
 - **Forward-only.** There is no revert, no restore button and no per-Asset version history ([ADR 0001](./adr/0001-forward-only-changes-no-revert.md)). A change lists the impacted Assets and offers a Change Set that propagates it. The audit trail shows old values, so a user can re-enter them as a new change.
 - **Destructive actions are soft.** Deleting a Source System or a DW table is owner-only and marks only that object `deleted` (no cascade) until an owner confirms the permanent delete.
 - **Everything is editable.** Users can override anything the software or the AI produced, and DAWAM remembers which fields a user overrode so regeneration and sync never silently undo them.
@@ -133,6 +133,7 @@ Roles apply to the whole Workspace (all Source Systems and the Data Warehouse). 
 | Run extraction / Schema Import / profiling | ❌ | ✅ | ✅ | ❌ |
 | Allow top-N value capture per table | ❌ | ✅ | ❌ | ❌ |
 | Edit Source Schema enhancements & documents | ❌ | ✅ | ✅ | ❌ |
+| Run and review data catalog suggestions (running also needs asking the assistant; §6.19) | ❌ | ✅ | ✅ | ❌ |
 | Edit KPIs, DW Schema, mappings (KPIs: also accept or reject suggested KPIs and read the Suggested, Accepted and Rejected tabs) | ❌ | ✅ | ✅ | ❌ |
 | Set up the Data Warehouse (target platform, Layer schema names, naming rules, date dimension settings) | ❌ | ✅ | ✅ | ❌ |
 | Include a source view in staging | ❌ | ✅ | ✅ | ❌ |
@@ -261,7 +262,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 
 68. As an editor, I want the AI to explore a source where FKs are missing, reading sample rows and running its own `SELECT` queries (e.g. `COUNT(*)` overlap checks), so that undeclared relationships are confirmed with evidence.
 69. As a member, I want every query the AI runs on a source to be shown in the chat with its row count and duration, so that I can see what it touched.
-70. As an editor, I want the AI to draft business descriptions for tables and columns, explain the meaning of codes and statuses, and propose table classifications and SCD hints, as a Change Set I review, so that documentation starts from a draft instead of a blank page.
+70. As an editor, I want the AI to draft business descriptions for tables and columns, explain the meaning of codes and statuses, and propose table classifications and SCD hints, as catalog suggestions I review in the Source schema's Data catalog tab (§6.19), not as a Change Set, so that documentation starts from a draft instead of a blank page.
 71. As an editor, I want the AI to produce an optional **gaps & enhancements report** (Markdown) for a Source System (missing keys, undocumented tables, data-quality concerns, suggested improvements), so that analysis findings are written down.
 72. As a member, I want to ask the AI questions about a Source System and its documents and get answers that link to tables, columns and cited document sections, so that I can understand the system by asking.
 
@@ -527,7 +528,7 @@ See [ADR 0002](./adr/0002-ai-may-read-source-sample-rows.md).
 - **Value check on results.** Before any result reaches the model, every cell is tested with the built-in PII validators (§6.12: Saudi ID/Iqama with checksum, IBAN mod-97, mobile, email, Luhn card). A match masks that whole output column in the result and creates a `suggested` PII finding (rule `value-at-query`) on the source column, so later queries mask it by name. This catches PII behind vague names like `ref_no` before any value scan has run.
 - **Persistence.** Raw query results are never persisted: the saved tool result keeps only the query, the column names, the row count and the duration. Model-written text (messages, descriptions in Change Sets, reports, findings, KPI rationales) may quote non-protected values, so every model-written string is checked with the same validators before it is saved, and matches are redacted (`[redacted: iban]`).
 - Every query is recorded on the assistant run and shown in the chat with its row count and duration. No per-query approval.
-- Outputs (descriptions, classifications, SCD hints, relationship confirmations) arrive as a Change Set. The gaps & enhancements report is a Markdown file in the Source System's file area.
+- Outputs (relationship confirmations) arrive as a Change Set; descriptions, classifications and SCD hints are data catalog suggestions (§6.19). The gaps & enhancements report is a Markdown file in the Source System's file area.
 
 ### 6.9 DW Modeling
 
@@ -780,6 +781,18 @@ Every AI feature goes through one internal gateway. Nothing else in the codebase
 - **Embedding changes:** changing a Workspace's embedding model once it has indexed documents re-embeds them in the background, full-text search only meanwhile, with an atomic switch (ADR 0006).
 - **Local quick start:** Docker Compose includes an optional `ollama` profile (`docker compose --profile ollama up`) for a fully local setup with no external calls.
 
+### 6.19 Data catalog suggestions
+
+The **data catalog** is the business documentation on Source Objects: table descriptions, classifications and SCD hints, and column descriptions. The AI suggests the empty ones and a person accepts or rejects each, in the Source schema's **Data catalog** tab. Suggestions are their own records, not a Change Set (one of the two exceptions to "Nothing changes silently", §2).
+
+- **Storage.** One `CatalogSuggestion` per Source Object and field: a table's `description`, `classification` and `scd_hint`, a column's `description`. Never `tags` or `is_sensitive` (the PII folder owns `is_sensitive`, §6.12). Each holds the suggested value, a status (`pending`, `accepted`, `rejected`, `expired`), the job that made it, and who decided it and when.
+- **The job.** **Suggest catalog entries** starts a `catalog_suggest` background job for the whole Source System (owners and editors who may ask the assistant; it needs a Snapshot). One runs per Source System at a time: starting another while one runs is refused (409). It uses the Workspace's default agent model through the gateway (metered, budgeted and traced, with fallbacks) and is skipped with a log line when the Workspace has no agent model. Its result counts the suggestions **made** and the fields **skipped**.
+- **It only fills gaps.** A field that has a value (a person's or an accepted suggestion's) is skipped. A value rejected for an object and field is never suggested again for it; the rejected values are shown to the model. A new run replaces the pending suggestions of the run before. An SCD hint is suggested only for a table classified, or being suggested, `master` or `reference`.
+- **What the AI reads.** Always the metadata: names, data types, keys, constraints, the database comment, the descriptions and classifications already there. Only when AI privacy shares profile statistics: row counts and null and distinct percentages, never top values, minimum or maximum, and nothing for a protected column (§6.5). Only when the Workspace shares Documents and has indexed ones: `search_documents`. Only when the system has a live Connection and the Workspace shares sample rows (§6.8, ADR 0002): the distinct values of a non-protected code column, to explain codes, through the guarded source query with its guard, masking, per-run budget and audit; every query is recorded on the job.
+- **Model-written text** goes through the PII validators and is redacted before it is saved, as for Change Set text (§6.8).
+- **Reviewing.** Owners and editors list the suggestions by status, optionally of one table, and accept one or many, edit then accept one, reject one or many, or accept all pending (of the system or one table). Accepting copies the value onto the Source Object through the enhancement code: validated, versioned, audited as `via=ai` and shown with an **AI** tag until anyone changes the value. Edit-then-accept saves the edited value as a person's value (audited `via=user`, no AI tag). Rejections are audited. Viewers get 403 on the suggestion endpoints and only ever see accepted values.
+- **Expiry.** After an extraction or import, pending suggestions on Source Objects missing from the latest Snapshot become `expired` and cannot be accepted. A later run suggests them again if the object comes back.
+
 ---
 
 ## 7. Domain Model
@@ -830,9 +843,11 @@ Job(id, workspace_id, type[extract|import|profile|infer_relationships|pii_scan|
 SrcDbSchema(id, source_system_id, name, status)
 SrcTable(id, db_schema_id, name, kind[table|view], current_definition JSON,
          classification?[master|transactional|reference|log|landing], scd_hint?, description?, tags[],
-         is_sensitive, include_view_in_staging, placeholder_no?, status, version)
+         is_sensitive, include_view_in_staging, ai_fields[], placeholder_no?, status, version)
 SrcColumn(id, table_id, name, current_definition JSON, description?, tags[], is_sensitive,
-          pii_category?, pii_added_by?, pii_added_at?, placeholder_no?, status, version)
+          ai_fields[], pii_category?, pii_added_by?, pii_added_at?, placeholder_no?, status, version)
+                                                  -- ai_fields: data catalog fields an accepted AI
+                                                  -- suggestion wrote, unchanged since (§6.19)
 SrcRoutine(id, db_schema_id, name, kind[procedure|function], status)
 
 -- Immutable Snapshot contents: one frozen row per object per Snapshot.
@@ -850,6 +865,11 @@ ColumnProfile(id, src_column_id, job_id, row_count, null_pct, distinct_count, mi
               avg_len, max_len, top_values JSON?, patterns[], profiled_at)
 Relationship(id, from_column_id, to_column_id, origin[declared|inferred|routine|ai|manual],
              confidence (null for manual), evidence JSON, status[suggested|accepted|rejected], version)
+CatalogSuggestion(id, source_system_id, src_table_id, src_column_id?,
+                  field[description|classification|scd_hint], value, edited_value?,
+                  status[pending|accepted|rejected|expired], job_id?, created_at,
+                  decided_by?, decided_at?)       -- data catalog suggestions (§6.19); a column's
+                                                  -- field is description only
 SourceLink(id, source_system_id, kind[repo|jira|confluence|other], title, url, note, created_by)
 FileObjectLink(file_id, object_type[table|column], object_id)   -- documents linked to tables/columns
 

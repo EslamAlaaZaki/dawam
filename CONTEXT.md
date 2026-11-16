@@ -46,7 +46,7 @@ _Avoid_: Upload, manual schema
 
 **Source Object**:
 The stable identity of a database schema, table, column or routine in a Source System, kept across Snapshots. Descriptions, PII, relationships and mappings attach to it, not to a Snapshot.
-_Avoid_: Snapshot column, catalog entry
+_Avoid_: Snapshot column
 
 **Snapshot**:
 An immutable, point-in-time capture of a Source System's metadata (tables, columns, keys, indexes, procedures, functions, views), produced by either a Connection extraction or a Schema Import. Its frozen rows point at Source Objects.
@@ -54,7 +54,15 @@ _Avoid_: Version, scan
 
 **Source Schema**:
 The enhanced picture of a Source System's structure: the latest Snapshot plus discovered and manually added relationships, descriptions and labels added by users and the AI.
-_Avoid_: Catalog, source model
+_Avoid_: source model
+
+**Data catalog**:
+The business documentation on Source Objects: table descriptions, classifications and SCD hints, and column descriptions. Reviewed in the Source schema's Data catalog tab.
+_Avoid_: Data dictionary (the XLSX export of it), enhancements (the code's word)
+
+**Catalog suggestion**:
+The AI's suggested value for one empty field of the data catalog on one Source Object. Pending until an owner or editor accepts it (as written or edited) or rejects it; it is never a Change Set, and it expires when its Source Object leaves the latest Snapshot. An accepted one shows an AI tag until someone changes the value.
+_Avoid_: Catalog entry, AI enhancement
 
 **Database Schema**:
 A namespace inside a source database (e.g. `dbo`, `sales`).
