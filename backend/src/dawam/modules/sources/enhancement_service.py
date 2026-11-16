@@ -47,9 +47,9 @@ TABLE_FIELDS = (
     "include_view_in_staging",
 )
 COLUMN_FIELDS = ("description", "tags", "is_sensitive")
+"""The enhancements of a table and of a column: what the audit trail records."""
 SCD_CLASSES = ("master", "reference")
 """The classifications an SCD hint is suggested for (spec §6.19)."""
-"""The enhancements of a table and of a column: what the audit trail records."""
 
 
 @dataclass(frozen=True)

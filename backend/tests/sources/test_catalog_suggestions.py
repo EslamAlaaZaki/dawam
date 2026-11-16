@@ -12,6 +12,7 @@ import json
 from typing import Any
 
 import pytest
+import sqlalchemy as sa
 
 from dawam.modules.audit import AuditService
 from dawam.modules.jobs import JobService, QueuedJobRunner
@@ -697,3 +698,38 @@ def test_an_scd_hint_alone_is_not_accepted_for_an_unclassified_table(
 
     assert response.json() == {"decided": [], "skipped": [hint["id"]]}
     assert table_of(roles, system, "customer")["scd_hint"] is None
+
+
+def test_accepting_checks_the_field_is_still_empty_even_for_a_pending_suggestion(
+    roles: RoleClients, model, fake_llm, app
+):
+    """A value written by a path that expires nothing (here straight into the table) still
+    wins: the accept itself checks the field under the row lock."""
+    system = imported(roles)
+    fake_llm.script(answer(*FULL))
+    run(roles, system)
+    pending = by_key(listed(roles, system))
+    description = pending["orders", None, "description"]
+    name = pending["customer", "name", "description"]
+    with app.state.engine.begin() as conn:
+        conn.execute(
+            sa.text("UPDATE src_tables SET description = 'Already here.' WHERE id = :id"),
+            {"id": description["table_id"]},
+        )
+        conn.execute(
+            sa.text("UPDATE src_columns SET description = 'Also here.' WHERE id = :id"),
+            {"id": name["column_id"]},
+        )
+    assert ("orders", None, "description") in by_key(listed(roles, system))  # still pending
+    editor = roles.client("editor")
+
+    accepted = editor.post(f"{path(system)}/accept", json={"ids": [description["id"]]})
+    edited = editor.post(
+        f"{path(system)}/accept-edited", json={"id": name["id"], "value": "Something else."}
+    )
+
+    assert accepted.json() == {"decided": [], "skipped": [description["id"]]}
+    assert edited.status_code == 409
+    assert table_of(roles, system, "orders")["description"] == "Already here."
+    after = next(c for c in table_of(roles, system, "customer")["columns"] if c["name"] == "name")
+    assert after["description"] == "Also here."

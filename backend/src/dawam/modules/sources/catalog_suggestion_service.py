@@ -89,7 +89,7 @@ PASSAGES_PER_SEARCH = 5
 DISTINCT_LIMIT = 50
 """The most distinct values one ``distinct_values`` call shows the model."""
 _CODE_TYPE = re.compile(
-    r"^\s*(?:n?(?:var)?char\d*|character|n?text|string|"
+    r"^\s*(?:n?(?:var)?char\d*|bpchar|character|(?:tiny|medium|long|n)?text|string|"
     r"(?:tiny|small|medium|big)?int(?:eger)?\d*|number|numeric|decimal)\b",
     re.IGNORECASE,
 )
