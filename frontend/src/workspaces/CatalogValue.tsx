@@ -20,7 +20,7 @@ import { Input } from "../components/ui/input";
 import { toast } from "../components/ui/sonner";
 import { NativeSelect } from "./parts";
 
-/** The dashed mark of a pending AI suggestion: neutral, never the Assistant's gradient or ✦. */
+/** The dashed mark of a pending AI suggestion: neutral, never the Assistant's gradient or star mark. */
 export function SuggestedTag() {
   return (
     <Badge className="border border-dashed border-border-strong bg-transparent">

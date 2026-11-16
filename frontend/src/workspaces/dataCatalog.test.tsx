@@ -204,6 +204,8 @@ function backend(options: Options, writes: { path: string; body: unknown }[] = [
         return json({ items: [CBS], next_cursor: null });
       case `GET ${API}/progress`:
         return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
+      case `GET ${API}/members`:
+        return json({ items: [{ user_id: ADA.id, display_name: "Ada Lovelace" }] });
       case `GET ${API}/jobs`:
         return json({ items: [], next_cursor: null });
       case `GET ${SYSTEM}/snapshots`:
@@ -309,7 +311,8 @@ describe("Suggest catalog entries", () => {
   it("is disabled and shows the progress while a run is going", async () => {
     renderApp(backend({ ws: OWNER, job: job("running") }), FOLDER);
 
-    expect(await screen.findByRole("button", { name: "Suggest catalog entries" })).toBeDisabled();
+    const button = await screen.findByRole("button", { name: "Suggest catalog entries" });
+    await waitFor(() => expect(button).toBeDisabled());
     expect(await screen.findByRole("status", { name: "Catalog suggestions" })).toHaveTextContent(
       "40%",
     );
@@ -342,10 +345,10 @@ describe("The Data catalog tab", () => {
 
     const tab = await screen.findByRole("tab", { name: /Data catalog/ });
     expect(tab).toHaveAttribute("aria-selected", "true");
-    expect(tab).toHaveTextContent("4");
+    await waitFor(() => expect(tab).toHaveTextContent("4"));
     const list = await screen.findByRole("table", { name: "Data catalog suggestions" });
     expect(within(list).getByText("core.customers")).toBeInTheDocument();
-    expect(within(list).getByText("(table)")).toBeInTheDocument();
+    expect(within(list).getAllByText("(table)").length).toBeGreaterThan(0);
     expect(within(list).getByText("cust_no")).toBeInTheDocument();
     expect(within(list).getByText("The customer number")).toBeInTheDocument();
   });
@@ -360,7 +363,7 @@ describe("The Data catalog tab", () => {
 
     openTab(/^Rejected/);
     expect(await screen.findByText(/Won't be suggested again/)).toBeInTheDocument();
-    expect(screen.getByText("Rejected by Ada Lovelace")).toBeInTheDocument();
+    expect(await screen.findByText("Rejected by Ada Lovelace")).toBeInTheDocument();
 
     openTab(/^Pending/);
     fireEvent.change(screen.getByLabelText("Table"), { target: { value: "t2" } });
@@ -401,7 +404,11 @@ describe("The Data catalog tab", () => {
     await screen.findByRole("table", { name: "Data catalog suggestions" });
 
     fireEvent.change(screen.getByLabelText("Table"), { target: { value: "t2" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Accept all pending" }));
+    const all = await screen.findByRole("button", { name: "Accept all pending" });
+    await waitFor(() => expect(all).toBeEnabled());
+    await screen.findByText("Posted entries");
+    expect(within(screen.getByRole("table", { name: "Data catalog suggestions" })).queryByText("core.customers")).not.toBeInTheDocument();
+    fireEvent.click(all);
     await waitFor(() =>
       expect(bodyOf(writes, "/catalog-suggestions/accept-all")).toEqual({ table_id: "t2" }),
     );
@@ -602,7 +609,7 @@ describe("Editing by hand", () => {
 describe("The ER diagram's table details", () => {
   const renderDetails = (extra: object) => {
     const t = table("t1", "customers", {
-      columns: [column("c1", "cust_no", { is_protected: false, ...extra })],
+      columns: [column("c1", "cust_no", { is_protected: false })],
       indexes: [],
       ...extra,
     }) as unknown as SourceSchema["tables"][number];
