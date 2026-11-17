@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown, ChevronRight, ListFilter, Pencil, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import {
   FIELD_LABELS,
@@ -546,7 +546,6 @@ function TableFilter({
     }
     onChange(next);
   };
-  const keepOpen = (event: Event) => event.preventDefault();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -557,48 +556,70 @@ function TableFilter({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-96 min-w-56 overflow-y-auto">
-        <DropdownMenuCheckboxItem
-          checked={shown.size === 0}
-          onCheckedChange={() => onChange(new Set())}
-          onSelect={keepOpen}
-        >
+        <FilterItem checked={shown.size === 0} onToggle={() => onChange(new Set())}>
           All tables
-        </DropdownMenuCheckboxItem>
+        </FilterItem>
         {schemas.map(([schema, schemaTables]) => {
           const ids = schemaTables.map((t) => t.id);
           const on = ids.filter((id) => shown.has(id)).length;
           return (
             <DropdownMenuGroup key={schema}>
               <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={on === ids.length}
-                onCheckedChange={() => set(ids, on < ids.length)}
-                onSelect={keepOpen}
+              <FilterItem
+                checked={on === ids.length ? true : on > 0 ? "indeterminate" : false}
+                onToggle={() => set(ids, on < ids.length)}
                 className={cn(monoClasses, "font-semibold")}
               >
                 {schema}
-                {on > 0 && on < ids.length && (
-                  <span className="ms-auto font-sans text-xs font-normal text-subtle-foreground tabular-nums">
-                    {on}/{ids.length}
-                  </span>
-                )}
-              </DropdownMenuCheckboxItem>
+              </FilterItem>
               {schemaTables.map((t) => (
-                <DropdownMenuCheckboxItem
+                <FilterItem
                   key={t.id}
                   checked={shown.has(t.id)}
-                  onCheckedChange={(checked) => set([t.id], checked === true)}
-                  onSelect={keepOpen}
-                  className={cn(monoClasses, "ps-12")}
+                  onToggle={() => set([t.id], !shown.has(t.id))}
+                  className={cn(monoClasses, "pl-8")}
                 >
                   {t.name}
-                </DropdownMenuCheckboxItem>
+                </FilterItem>
               ))}
             </DropdownMenuGroup>
           );
         })}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * A filter entry drawn with the same checkbox as the table rows (a dash when a schema is
+ * partly ticked) instead of the menu's check mark. The menu stays open while ticking.
+ */
+function FilterItem({
+  checked,
+  onToggle,
+  className,
+  children,
+}: {
+  checked: boolean | "indeterminate";
+  onToggle: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <DropdownMenuCheckboxItem
+      checked={checked}
+      onCheckedChange={onToggle}
+      onSelect={(event) => event.preventDefault()}
+      className={cn("gap-2 pl-2 [&>span:first-child]:hidden", className)}
+    >
+      <Checkbox
+        checked={checked}
+        tabIndex={-1}
+        aria-hidden
+        className="pointer-events-none"
+      />
+      {children}
+    </DropdownMenuCheckboxItem>
   );
 }
 
