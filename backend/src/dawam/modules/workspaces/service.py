@@ -147,6 +147,24 @@ def _version_conflict(current: int) -> ApiError:
     )
 
 
+def _ensure_name_free(db: Session, name: str, *, other_than: uuid.UUID | None = None) -> None:
+    """409 ``workspace_name_taken`` if another active Workspace has ``name``, ignoring
+    case (archived ones do not count: their names may be used again)."""
+    query = sa.select(WorkspaceRecord.id).where(
+        WorkspaceRecord.status == "active",
+        sa.func.lower(WorkspaceRecord.name) == name.lower(),
+    )
+    if other_than is not None:
+        query = query.where(WorkspaceRecord.id != other_than)
+    if db.scalar(query.limit(1)) is not None:
+        raise ApiError(
+            409,
+            "workspace_name_taken",
+            f'Another active Workspace is already named "{name}". Choose another name.',
+            {"field": "name"},
+        )
+
+
 def _clean(value: str, field: str, max_length: int, *, required: bool = False) -> str:
     cleaned = value.strip()
     if required and not cleaned:
@@ -309,6 +327,7 @@ class WorkspaceService:
             version=1,
         )
         with Session(self._engine) as db, db.begin():
+            _ensure_name_free(db, record.name)
             db.add(record)
             db.flush()
             db.add(
@@ -475,6 +494,8 @@ class WorkspaceService:
                 cleaned = _clean(name, "name", NAME_MAX_LENGTH, required=True)
                 if cleaned != record.name:
                     changed.append("name")
+                    if record.status == "active":
+                        _ensure_name_free(db, cleaned, other_than=record.id)
                 record.name = cleaned
             if description is not None:
                 cleaned = _clean(description, "description", DESCRIPTION_MAX_LENGTH)
@@ -583,9 +604,11 @@ class WorkspaceService:
 
     def unarchive(self, user: User, workspace_id: uuid.UUID) -> None:
         """Make an archived Workspace editable again. Raises ``ApiError`` 409
-        ``workspace_not_archived`` if it is not archived."""
+        ``workspace_not_archived`` if it is not archived, 409 ``workspace_name_taken`` if
+        another active Workspace has its name meanwhile."""
         with Session(self._engine) as db, db.begin():
             record, _ = authorized(db, user, Action.UNARCHIVE_WORKSPACE, workspace_id, lock=True)
+            _ensure_name_free(db, record.name, other_than=record.id)
             now = self._clock()
             record.status = "active"
             record.archived_at = None

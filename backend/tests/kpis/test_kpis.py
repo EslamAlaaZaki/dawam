@@ -28,7 +28,8 @@ def created(roles: RoleClients, **fields) -> dict:
 
 def a_system(roles: RoleClients, code: str = "cbs") -> str:
     response = roles.client("editor").post(
-        f"/api/v1/workspaces/{roles.workspace_id}/systems", json={"name": "Core", "code": code}
+        f"/api/v1/workspaces/{roles.workspace_id}/systems",
+        json={"name": "Core" if code == "cbs" else f"Core {code}", "code": code},
     )
     assert response.status_code == 201, response.text
     return response.json()["id"]

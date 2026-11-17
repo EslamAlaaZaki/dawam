@@ -103,6 +103,27 @@ def _clean_code(value: str) -> str:
     return code
 
 
+def _ensure_name_free(
+    db: Session, workspace_id: uuid.UUID, name: str, *, other_than: uuid.UUID | None = None
+) -> None:
+    """409 ``system_name_taken`` if another Source System of the Workspace has ``name``,
+    ignoring case (deleted ones do not count: their names may be used again)."""
+    query = sa.select(SourceSystemRecord.id).where(
+        SourceSystemRecord.workspace_id == workspace_id,
+        SourceSystemRecord.status == "present",
+        sa.func.lower(SourceSystemRecord.name) == name.lower(),
+    )
+    if other_than is not None:
+        query = query.where(SourceSystemRecord.id != other_than)
+    if db.scalar(query.limit(1)) is not None:
+        raise ApiError(
+            409,
+            "system_name_taken",
+            f'Another Source System in this Workspace is already named "{name}".',
+            {"field": "name"},
+        )
+
+
 def _code_taken() -> ApiError:
     return ApiError(
         409, "system_code_taken", "Another Source System in this Workspace has that System Code."
@@ -143,7 +164,7 @@ class SourceSystemService:
         technical_owner: str = "",
     ) -> SourceSystem:
         """Add a Source System. 422 ``invalid_system_code`` / ``invalid_source_system``,
-        409 ``system_code_taken``."""
+        409 ``system_code_taken`` / ``system_name_taken``."""
         self._workspaces.authorize(user, Action.CREATE_SOURCE_SYSTEM, workspace_id)
         now = self._clock()
         record = SourceSystemRecord(
@@ -162,6 +183,7 @@ class SourceSystemService:
         )
         try:
             with Session(self._engine) as db, db.begin():
+                _ensure_name_free(db, workspace_id, record.name)
                 db.add(record)
                 db.flush()
                 self._record_activity(db, user, "source_system.created", record)
@@ -243,7 +265,7 @@ class SourceSystemService:
     ) -> SourceSystem:
         """Edit a Source System (``None``: leave as is). Changing the System Code needs
         an owner (403 ``forbidden`` for an editor). A stale ``version`` is 409
-        ``version_conflict``."""
+        ``version_conflict``; another system's name is 409 ``system_name_taken``."""
         self._workspaces.authorize(user, Action.EDIT_SOURCE_SYSTEM, workspace_id)
         try:
             with Session(self._engine) as db, db.begin():
@@ -270,7 +292,10 @@ class SourceSystemService:
                             "Propose the change as a Change Set instead.",
                         )
                 if name is not None:
-                    record.name = _clean(name, "name", NAME_MAX_LENGTH, required=True)
+                    cleaned = _clean(name, "name", NAME_MAX_LENGTH, required=True)
+                    if cleaned.lower() != record.name.lower():
+                        _ensure_name_free(db, workspace_id, cleaned, other_than=record.id)
+                    record.name = cleaned
                 if description is not None:
                     record.description = _clean(description, "description", DESCRIPTION_MAX_LENGTH)
                 if business_owner is not None:
