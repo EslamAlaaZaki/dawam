@@ -57,7 +57,6 @@ import { SnapshotDiffView } from "./SnapshotDiffView";
 import {
   EmptyState,
   ErrorText,
-  linkButtonClasses,
   listCardClasses,
 } from "./parts";
 import { Loading } from "../shell/Loading";
@@ -103,18 +102,15 @@ function SnapshotCounts({ snapshot }: { snapshot: SnapshotSummary }) {
   );
 }
 
-const plural = (n: number, one: string, many: string) =>
-  `${n} ${n === 1 ? one : many}`;
 
-/** The newest catalog suggestion run: its progress while it runs, then what it made. */
+/**
+ * The newest catalog suggestion run while it runs, or why it stopped. A finished run shows
+ * nothing here: its pending suggestions are counted on the Data catalog tab.
+ */
 function CatalogJobStrip({
   job,
-  pending,
-  onReview,
 }: {
   job: NonNullable<ReturnType<typeof useCatalogSuggestionJob>["data"]>;
-  pending: number;
-  onReview: () => void;
 }) {
   const running = isRunning(job);
   return (
@@ -130,20 +126,6 @@ function CatalogJobStrip({
             Suggesting descriptions and classifications
             <span className="ms-1 text-muted-foreground tabular-nums">{job.progress}%</span>
           </span>
-        </>
-      ) : job.status === "succeeded" ? (
-        <>
-          <Badge variant="success">Completed</Badge>
-          <span className="tabular-nums">
-            {plural(job.made ?? 0, "suggestion", "suggestions")}
-            {(job.skipped ?? 0) > 0 &&
-              `, ${plural(job.skipped ?? 0, "field", "fields")} skipped (already filled or rejected)`}
-          </span>
-          {(job.made ?? 0) > 0 && (
-            <button type="button" className={linkButtonClasses} onClick={onReview}>
-              {pending > 0 ? `Review ${pending} pending` : "Open Data catalog"}
-            </button>
-          )}
         </>
       ) : (
         <>
@@ -422,13 +404,10 @@ export function SourceSchemaPanel({
       {save.isError && <ErrorText>{save.error.message}</ErrorText>}
       {profileAll.isError && <ErrorText>{profileAll.error.message}</ErrorText>}
       {startCatalog.isError && <ErrorText>{startCatalog.error.message}</ErrorText>}
-      {hasSnapshot && canReviewCatalog && catalogJob.data && (
-        <CatalogJobStrip
-          job={catalogJob.data}
-          pending={pendingCount}
-          onReview={() => setTab("data-catalog")}
-        />
-      )}
+      {hasSnapshot &&
+        canReviewCatalog &&
+        catalogJob.data &&
+        catalogJob.data.status !== "succeeded" && <CatalogJobStrip job={catalogJob.data} />}
       {hasSnapshot && showSnapshots && (
         <ul
           id="snapshot-list"

@@ -318,14 +318,12 @@ describe("Suggest catalog entries", () => {
     );
   });
 
-  it("says how many suggestions a finished run made and skipped, with a link to review", async () => {
+  it("shows no strip after a finished run, only the pending count on the Data catalog tab", async () => {
     renderApp(backend({ ws: OWNER, job: job("succeeded") }), FOLDER);
 
-    const strip = await screen.findByRole("status", { name: "Catalog suggestions" });
-    expect(strip).toHaveTextContent("12 suggestions");
-    expect(strip).toHaveTextContent("3 fields skipped");
-    fireEvent.click(await within(strip).findByRole("button", { name: "Review 4 pending" }));
-    expect(await screen.findByRole("table", { name: "Data catalog suggestions" })).toBeInTheDocument();
+    const tab = await screen.findByRole("tab", { name: /Data catalog/ });
+    await waitFor(() => expect(tab).toHaveTextContent("4"));
+    expect(screen.queryByRole("status", { name: "Catalog suggestions" })).not.toBeInTheDocument();
   });
 });
 

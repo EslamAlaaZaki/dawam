@@ -2,6 +2,7 @@
 // and the manual edits of the same fields. A suggestion is its own record: it changes nothing
 // until a person accepts it.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 
 import { ApiError } from "./client";
 import { useApiClient } from "./context";
@@ -53,7 +54,8 @@ export function useCatalogSuggestionJob(
   enabled: boolean,
 ) {
   const client = useApiClient();
-  return useQuery({
+  const queryClient = useQueryClient();
+  const job = useQuery({
     queryKey: [...catalogKey(workspaceId, systemId), "job"] as const,
     enabled,
     retry: false,
@@ -69,6 +71,19 @@ export function useCatalogSuggestionJob(
       return data.job ?? null;
     },
   });
+  // When a run ends, its suggestions (and the pending count on the tab) load again.
+  const running = isRunning(job.data);
+  const wasRunning = useRef(running);
+  useEffect(() => {
+    if (wasRunning.current && !running) {
+      void queryClient.invalidateQueries({
+        queryKey: catalogKey(workspaceId, systemId),
+        predicate: (query) => query.queryKey.at(-1) !== "job",
+      });
+    }
+    wasRunning.current = running;
+  }, [running, queryClient, workspaceId, systemId]);
+  return job;
 }
 
 /** Start a run; fails with `catalog_suggestions_running` or `no_snapshot` (409). */
