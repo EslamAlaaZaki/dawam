@@ -219,6 +219,8 @@ export function SourceSchemaPanel({
 
   const unavailable =
     importStatus.data?.imported === true && !importStatus.data.has_connection;
+  // Only owners switch top values, so only they choose; editors profile as each table is.
+  const canSwitchTopN = allows(workspace, "source_table.top_n");
   const canProfile =
     allows(workspace, "source_system.profile") &&
     importStatus.isSuccess &&
@@ -240,16 +242,21 @@ export function SourceSchemaPanel({
     }
   }
 
-  function startProfileAll() {
+  function startProfileAll(keepTopValues: boolean) {
     const tableIds = present.map((t) => t.id);
-    profileAll.mutate(tableIds, {
-      onSuccess: (job) => {
-        runs.follow({ jobId: job.job_id, tableIds });
-        toast.success(
-          `Profiling started for ${tableIds.length} tables and views. Follow it under Background jobs.`,
-        );
+    profileAll.mutate(
+      { tableIds, keepTopValues },
+      {
+        onSuccess: (job) => {
+          runs.follow({ jobId: job.job_id, tableIds });
+          toast.success(
+            keepTopValues
+              ? `Top values switched on. Profiling started for ${tableIds.length} tables and views. Follow it under Background jobs.`
+              : `Profiling started for ${tableIds.length} tables and views. Follow it under Background jobs.`,
+          );
+        },
       },
-    });
+    );
   }
 
   return (
@@ -360,11 +367,32 @@ export function SourceSchemaPanel({
               Suggest catalog entries
             </Button>
           )}
-          {canProfile && present.length > 0 && (
+          {canProfile && present.length > 0 && canSwitchTopN && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" disabled={profileAll.isPending}>
+                  <Activity aria-hidden />
+                  Profile all tables
+                  <ChevronDown aria-hidden className="text-subtle-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-48">
+                <DropdownMenuItem onSelect={() => startProfileAll(true)}>
+                  <Activity aria-hidden />
+                  With top values
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => startProfileAll(false)}>
+                  <Activity aria-hidden />
+                  Without top values
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {canProfile && present.length > 0 && !canSwitchTopN && (
             <Button
               type="button"
               disabled={profileAll.isPending}
-              onClick={startProfileAll}
+              onClick={() => startProfileAll(false)}
             >
               <Activity aria-hidden />
               Profile all tables

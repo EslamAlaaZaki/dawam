@@ -175,6 +175,54 @@ def test_top_values_are_off_until_an_owner_switches_them_on_for_the_table(
     assert after["top_values"] is None
 
 
+def test_an_owner_profiles_with_top_values_switched_on_for_every_chosen_table(
+    roles: RoleClients, scratch_source
+):
+    scratch_source["run"](
+        SOURCE
+        + "CREATE TABLE towns (id integer PRIMARY KEY, name text);"
+        + "INSERT INTO towns VALUES (1, 'Cairo'), (2, 'Giza'), (3, 'Giza');"
+    )
+    system = add_system(roles)
+    connect(roles, system, scratch_source["body"]())
+    extract(roles, system)
+    ids = [table_of(roles, system, name)["id"] for name in ("people", "towns")]
+
+    started = profile_tables(roles, system, ids, as_role="owner", keep_top_values=True)
+
+    assert started.status_code == 202, started.text
+    people, towns = (profile_of(roles, system, table_id) for table_id in ids)
+    assert people["top_n_enabled"] is True and towns["top_n_enabled"] is True
+    city = columns_of(people)["city"]["profile"]
+    assert [v["value"] for v in city["top_values"]] == ["Alexandria", "Giza", "Cairo"]
+    name = columns_of(towns)["name"]["profile"]
+    assert [(v["value"], v["count"]) for v in name["top_values"]] == [("Giza", 2), ("Cairo", 1)]
+
+
+def test_only_an_owner_switches_top_values_on_while_profiling(roles: RoleClients, profiled):
+    system, table_id = profiled
+
+    editor = profile_tables(roles, system, [table_id], keep_top_values=True)
+
+    assert editor.status_code == 403
+    assert profile_of(roles, system, table_id)["top_n_enabled"] is False
+
+
+def test_profiling_without_the_flag_leaves_each_tables_top_values_as_they_are(
+    roles: RoleClients, profiled
+):
+    system, table_id = profiled
+    roles.client("owner").put(
+        f"{system}/tables/{table_id}/profiling-settings", json={"enabled": True}
+    )
+
+    run(roles, system, table_id)
+
+    profile = profile_of(roles, system, table_id)
+    assert profile["top_n_enabled"] is True
+    assert columns_of(profile)["city"]["profile"]["top_values"] is not None
+
+
 def test_protected_columns_never_get_min_max_or_top_values(roles: RoleClients, profiled):
     system, table_id = profiled
     roles.client("owner").put(

@@ -2485,7 +2485,8 @@ export interface paths {
         put?: never;
         /**
          * Start Profiling
-         * @description Profile the chosen tables (owners and editors) as a background job. 409
+         * @description Profile the chosen tables (owners and editors) as a background job; with
+         *     `keep_top_values` (owners only) top-N capture is switched on for each first. 409
          *     `profiling_unavailable` for a Source System with no live Connection (a Schema Import
          *     has none): profiling needs one.
          */
@@ -11927,6 +11928,12 @@ export interface components {
              * @default 30
              */
             timeout_seconds: number;
+            /**
+             * Keep Top Values
+             * @description Owners only: switch top-N value capture on for every chosen table first (audited). Left off, each table keeps its own setting.
+             * @default false
+             */
+            keep_top_values: boolean;
         };
         /** SuggestionIds */
         SuggestionIds: {

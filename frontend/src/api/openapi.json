@@ -8950,7 +8950,7 @@
           "sources"
         ],
         "summary": "Start Profiling",
-        "description": "Profile the chosen tables (owners and editors) as a background job. 409\n`profiling_unavailable` for a Source System with no live Connection (a Schema Import\nhas none): profiling needs one.",
+        "description": "Profile the chosen tables (owners and editors) as a background job; with\n`keep_top_values` (owners only) top-N capture is switched on for each first. 409\n`profiling_unavailable` for a Source System with no live Connection (a Schema Import\nhas none): profiling needs one.",
         "operationId": "startProfiling",
         "parameters": [
           {
@@ -34059,6 +34059,12 @@
             "title": "Timeout Seconds",
             "description": "Each source query is stopped after this long.",
             "default": 30
+          },
+          "keep_top_values": {
+            "type": "boolean",
+            "title": "Keep Top Values",
+            "description": "Owners only: switch top-N value capture on for every chosen table first (audited). Left off, each table keeps its own setting.",
+            "default": false
           }
         },
         "type": "object",
