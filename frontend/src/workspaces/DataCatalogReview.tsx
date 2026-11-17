@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Pencil, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ListFilter, Pencil, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -17,6 +17,14 @@ import { useMembers } from "../api/members";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { toast } from "../components/ui/sonner";
 import {
   Table,
@@ -34,7 +42,6 @@ import { CatalogInput, CatalogText, IconAction } from "./CatalogValue";
 import {
   EmptyState,
   ErrorText,
-  NativeSelect,
   TableCard,
   monoClasses,
 } from "./parts";
@@ -67,20 +74,13 @@ export function DataCatalogReview({
   tables: { id: string; db_schema: string; name: string }[];
 }) {
   const [status, setStatus] = useState<CatalogStatus>("pending");
-  // "" is every table, "schema:<name>" one Database Schema (narrowed here), else a table id.
-  const [scope, setScope] = useState("");
+  // The tables the filter keeps; empty keeps every table. Filtered here, not by the server.
+  const [shownTables, setShownTables] = useState<ReadonlySet<string>>(new Set());
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [editing, setEditing] = useState<{ id: string; draft: string } | null>(null);
-  const schemaFilter = scope.startsWith("schema:") ? scope.slice("schema:".length) : null;
-  const tableId = scope && schemaFilter == null ? scope : "";
-  const page = useCatalogSuggestions(
-    workspace.id,
-    systemId,
-    status,
-    tableId || null,
-    true,
-  );
+  const filtered = shownTables.size > 0;
+  const page = useCatalogSuggestions(workspace.id, systemId, status, null, true);
   const members = useMembers(workspace.id);
   const names = new Map((members.data ?? []).map((m) => [m.user_id, m.display_name]));
   const accept = useAcceptSuggestions(workspace.id, systemId);
@@ -94,9 +94,9 @@ export function DataCatalogReview({
   const items = useMemo(
     () =>
       (page.data?.items ?? []).filter(
-        (item) => schemaFilter == null || item.db_schema === schemaFilter,
+        (item) => !filtered || shownTables.has(item.table_id),
       ),
-    [page.data, schemaFilter],
+    [page.data, filtered, shownTables],
   );
   const schemas = useMemo(() => groupBySchema(tables), [tables]);
 
@@ -200,27 +200,14 @@ export function DataCatalogReview({
             ))}
           </TabsList>
         </Tabs>
-        <NativeSelect
-          aria-label="Table"
-          className="w-auto min-w-44"
-          value={scope}
-          onChange={(event) => {
-            setScope(event.target.value);
+        <TableFilter
+          schemas={schemas}
+          shown={shownTables}
+          onChange={(next) => {
+            setShownTables(next);
             setSelected(new Set());
           }}
-        >
-          <option value="">All tables</option>
-          {schemas.map(([schema, schemaTables]) => (
-            <optgroup key={schema} label={schema}>
-              <option value={`schema:${schema}`}>All of {schema}</option>
-              {schemaTables.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </NativeSelect>
+        />
         {pendingView && (
           <div className="ms-auto flex flex-wrap items-center gap-2">
             <Button
@@ -253,13 +240,13 @@ export function DataCatalogReview({
               type="button"
               disabled={busy || visibleIds.length === 0}
               onClick={() =>
-                // A Database Schema is narrowed here, so accept what it shows.
-                schemaFilter != null
+                // The filter narrows here, so a filtered view accepts what it shows.
+                filtered
                   ? accept.mutate(visibleIds, {
                       onSuccess: (r) => decided("Accepted", r.decided.length, r.skipped.length),
                       onError,
                     })
-                  : acceptAll.mutate(tableId || null, {
+                  : acceptAll.mutate(null, {
                       onSuccess: (r) => decided("Accepted", r.decided.length, r.skipped.length),
                       onError,
                     })
@@ -533,4 +520,105 @@ function GroupRow({
       </TableCell>
     </TableRow>
   );
+}
+
+/**
+ * Which tables the review shows, grouped by Database Schema: a schema's box ticks or clears
+ * all its tables, and nothing ticked shows every table.
+ */
+function TableFilter({
+  schemas,
+  shown,
+  onChange,
+}: {
+  schemas: [string, { id: string; name: string }[]][];
+  shown: ReadonlySet<string>;
+  onChange: (next: ReadonlySet<string>) => void;
+}) {
+  const set = (ids: string[], on: boolean) => {
+    const next = new Set(shown);
+    for (const id of ids) {
+      if (on) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+    }
+    onChange(next);
+  };
+  const keepOpen = (event: Event) => event.preventDefault();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="secondary" aria-label={`Tables: ${filterLabel(schemas, shown)}`}>
+          <ListFilter aria-hidden />
+          {filterLabel(schemas, shown)}
+          <ChevronDown aria-hidden className="text-subtle-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-96 min-w-56 overflow-y-auto">
+        <DropdownMenuCheckboxItem
+          checked={shown.size === 0}
+          onCheckedChange={() => onChange(new Set())}
+          onSelect={keepOpen}
+        >
+          All tables
+        </DropdownMenuCheckboxItem>
+        {schemas.map(([schema, schemaTables]) => {
+          const ids = schemaTables.map((t) => t.id);
+          const on = ids.filter((id) => shown.has(id)).length;
+          return (
+            <DropdownMenuGroup key={schema}>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={on === ids.length}
+                onCheckedChange={() => set(ids, on < ids.length)}
+                onSelect={keepOpen}
+                className={cn(monoClasses, "font-semibold")}
+              >
+                {schema}
+                {on > 0 && on < ids.length && (
+                  <span className="ms-auto font-sans text-xs font-normal text-subtle-foreground tabular-nums">
+                    {on}/{ids.length}
+                  </span>
+                )}
+              </DropdownMenuCheckboxItem>
+              {schemaTables.map((t) => (
+                <DropdownMenuCheckboxItem
+                  key={t.id}
+                  checked={shown.has(t.id)}
+                  onCheckedChange={(checked) => set([t.id], checked === true)}
+                  onSelect={keepOpen}
+                  className={cn(monoClasses, "ps-12")}
+                >
+                  {t.name}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** "All tables", one table's full name, one whole schema, or how many tables are ticked. */
+function filterLabel(
+  schemas: [string, { id: string; name: string }[]][],
+  shown: ReadonlySet<string>,
+) {
+  if (shown.size === 0) {
+    return "All tables";
+  }
+  for (const [schema, schemaTables] of schemas) {
+    const ids = schemaTables.map((t) => t.id);
+    if (ids.length === shown.size && ids.every((id) => shown.has(id))) {
+      return schemaTables.length === 1 ? `${schema}.${schemaTables[0]?.name}` : schema;
+    }
+    const one = shown.size === 1 ? schemaTables.find((t) => shown.has(t.id)) : undefined;
+    if (one) {
+      return `${schema}.${one.name}`;
+    }
+  }
+  return `${shown.size} tables`;
 }
