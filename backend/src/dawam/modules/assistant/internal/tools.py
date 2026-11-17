@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, StringConstraints, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetService, ProposedItem
@@ -38,6 +38,7 @@ from dawam.modules.memory import TEXT_MAX_LENGTH as MEMORY_TEXT_MAX_LENGTH
 from dawam.modules.memory import MemoryService
 from dawam.modules.sources import (
     DEFAULT_BUDGET_SECONDS,
+    CatalogSuggestionService,
     ConnectionService,
     DataDictionaryService,
     PiiService,
@@ -114,6 +115,7 @@ class ToolServices:
     systems: SourceSystemService
     connections: ConnectionService
     model: ModelService
+    catalog_suggestions: CatalogSuggestionService
     web: WebService | None = None
     """Web search and web fetch (ADR 0008); ``None``: the web tools are never offered."""
     memory: MemoryService | None = None
@@ -602,22 +604,6 @@ class _QueryFile(BaseModel):
     )
 
 
-class _ChangeItem(BaseModel):
-    key: str = Field(min_length=1, max_length=40, description="Short name, for `depends_on`.")
-    object_type: Literal["source_table", "source_column"] = Field(
-        description="`source_table` or `source_column`."
-    )
-    object_id: uuid.UUID = Field(description="The table's or column's id.")
-    changes: dict[str, Any] = Field(
-        min_length=1,
-        description="Field to new value: `description` (text), `tags` (list of text), "
-        "`is_sensitive` (boolean); tables also `classification` (master, transactional, "
-        "reference, log, landing) and `scd_hint` (text).",
-    )
-    label: str = Field(default="", max_length=200, description="E.g. `core.customers`.")
-    depends_on: list[str] = Field(default_factory=list, description="Keys of earlier items.")
-
-
 class _RelationshipDecision(BaseModel):
     relationship_id: uuid.UUID = Field(description="From get_relationships.")
     decision: Literal["accept", "reject"]
@@ -639,14 +625,21 @@ class _RelationshipDecision(BaseModel):
 
 
 class _ProposeChanges(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # table and column items are suggest_catalog_entries'
+
     title: str = Field(min_length=1, max_length=200, description="What the changes are for.")
-    source_system_id: uuid.UUID = Field(description="The Source System the objects belong to.")
-    items: list[_ChangeItem] = Field(default_factory=list, max_length=MAX_PROPOSED_ITEMS)
+    source_system_id: uuid.UUID = Field(
+        description="The Source System the relationships belong to.",
+    )
     relationships: list[_RelationshipDecision] = Field(
         default_factory=list,
         max_length=MAX_PROPOSED_ITEMS,
         description="Accept or reject inferred relationships.",
     )
+
+
+class _SuggestCatalogEntries(BaseModel):
+    system_id: uuid.UUID = Field(description=SYSTEM_ID)
 
 
 class _GetRelationships(BaseModel):
@@ -1086,11 +1079,11 @@ def _redacted(value: Any, *, entities: bool = True) -> Any:
 
 
 def _proposed_items(ctx: ToolContext, args: _ProposeChanges) -> list[ProposedItem]:
-    """The items of a ``propose_changes`` call, model-written text redacted; a relationship
-    decision carries the counts of the queries it cites. 422 for a ``query_ref`` this run
-    did not make on this Source System, or that returned no counts."""
-    if not args.items and not args.relationships:
-        raise ApiError(422, "nothing_proposed", "Give at least one item or relationship.")
+    """The items of a ``propose_changes`` call, one per relationship decision, model-written
+    text redacted; a decision carries the counts of the queries it cites. 422 for a
+    ``query_ref`` this run did not make on this Source System, or that returned no counts."""
+    if not args.relationships:
+        raise ApiError(422, "nothing_proposed", "Give at least one relationship decision.")
     labels: dict[uuid.UUID, str] = {}
     if any(not d.label for d in args.relationships):  # the reviewer sees which pair it is
         labels = {
@@ -1099,18 +1092,7 @@ def _proposed_items(ctx: ToolContext, args: _ProposeChanges) -> list[ProposedIte
                 ctx.user, ctx.workspace_id, args.source_system_id, min_confidence=0
             )
         }
-    proposed = [
-        ProposedItem(
-            key=item.key,
-            object_type=item.object_type,
-            operation="update",
-            object_id=item.object_id,
-            payload=_redacted(item.changes),
-            label=redact_text(item.label),
-            depends_on=item.depends_on,
-        )
-        for item in args.items
-    ]
+    proposed: list[ProposedItem] = []
     for decision in args.relationships:
         queries = []
         for ref in decision.evidence_queries:
@@ -2180,6 +2162,30 @@ def _propose_changes(ctx: ToolContext, args: _ProposeChanges) -> Any:
     }
 
 
+def _suggest_catalog_entries(ctx: ToolContext, args: _SuggestCatalogEntries) -> Any:
+    """Starts the Source System's ``catalog_suggest`` job; the member reviews its results in
+    the Data catalog, so no Change Set. A run already going is reported, not raised."""
+    try:
+        job = ctx.services.catalog_suggestions.start(ctx.user, ctx.workspace_id, args.system_id)
+    except ApiError as exc:
+        if exc.code != "catalog_suggestions_running":
+            raise
+        return {
+            "status": "already_running",
+            "job_id": (exc.details or {}).get("job_id"),
+            "note": "Catalog entries are already being suggested for this Source System; the "
+            "member reviews the results in Source schema > Data catalog when it finishes.",
+        }
+    return {
+        "status": "started",
+        "job_id": str(job.id),
+        "link": f"?folder=systems/{args.system_id}/source-schema&tab=data-catalog",
+        "note": "A background job is suggesting descriptions, classifications and SCD hints "
+        "for the whole Source System. The member reviews them in Source schema > Data "
+        "catalog; nothing has been changed. Do not describe tables or columns yourself.",
+    }
+
+
 def _reindex_documents(ctx: ToolContext, args: _ReindexDocuments) -> Any:
     job = ctx.services.documents.start_reindex(ctx.user, ctx.workspace_id)
     return {
@@ -2987,11 +2993,23 @@ TOOLS: tuple[Tool, ...] = (
         _suggest_kpis,
     ),
     Tool(
+        "suggest_catalog_entries",
+        "Start the background job that suggests descriptions (including the meaning of codes "
+        "and statuses), a master, transactional or reference classification and SCD hints for "
+        "every table and column of a Source System. Use it when asked to document or "
+        "classify tables or columns. The member reviews the suggestions in Source schema > "
+        "Data catalog; no Change Set is made. If a run is already going it says so.",
+        _SuggestCatalogEntries,
+        "write",
+        Action.EDIT_SOURCE_ENHANCEMENTS,
+        _suggest_catalog_entries,
+    ),
+    Tool(
         "propose_changes",
-        "Propose descriptions (including the meaning of codes and statuses), tags, sensitivity "
-        "flags, classifications and SCD hints for a Source System's tables and columns, and "
-        "accept or reject its inferred relationships. Nothing changes until the user accepts "
-        "the Change Set. Never put sample values or personal data in the text.",
+        "Accept or reject a Source System's inferred relationships. Nothing changes until the "
+        "user accepts the Change Set. Descriptions, classifications and SCD hints of tables "
+        "and columns are not proposed here: use suggest_catalog_entries. Never put sample "
+        "values or personal data in the text.",
         _ProposeChanges,
         "write",
         Action.REVIEW_CHANGE_SETS,
@@ -3213,6 +3231,7 @@ BASE_TOOLS = frozenset(
         "search_workspace",
         "search_documents",
         "propose_changes",
+        "suggest_catalog_entries",
         "render_diagram",
         "start_job",
         "ask_member",

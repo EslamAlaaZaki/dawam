@@ -8,11 +8,18 @@ import {
   Download,
   FolderInput,
   History,
+  ListPlus,
   RefreshCw,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import {
+  isRunning,
+  useCatalogSuggestionJob,
+  useCatalogSuggestions,
+  useStartCatalogSuggestions,
+} from "../api/catalogSuggestions";
 import { dataDictionaryUrl, useSaveDataDictionary } from "../api/files";
 import { isActive, useJobs } from "../api/jobs";
 import { useRelationshipsByStatus } from "../api/relationships";
@@ -43,10 +50,15 @@ import {
 import { toast } from "../components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { cn } from "../lib/utils";
+import { DataCatalogReview } from "./DataCatalogReview";
 import { FindRelationships, RelationshipReview } from "./RelationshipReview";
 import { SchemaBrowser, Sep } from "./SchemaBrowser";
 import { SnapshotDiffView } from "./SnapshotDiffView";
-import { EmptyState, ErrorText, listCardClasses } from "./parts";
+import {
+  EmptyState,
+  ErrorText,
+  listCardClasses,
+} from "./parts";
 import { Loading } from "../shell/Loading";
 
 /** A count and its noun, singular for one. */
@@ -90,6 +102,43 @@ function SnapshotCounts({ snapshot }: { snapshot: SnapshotSummary }) {
   );
 }
 
+
+/**
+ * The newest catalog suggestion run while it runs, or why it stopped. A finished run shows
+ * nothing here: its pending suggestions are counted on the Data catalog tab.
+ */
+function CatalogJobStrip({
+  job,
+}: {
+  job: NonNullable<ReturnType<typeof useCatalogSuggestionJob>["data"]>;
+}) {
+  const running = isRunning(job);
+  return (
+    <div
+      role="status"
+      aria-label="Catalog suggestions"
+      className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-2 text-sm"
+    >
+      {running ? (
+        <>
+          <Badge variant="info">Running</Badge>
+          <span>
+            Suggesting descriptions and classifications
+            <span className="ms-1 text-muted-foreground tabular-nums">{job.progress}%</span>
+          </span>
+        </>
+      ) : (
+        <>
+          <Badge variant={job.status === "failed" ? "danger" : "neutral"}>
+            {job.status === "failed" ? "Failed" : "Cancelled"}
+          </Badge>
+          {job.error && <span className="text-muted-foreground">{job.error}</span>}
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * A Source System's Source Schema (spec stories 45, 46, 54-57): the latest Snapshot's
  * counts under the title with every Snapshot behind a toggle, the browser over the latest
@@ -97,6 +146,9 @@ function SnapshotCounts({ snapshot }: { snapshot: SnapshotSummary }) {
  * Connection, profile every table and view and find relationships, each as a background
  * job; the page refreshes once a job finishes. The Relationships tab reviews the inferred
  * relationships (`?tab=relationships` opens it, as the ER diagram's link does).
+ * Owners and editors who may ask the assistant also start the AI data catalog suggestions
+ * (a background job); the Data catalog tab reviews them, and `?tab=data-catalog` (a finished
+ * job's notification) opens it.
  */
 export function SourceSchemaPanel({
   workspace,
@@ -119,8 +171,15 @@ export function SourceSchemaPanel({
   const queryClient = useQueryClient();
   const [showSnapshots, setShowSnapshots] = useState(false);
   const searchParams = useSearchParams();
+  const canReviewCatalog =
+    workspace.status !== "archived" && allows(workspace, "source_schema.enhance");
+  const canSuggestCatalog = canReviewCatalog && allows(workspace, "assistant.ask");
   const [tab, setTab] = useState(
-    searchParams.get("tab") === "relationships" ? "relationships" : "browse",
+    searchParams.get("tab") === "relationships"
+      ? "relationships"
+      : searchParams.get("tab") === "data-catalog" && canReviewCatalog
+        ? "data-catalog"
+        : "browse",
   );
   // The review opens on Suggested when the visit is to review (the ER diagram's link, Find
   // relationships), and on Current when the tab is simply opened.
@@ -128,6 +187,21 @@ export function SourceSchemaPanel({
     searchParams.get("tab") === "relationships" ? "suggested" : "current",
   );
   const suggested = useRelationshipsByStatus(workspace.id, system.id, "suggested");
+  const catalogJob = useCatalogSuggestionJob(
+    workspace.id,
+    system.id,
+    hasSnapshot && canReviewCatalog,
+  );
+  const catalogPending = useCatalogSuggestions(
+    workspace.id,
+    system.id,
+    "pending",
+    null,
+    hasSnapshot && canReviewCatalog,
+  );
+  const startCatalog = useStartCatalogSuggestions(workspace.id, system.id);
+  const catalogRunning = isRunning(catalogJob.data) || startCatalog.isPending;
+  const pendingCount = catalogPending.data?.counts.pending ?? 0;
 
   const startedId = extract.data?.job_id;
   const started = jobs.data?.items.find((job) => job.id === startedId);
@@ -180,8 +254,9 @@ export function SourceSchemaPanel({
 
   return (
     <section aria-labelledby="folder-title" className="flex flex-col gap-5">
-      <header className="flex flex-wrap items-start gap-4 border-b border-border pb-5">
-        <div className="flex min-w-0 flex-1 basis-80 flex-col gap-2">
+      {/* Below xl the Snapshot line takes the full width and the buttons wrap under it, from the left. */}
+      <header className="flex flex-col gap-4 border-b border-border pb-5 xl:flex-row xl:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
           <h1
             id="folder-title"
             className="sr-only"
@@ -189,7 +264,7 @@ export function SourceSchemaPanel({
             Source schema
           </h1>
           {hasSnapshot && (
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground tabular-nums">
+            <div className="flex flex-wrap items-center gap-2 text-sm whitespace-nowrap text-muted-foreground tabular-nums">
               {latest && (
                 <>
                   <Badge variant="accent">Latest</Badge>
@@ -268,6 +343,23 @@ export function SourceSchemaPanel({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {hasSnapshot && canSuggestCatalog && (
+            <Button
+              type="button"
+              disabled={catalogRunning}
+              onClick={() =>
+                startCatalog.mutate(undefined, {
+                  onSuccess: () =>
+                    toast.success(
+                      "Suggesting catalog entries. Follow it under Background jobs.",
+                    ),
+                })
+              }
+            >
+              <ListPlus aria-hidden />
+              Suggest catalog entries
+            </Button>
+          )}
           {canProfile && present.length > 0 && (
             <Button
               type="button"
@@ -311,6 +403,11 @@ export function SourceSchemaPanel({
       {extract.isError && <ErrorText>{extract.error.message}</ErrorText>}
       {save.isError && <ErrorText>{save.error.message}</ErrorText>}
       {profileAll.isError && <ErrorText>{profileAll.error.message}</ErrorText>}
+      {startCatalog.isError && <ErrorText>{startCatalog.error.message}</ErrorText>}
+      {hasSnapshot &&
+        canReviewCatalog &&
+        catalogJob.data &&
+        catalogJob.data.status !== "succeeded" && <CatalogJobStrip job={catalogJob.data} />}
       {hasSnapshot && showSnapshots && (
         <ul
           id="snapshot-list"
@@ -364,6 +461,20 @@ export function SourceSchemaPanel({
                 </Badge>
               )}
             </TabsTrigger>
+            {canReviewCatalog && (
+              <TabsTrigger value="data-catalog">
+                Data catalog
+                {pendingCount > 0 && (
+                  <Badge
+                    variant="accent"
+                    className="ms-1.5 tabular-nums"
+                    title={`${pendingCount} data catalog ${pendingCount === 1 ? "suggestion" : "suggestions"} to review`}
+                  >
+                    {pendingCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            )}
           </TabsList>
           {/* Kept mounted, so the browser keeps its place while the review is open. */}
           <TabsContent
@@ -392,6 +503,15 @@ export function SourceSchemaPanel({
               initialView={relView}
             />
           </TabsContent>
+          {canReviewCatalog && (
+            <TabsContent value="data-catalog">
+              <DataCatalogReview
+                workspace={workspace}
+                systemId={system.id}
+                tables={present}
+              />
+            </TabsContent>
+          )}
         </Tabs>
       ) : (
         snapshots.isSuccess && (

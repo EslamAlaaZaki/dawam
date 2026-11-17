@@ -146,6 +146,12 @@ class SrcTableRecord(Base):
     is_sensitive: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     include_view_in_staging: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     """An editor's opt-in to give a view a Staging Table (spec §6.7); base tables always get one."""
+    ai_fields: Mapped[list[str]] = mapped_column(
+        sa.ARRAY(sa.String(16)), default=list, server_default="{}"
+    )
+    """The data catalog fields (``description``, ``classification``, ``scd_hint``) whose value
+    came from an accepted AI suggestion as the AI wrote it; a field leaves it when anyone
+    changes its value (spec §6.19)."""
     placeholder_no: Mapped[int | None] = mapped_column()
     """Stands in for a non-Latin name in staging (``tbl_007``); assigned once per Source
     System and never derived from ordering, so it stays stable across Snapshots."""
@@ -181,6 +187,11 @@ class SrcColumnRecord(Base):
         sa.ARRAY(sa.String(TAG_MAX_LENGTH)), default=list, server_default="{}"
     )
     is_sensitive: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    ai_fields: Mapped[list[str]] = mapped_column(
+        sa.ARRAY(sa.String(16)), default=list, server_default="{}"
+    )
+    """``description`` when the column's description came from an accepted AI suggestion as
+    the AI wrote it; it leaves when anyone changes the description (spec §6.19)."""
     pii_category: Mapped[str | None] = mapped_column(sa.String(32))
     """The column's one PII category, set when an Editor accepts its PII findings or adds it
     as PII by hand, cleared when PII is removed (spec story 135)."""
@@ -195,6 +206,59 @@ class SrcColumnRecord(Base):
     """Stands in for a non-Latin name in staging (``col_017``); assigned once per table."""
     status: Mapped[str] = mapped_column(sa.String(16))
     version: Mapped[int] = mapped_column()
+
+
+CATALOG_FIELDS = ("description", "classification", "scd_hint")
+"""The fields a data catalog suggestion fills: all three on a table, ``description`` on a
+column. Never ``tags`` or ``is_sensitive`` (the PII folder owns that)."""
+CATALOG_SUGGESTION_STATUSES = ("pending", "accepted", "rejected", "expired")
+
+
+class CatalogSuggestionRecord(Base):
+    """An AI suggestion for one field of a Source Object's data catalog (spec §6.19): a table's
+    description, classification or SCD hint, or a column's description. Made by a
+    ``catalog_suggest`` job and accepted or rejected one by one, never through a Change Set.
+    It attaches to the stable Source Objects, so a decision survives Snapshots; a rejected
+    value is never suggested again for that object and field."""
+
+    __tablename__ = "catalog_suggestions"
+    __table_args__ = (
+        sa.CheckConstraint("field IN ('description', 'classification', 'scd_hint')", name="field"),
+        sa.CheckConstraint(
+            "status IN ('pending', 'accepted', 'rejected', 'expired')", name="status"
+        ),
+        sa.CheckConstraint("src_column_id IS NULL OR field = 'description'", name="column_field"),
+        sa.Index(None, "source_system_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    source_system_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("source_systems.id", ondelete="CASCADE")
+    )
+    src_table_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("src_tables.id", ondelete="CASCADE"), index=True
+    )
+    """The table, or the column's table."""
+    src_column_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("src_columns.id", ondelete="CASCADE"), index=True
+    )
+    """The column; ``NULL`` for a suggestion on the table itself."""
+    field: Mapped[str] = mapped_column(sa.String(16))
+    """``description``, ``classification`` or ``scd_hint`` (a column: ``description`` only)."""
+    value: Mapped[str] = mapped_column(sa.String(DESCRIPTION_MAX_LENGTH))
+    """What the AI suggested, validated and with validator-detectable PII redacted."""
+    edited_value: Mapped[str | None] = mapped_column(sa.String(DESCRIPTION_MAX_LENGTH))
+    """What a person accepted instead (edit-then-accept): a person's value, with no AI mark."""
+    status: Mapped[str] = mapped_column(sa.String(16))
+    """``pending`` (to review), ``accepted``, ``rejected`` or ``expired`` (the object left
+    the latest Snapshot before anyone decided; it cannot be accepted)."""
+    job_id: Mapped[uuid.UUID | None] = mapped_column(sa.ForeignKey("jobs.id", ondelete="SET NULL"))
+    """The ``catalog_suggest`` job that made it."""
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
 
 PII_STATUSES = ("suggested", "accepted", "rejected")

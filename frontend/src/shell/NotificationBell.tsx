@@ -29,6 +29,16 @@ import { Button } from "../components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { isToday, relativeTime } from "../lib/relativeTime";
 
+/** Where a notification opens: the Workspace home, or for a finished catalog job (it
+ * points at its Source System) that system's Source schema on the Data catalog tab. */
+export function notificationHref(notification: Notification, workspaceId: string): string {
+  const home = `/workspaces/${workspaceId}`;
+  if (notification.ref_type === "source_system" && notification.ref_id) {
+    return `${home}?folder=systems/${notification.ref_id}/source-schema&tab=data-catalog`;
+  }
+  return home;
+}
+
 const KINDS: Record<Notification["kind"], { icon: LucideIcon; tile: string }> = {
   mention: { icon: AtSign, tile: "bg-muted text-muted-foreground" },
   impact_alert: {
@@ -208,7 +218,7 @@ function Group({
               <div className="min-w-0 flex-1">
                 {notification.workspace_id ? (
                   <Link
-                    href={`/workspaces/${notification.workspace_id}`}
+                    href={notificationHref(notification, notification.workspace_id)}
                     title={notification.message}
                     className={`line-clamp-2 text-sm ${text} no-underline after:absolute after:inset-0 after:content-['']`}
                   >

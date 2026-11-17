@@ -238,7 +238,7 @@ describe("the Source Schema browser", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens a table with its columns, keys, indexes, row estimate and comment", async () => {
+  it("opens a table with its columns, keys, indexes and row estimate, and no database comment", async () => {
     renderApp(backend([]), FOLDER);
 
     fireEvent.click(await screen.findByRole("button", { name: "customers" }));
@@ -247,7 +247,13 @@ describe("the Source Schema browser", () => {
       name: "Table core.customers",
     });
     expect(page).toHaveTextContent("Rows~1,200");
-    expect(page).toHaveTextContent("One row per bank customer");
+    expect(page).not.toHaveTextContent("One row per bank customer");
+    expect(
+      within(page).queryByRole("columnheader", { name: "Comment" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(page).getByRole("columnheader", { name: "Description" }),
+    ).toBeInTheDocument();
     const row = within(page).getByText("legacy_code").closest("tr");
     expect(row).toHaveTextContent("removed from the source");
     expect(within(page).getByText("cust_no").closest("tr")).toHaveTextContent(

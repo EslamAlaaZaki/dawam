@@ -16,6 +16,7 @@ from collections.abc import Callable, Mapping
 import sqlalchemy as sa
 
 from dawam.modules.assistant import ASSISTANT_JOB, KPI_SUGGEST_JOB, build_assistant_service
+from dawam.modules.auth import AuthService
 from dawam.modules.changesets import ObjectHandlers
 from dawam.modules.files import (
     INDEX_JOB,
@@ -35,11 +36,13 @@ from dawam.modules.files import (
 from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
 from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
 from dawam.modules.sources import (
+    CATALOG_SUGGEST_JOB,
     EXTRACT_JOB,
     INFER_JOB,
     PII_AI_JOB,
     PII_SCAN_JOB,
     PROFILE_JOB,
+    CatalogSuggestionService,
     PiiAiDetectService,
     PiiScanService,
     ProfilingService,
@@ -186,8 +189,19 @@ def _service_handlers(
         roles=roles,
         documents=pii_documents,
     )
+    catalog = CatalogSuggestionService(
+        engine,
+        workspaces=WorkspaceService(engine, clock=clock),
+        jobs=runner,
+        clock=clock,
+        roles=roles,
+        documents=pii_documents,
+        users=AuthService(engine, settings, clock=clock).get_user,
+        encryption_key=settings.encryption_key.get_secret_value(),
+    )
     runner.on_abandoned(INDEX_JOB, documents.abandon_index)
     runner.on_abandoned(REINDEX_JOB, documents.abandon_reindex)
+    runner.on_finished(CATALOG_SUGGEST_JOB, catalog.finished_notice)
     assistant = build_assistant_service(
         engine,
         settings,
@@ -206,6 +220,7 @@ def _service_handlers(
         PII_SCAN_JOB: pii_scans.run_scan,
         PII_AI_JOB: pii_ai.run_detection,
         INFER_JOB: relationships.run_inference,
+        CATALOG_SUGGEST_JOB: catalog.run,
         INDEX_JOB: documents.run_index,
         REINDEX_JOB: documents.run_reindex,
     }

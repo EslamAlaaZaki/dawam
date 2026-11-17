@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "c5f1a8e3d742"
+  "d4e7a2c9f135"
  ],
  "modules": [
   {
@@ -2206,6 +2206,424 @@ a.tlink:hover { text-decoration: underline; }
    "orm_class": "AuditEntryRecord",
    "source": "backend/src/dawam/modules/audit/tables.py",
    "description": "One change to a critical entity (spec §7 ``AuditEntry``). Append-only."
+  },
+  {
+   "name": "catalog_suggestions",
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "id",
+     "app_default": "uuid4()",
+     "description": null,
+     "pk": true,
+     "fk": []
+    },
+    {
+     "name": "source_system_id",
+     "type": "uuid",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "source_system_id",
+     "app_default": null,
+     "description": null,
+     "pk": false,
+     "fk": [
+      {
+       "table": "source_systems",
+       "column": "id"
+      }
+     ]
+    },
+    {
+     "name": "src_table_id",
+     "type": "uuid",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "src_table_id",
+     "app_default": null,
+     "description": "The table, or the column's table.",
+     "pk": false,
+     "fk": [
+      {
+       "table": "src_tables",
+       "column": "id"
+      }
+     ]
+    },
+    {
+     "name": "src_column_id",
+     "type": "uuid",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "src_column_id",
+     "app_default": null,
+     "description": "The column; ``NULL`` for a suggestion on the table itself.",
+     "pk": false,
+     "fk": [
+      {
+       "table": "src_columns",
+       "column": "id"
+      }
+     ]
+    },
+    {
+     "name": "field",
+     "type": "character varying(16)",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": {
+      "source": "CHECK ck_catalog_suggestions_field",
+      "values": [
+       "description",
+       "classification",
+       "scd_hint"
+      ]
+     },
+     "in_orm": true,
+     "attribute": "field",
+     "app_default": null,
+     "description": "``description``, ``classification`` or ``scd_hint`` (a column: ``description`` only).",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "value",
+     "type": "character varying(4000)",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "value",
+     "app_default": null,
+     "description": "What the AI suggested, validated and with validator-detectable PII redacted.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "edited_value",
+     "type": "character varying(4000)",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "edited_value",
+     "app_default": null,
+     "description": "What a person accepted instead (edit-then-accept): a person's value, with no AI mark.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "status",
+     "type": "character varying(16)",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": {
+      "source": "CHECK ck_catalog_suggestions_status",
+      "values": [
+       "pending",
+       "accepted",
+       "rejected",
+       "expired"
+      ]
+     },
+     "in_orm": true,
+     "attribute": "status",
+     "app_default": null,
+     "description": "``pending`` (to review), ``accepted``, ``rejected`` or ``expired`` (the object left\nthe latest Snapshot before anyone decided; it cannot be accepted).",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "job_id",
+     "type": "uuid",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "job_id",
+     "app_default": null,
+     "description": "The ``catalog_suggest`` job that made it.",
+     "pk": false,
+     "fk": [
+      {
+       "table": "jobs",
+       "column": "id"
+      }
+     ]
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "created_at",
+     "app_default": null,
+     "description": null,
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "decided_by",
+     "type": "uuid",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "decided_by",
+     "app_default": null,
+     "description": null,
+     "pk": false,
+     "fk": [
+      {
+       "table": "users",
+       "column": "id"
+      }
+     ]
+    },
+    {
+     "name": "decided_at",
+     "type": "timestamp with time zone",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "decided_at",
+     "app_default": null,
+     "description": null,
+     "pk": false,
+     "fk": []
+    }
+   ],
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [
+    {
+     "name": "fk_catalog_suggestions_decided_by_users",
+     "columns": [
+      "decided_by"
+     ],
+     "ref_table": "users",
+     "ref_columns": [
+      "id"
+     ],
+     "on_update": "NO ACTION",
+     "on_delete": "SET NULL"
+    },
+    {
+     "name": "fk_catalog_suggestions_job_id_jobs",
+     "columns": [
+      "job_id"
+     ],
+     "ref_table": "jobs",
+     "ref_columns": [
+      "id"
+     ],
+     "on_update": "NO ACTION",
+     "on_delete": "SET NULL"
+    },
+    {
+     "name": "fk_catalog_suggestions_source_system_id_source_systems",
+     "columns": [
+      "source_system_id"
+     ],
+     "ref_table": "source_systems",
+     "ref_columns": [
+      "id"
+     ],
+     "on_update": "NO ACTION",
+     "on_delete": "CASCADE"
+    },
+    {
+     "name": "fk_catalog_suggestions_src_column_id_src_columns",
+     "columns": [
+      "src_column_id"
+     ],
+     "ref_table": "src_columns",
+     "ref_columns": [
+      "id"
+     ],
+     "on_update": "NO ACTION",
+     "on_delete": "CASCADE"
+    },
+    {
+     "name": "fk_catalog_suggestions_src_table_id_src_tables",
+     "columns": [
+      "src_table_id"
+     ],
+     "ref_table": "src_tables",
+     "ref_columns": [
+      "id"
+     ],
+     "on_update": "NO ACTION",
+     "on_delete": "CASCADE"
+    }
+   ],
+   "constraints": [
+    {
+     "name": "ck_catalog_suggestions_column_field",
+     "kind": "CHECK",
+     "columns": [
+      "src_column_id",
+      "field"
+     ],
+     "definition": "CHECK (((src_column_id IS NULL) OR ((field)::text = 'description'::text)))"
+    },
+    {
+     "name": "ck_catalog_suggestions_field",
+     "kind": "CHECK",
+     "columns": [
+      "field"
+     ],
+     "definition": "CHECK (((field)::text = ANY ((ARRAY['description'::character varying, 'classification'::character varying, 'scd_hint'::character varying])::text[])))"
+    },
+    {
+     "name": "ck_catalog_suggestions_status",
+     "kind": "CHECK",
+     "columns": [
+      "status"
+     ],
+     "definition": "CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'accepted'::character varying, 'rejected'::character varying, 'expired'::character varying])::text[])))"
+    },
+    {
+     "name": "fk_catalog_suggestions_decided_by_users",
+     "kind": "FOREIGN KEY",
+     "columns": [
+      "decided_by"
+     ],
+     "definition": "FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL"
+    },
+    {
+     "name": "fk_catalog_suggestions_job_id_jobs",
+     "kind": "FOREIGN KEY",
+     "columns": [
+      "job_id"
+     ],
+     "definition": "FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE SET NULL"
+    },
+    {
+     "name": "fk_catalog_suggestions_source_system_id_source_systems",
+     "kind": "FOREIGN KEY",
+     "columns": [
+      "source_system_id"
+     ],
+     "definition": "FOREIGN KEY (source_system_id) REFERENCES source_systems(id) ON DELETE CASCADE"
+    },
+    {
+     "name": "fk_catalog_suggestions_src_column_id_src_columns",
+     "kind": "FOREIGN KEY",
+     "columns": [
+      "src_column_id"
+     ],
+     "definition": "FOREIGN KEY (src_column_id) REFERENCES src_columns(id) ON DELETE CASCADE"
+    },
+    {
+     "name": "fk_catalog_suggestions_src_table_id_src_tables",
+     "kind": "FOREIGN KEY",
+     "columns": [
+      "src_table_id"
+     ],
+     "definition": "FOREIGN KEY (src_table_id) REFERENCES src_tables(id) ON DELETE CASCADE"
+    },
+    {
+     "name": "pk_catalog_suggestions",
+     "kind": "PRIMARY KEY",
+     "columns": [
+      "id"
+     ],
+     "definition": "PRIMARY KEY (id)"
+    }
+   ],
+   "indexes": [
+    {
+     "name": "ix_catalog_suggestions_source_system_id",
+     "unique": false,
+     "method": "btree",
+     "columns": [
+      "source_system_id",
+      "status"
+     ],
+     "predicate": null,
+     "definition": "CREATE INDEX ix_catalog_suggestions_source_system_id ON public.catalog_suggestions USING btree (source_system_id, status)",
+     "backs_constraint": false
+    },
+    {
+     "name": "ix_catalog_suggestions_src_column_id",
+     "unique": false,
+     "method": "btree",
+     "columns": [
+      "src_column_id"
+     ],
+     "predicate": null,
+     "definition": "CREATE INDEX ix_catalog_suggestions_src_column_id ON public.catalog_suggestions USING btree (src_column_id)",
+     "backs_constraint": false
+    },
+    {
+     "name": "ix_catalog_suggestions_src_table_id",
+     "unique": false,
+     "method": "btree",
+     "columns": [
+      "src_table_id"
+     ],
+     "predicate": null,
+     "definition": "CREATE INDEX ix_catalog_suggestions_src_table_id ON public.catalog_suggestions USING btree (src_table_id)",
+     "backs_constraint": false
+    },
+    {
+     "name": "pk_catalog_suggestions",
+     "unique": true,
+     "method": "btree",
+     "columns": [
+      "id"
+     ],
+     "predicate": null,
+     "definition": "CREATE UNIQUE INDEX pk_catalog_suggestions ON public.catalog_suggestions USING btree (id)",
+     "backs_constraint": true
+    }
+   ],
+   "triggers": [],
+   "in_orm": true,
+   "module": "sources",
+   "orm_class": "CatalogSuggestionRecord",
+   "source": "backend/src/dawam/modules/sources/tables.py",
+   "description": "An AI suggestion for one field of a Source Object's data catalog (spec §6.19): a table's\ndescription, classification or SCD hint, or a column's description. Made by a\n``catalog_suggest`` job and accepted or rejected one by one, never through a Change Set.\nIt attaches to the stable Source Objects, so a decision survives Snapshots; a rejected\nvalue is never suggested again for that object and field."
   },
   {
    "name": "change_set_items",
@@ -17013,6 +17431,21 @@ a.tlink:hover { text-decoration: underline; }
      "description": "When the column was added as PII by hand; set means a Manual line in the PII folder,\nand the column counts as accepted PII like one with an accepted finding.",
      "pk": false,
      "fk": []
+    },
+    {
+     "name": "ai_fields",
+     "type": "character varying(16)[]",
+     "nullable": false,
+     "default": "'{}'::character varying[]",
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "ai_fields",
+     "app_default": "list()",
+     "description": "``description`` when the column's description came from an accepted AI suggestion as\nthe AI wrote it; it leaves when anyone changes the description (spec §6.19).",
+     "pk": false,
+     "fk": []
     }
    ],
    "primary_key": [
@@ -17750,6 +18183,21 @@ a.tlink:hover { text-decoration: underline; }
      "attribute": "placeholder_no",
      "app_default": null,
      "description": "Stands in for a non-Latin name in staging (``tbl_007``); assigned once per Source\nSystem and never derived from ordering, so it stays stable across Snapshots.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "ai_fields",
+     "type": "character varying(16)[]",
+     "nullable": false,
+     "default": "'{}'::character varying[]",
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "ai_fields",
+     "app_default": "list()",
+     "description": "The data catalog fields (``description``, ``classification``, ``scd_hint``) whose value\ncame from an accepted AI suggestion as the AI wrote it; a field leaves it when anyone\nchanges its value (spec §6.19).",
      "pk": false,
      "fk": []
     }
@@ -20193,6 +20641,81 @@ a.tlink:hover { text-decoration: underline; }
     "workspace_id"
    ],
    "to_table": "workspaces",
+   "to_columns": [
+    "id"
+   ],
+   "cardinality": "N:1",
+   "optional": false,
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "name": "fk_catalog_suggestions_decided_by_users",
+   "from_table": "catalog_suggestions",
+   "from_columns": [
+    "decided_by"
+   ],
+   "to_table": "users",
+   "to_columns": [
+    "id"
+   ],
+   "cardinality": "N:1",
+   "optional": true,
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "name": "fk_catalog_suggestions_job_id_jobs",
+   "from_table": "catalog_suggestions",
+   "from_columns": [
+    "job_id"
+   ],
+   "to_table": "jobs",
+   "to_columns": [
+    "id"
+   ],
+   "cardinality": "N:1",
+   "optional": true,
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION"
+  },
+  {
+   "name": "fk_catalog_suggestions_source_system_id_source_systems",
+   "from_table": "catalog_suggestions",
+   "from_columns": [
+    "source_system_id"
+   ],
+   "to_table": "source_systems",
+   "to_columns": [
+    "id"
+   ],
+   "cardinality": "N:1",
+   "optional": false,
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "name": "fk_catalog_suggestions_src_column_id_src_columns",
+   "from_table": "catalog_suggestions",
+   "from_columns": [
+    "src_column_id"
+   ],
+   "to_table": "src_columns",
+   "to_columns": [
+    "id"
+   ],
+   "cardinality": "N:1",
+   "optional": true,
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "name": "fk_catalog_suggestions_src_table_id_src_tables",
+   "from_table": "catalog_suggestions",
+   "from_columns": [
+    "src_table_id"
+   ],
+   "to_table": "src_tables",
    "to_columns": [
     "id"
    ],

@@ -89,6 +89,34 @@ describe("the notification bell in the header", () => {
     );
   });
 
+  it("opens a finished catalog job on its Source System's Data catalog tab, other jobs on the Workspace home", async () => {
+    const system = "22222222-2222-4222-8222-222222222222";
+    const catalog: Notification = {
+      ...note("a0000000-0000-4000-8000-000000000003", 'Job "Suggest catalog entries" finished with 59 suggestions.'),
+      kind: "job",
+      ref_type: "source_system",
+      ref_id: system,
+    };
+    const other: Notification = {
+      ...note("a0000000-0000-4000-8000-000000000004", 'Job "Profile" finished.'),
+      kind: "job",
+      ref_type: "job",
+      ref_id: "33333333-3333-4333-8333-333333333333",
+    };
+    renderApp(backend([catalog, other]), "/");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Notifications (2)" }));
+
+    expect(screen.getByRole("link", { name: catalog.message })).toHaveAttribute(
+      "href",
+      `/workspaces/${catalog.workspace_id}?folder=systems/${system}/source-schema&tab=data-catalog`,
+    );
+    expect(screen.getByRole("link", { name: other.message })).toHaveAttribute(
+      "href",
+      `/workspaces/${other.workspace_id}`,
+    );
+  });
+
   it("marks one notification read but keeps it listed, styled as read", async () => {
     const requests = renderApp(backend([FIRST, SECOND]), "/");
     fireEvent.click(await screen.findByRole("button", { name: "Notifications (2)" }));

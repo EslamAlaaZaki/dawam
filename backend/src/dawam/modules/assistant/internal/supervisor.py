@@ -60,8 +60,8 @@ SPECIALISTS: Mapping[str, Specialist] = {
         Specialist(
             "source_analyst",
             "the source analyst: reads the source systems (tables, profiles, relationships, "
-            "PII, lineage, documents, files, source queries) and proposes descriptions of "
-            "source objects",
+            "PII, lineage, documents, files, source queries), decides inferred relationships and "
+            "starts the data catalog suggestions",
             _LOOKUP
             | {
                 "get_profile",
@@ -77,6 +77,7 @@ SPECIALISTS: Mapping[str, Specialist] = {
                 "run_source_query",
                 "reindex_documents",
                 "propose_changes",
+                "suggest_catalog_entries",
             },
         ),
         Specialist(

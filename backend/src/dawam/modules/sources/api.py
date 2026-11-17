@@ -17,6 +17,7 @@ from dawam.modules.auth import CurrentUser
 from dawam.modules.workspaces import WorkspaceService
 from dawam.platform.pagination import DEFAULT_PAGE_SIZE, PageCursor, PageLimit
 
+from .catalog_suggestion_api import router as catalog_suggestion_router
 from .connection_api import router as connection_router
 from .dictionary_api import router as dictionary_router
 from .enhancement_api import router as enhancement_router
@@ -198,6 +199,7 @@ router.include_router(connection_router, prefix="/{system_id}/connection")
 router.include_router(snapshot_router, prefix="/{system_id}")
 router.include_router(dictionary_router, prefix="/{system_id}")
 router.include_router(enhancement_router, prefix="/{system_id}")
+router.include_router(catalog_suggestion_router, prefix="/{system_id}")
 router.include_router(pii_router, prefix="/{system_id}")
 router.include_router(pii_scan_router, prefix="/{system_id}")
 router.include_router(relationship_router, prefix="/{system_id}")

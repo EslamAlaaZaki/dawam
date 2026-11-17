@@ -20,6 +20,7 @@ from dawam.modules.workspaces import WorkspaceService
 from tests.authz.matrix import (
     Row,
     admin_only,
+    catalog_suggestion_id,
     colleague_id,
     credentials_of,
     describe,
@@ -2018,6 +2019,55 @@ ROWS: list[Row] = [
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/relationships/{relationship_id}",
         "Edit Source Schema enhancements & documents (delete a relationship)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    # Data catalog suggestions (§6.19): owners and editors run the job (who may also ask the
+    # assistant; it needs a Snapshot) and review; viewers get 403 on all of it.
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions",
+        "Edit Source Schema enhancements & documents (suggest catalog entries with the AI)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        setup=snapshot_id,
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions",
+        "Edit Source Schema enhancements & documents (the latest catalog suggestion run)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/items",
+        "Edit Source Schema enhancements & documents (list catalog suggestions)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/accept",
+        "Edit Source Schema enhancements & documents (accept catalog suggestions)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"ids": [catalog_suggestion_id(roles)]},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/accept-all",
+        "Edit Source Schema enhancements & documents (accept every pending catalog suggestion)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"table_id": str(table_id(roles))},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/accept-edited",
+        "Edit Source Schema enhancements & documents (edit and accept a catalog suggestion)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"id": catalog_suggestion_id(roles), "value": "Edited rows."},
+    ),
+    Row(
+        "POST",
+        "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/reject",
+        "Edit Source Schema enhancements & documents (reject catalog suggestions)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        json=lambda roles: {"ids": [catalog_suggestion_id(roles)]},
     ),
     # Workspace PII rules (story 136; §6.12): owners only.
     Row(

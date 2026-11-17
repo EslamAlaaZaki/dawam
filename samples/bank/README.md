@@ -99,7 +99,7 @@ async function api(method, path, body) {
 
    *Point out:* national IDs, IBANs, `+966` and `05` mobile numbers, emails and dates of birth are found with their category and the share of sampled rows that matched, names are flagged by column name, and CRM's vaguely named `contacts.id_number` is caught by its values alone. Sampled values are never stored, and the ER diagram marks tables with protected columns.
 
-10. **Descriptions and classification (Assistant).** Ask: "Propose descriptions and a master, transactional or reference classification for every Core Banking table and column", then the same for CRM, and accept the Change Sets. *Point out:* `customers`, `accounts` and `contacts` are master data, `transactions`, `campaign_responses` and `complaints` transactional, and the code tables reference data; nothing changes until you accept.
+10. **Data catalog (UI or Assistant).** In Core Banking's **Source schema**, press **Suggest catalog entries**, or ask the Assistant "Suggest catalog entries for Core Banking". When the job finishes, open the **Data catalog** tab and accept the suggestions, then do the same for CRM. *Point out:* `customers`, `accounts` and `contacts` are master data, `transactions`, `campaign_responses` and `complaints` transactional, and the code tables reference data. Nothing changes until you accept, and a second run only fills gaps.
 
 11. **Documents (UI, API and Assistant).** In each system's **Documents** folder, use **Upload a document**: `SAD-CoreBanking.docx`, `data-dictionary.xlsx`, `operations-runbook.pdf` and `glossary.md` under Core Banking, `SAD-CRM.docx` under CRM. The **Text** column shows the text was extracted. To link a document to a table (there is no button yet), with Core Banking's folder open:
 

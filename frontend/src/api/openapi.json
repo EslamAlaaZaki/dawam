@@ -6579,6 +6579,532 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Start Catalog Suggestions",
+        "description": "Suggest the empty descriptions, classifications and SCD hints of this Source System's\ntables and columns with the AI, as a background job (owners and editors who may ask the\nassistant). It fills gaps only and replaces the pending suggestions of the run before.\n409 `no_snapshot` before the first Snapshot; 409 `catalog_suggestions_running` while a\nrun is going for this system.",
+        "operationId": "startCatalogSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Get Catalog Suggestion Job",
+        "description": "The newest catalog suggestion run of this Source System, with how many suggestions it\nmade and skipped once it has succeeded (owners and editors).",
+        "operationId": "getCatalogSuggestionJob",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestCatalogSuggestionJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/items": {
+      "get": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "List Catalog Suggestions",
+        "description": "The Source System's suggestions in one status (default `pending`), of one table when\n`table_id` is given, ordered by table, table fields first (owners and editors).",
+        "operationId": "listCatalogSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "pending",
+                "accepted",
+                "rejected",
+                "expired"
+              ],
+              "type": "string",
+              "default": "pending",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSuggestionPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/accept": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Accept Catalog Suggestions",
+        "description": "Accept one or many pending suggestions as the AI wrote them (owners and editors): each\nvalue is saved on its table or column, audited as the AI's, and shows an AI tag until\nsomeone edits it. Ones no longer pending are skipped; 404 for an id not of this system.",
+        "operationId": "acceptCatalogSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionIds"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecidedSuggestions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/accept-all": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Accept All Catalog Suggestions",
+        "description": "Accept every pending suggestion of this Source System, or of one table (owners and\neditors).",
+        "operationId": "acceptAllCatalogSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptAll"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecidedSuggestions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/accept-edited": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Accept Edited Catalog Suggestion",
+        "description": "Accept one pending suggestion with your own value instead (owners and editors): it\ncounts as a person's value, with no AI tag. 409 `suggestion_not_pending`; 422\n`invalid_enhancement` for a value the field does not take.",
+        "operationId": "acceptEditedCatalogSuggestion",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptEdited"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSuggestion"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/systems/{system_id}/catalog-suggestions/reject": {
+      "post": {
+        "tags": [
+          "sources",
+          "sources"
+        ],
+        "summary": "Reject Catalog Suggestions",
+        "description": "Reject one or many pending suggestions (owners and editors); a rejected value is never\nsuggested again for that object and field. Ones no longer pending are skipped.",
+        "operationId": "rejectCatalogSuggestions",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "system_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "System Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionIds"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecidedSuggestions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/systems/{system_id}/pii-findings": {
       "get": {
         "tags": [
@@ -18174,6 +18700,47 @@
   },
   "components": {
     "schemas": {
+      "AcceptAll": {
+        "properties": {
+          "table_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Id",
+            "description": "Accept only this table's pending suggestions."
+          }
+        },
+        "type": "object",
+        "title": "AcceptAll"
+      },
+      "AcceptEdited": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Value",
+            "description": "The value to save instead of the AI's: a person's value, with no AI mark."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "value"
+        ],
+        "title": "AcceptEdited"
+      },
       "AcceptInvitationRequest": {
         "properties": {
           "token": {
@@ -19258,6 +19825,302 @@
           "enabled"
         ],
         "title": "BuiltInSwitch"
+      },
+      "CatalogSuggestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "db_schema": {
+            "type": "string",
+            "title": "Db Schema"
+          },
+          "table": {
+            "type": "string",
+            "title": "Table"
+          },
+          "column_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Id",
+            "description": "Null for a suggestion on the table."
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "description",
+              "classification",
+              "scd_hint"
+            ],
+            "title": "Field",
+            "description": "A column's suggestions are `description` only."
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "What the AI suggested."
+          },
+          "edited_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Value",
+            "description": "What a person accepted instead (edit-then-accept); null otherwise."
+          },
+          "current_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Value",
+            "description": "The object's value for the field now."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              "expired"
+            ],
+            "title": "Status"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id",
+            "description": "The run that made it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "table_id",
+          "db_schema",
+          "table",
+          "column_id",
+          "column",
+          "field",
+          "value",
+          "edited_value",
+          "current_value",
+          "status",
+          "job_id",
+          "created_at",
+          "decided_by",
+          "decided_at"
+        ],
+        "title": "CatalogSuggestion"
+      },
+      "CatalogSuggestionCounts": {
+        "properties": {
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "rejected": {
+            "type": "integer",
+            "title": "Rejected"
+          },
+          "expired": {
+            "type": "integer",
+            "title": "Expired"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pending",
+          "accepted",
+          "rejected",
+          "expired"
+        ],
+        "title": "CatalogSuggestionCounts"
+      },
+      "CatalogSuggestionJob": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "paused",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "progress": {
+            "type": "integer",
+            "title": "Progress",
+            "description": "Percent done, 0 to 100."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why the job failed; null otherwise."
+          },
+          "made": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Made",
+            "description": "Suggestions the run made; null until the job has succeeded."
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped",
+            "description": "Fields the run skipped because they already had a value or the AI repeated a value people rejected; null until the job has succeeded."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "progress",
+          "error",
+          "made",
+          "skipped",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "CatalogSuggestionJob"
+      },
+      "CatalogSuggestionPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogSuggestion"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/CatalogSuggestionCounts",
+            "description": "The Source System's suggestions in each status, with no filter."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "counts"
+        ],
+        "title": "CatalogSuggestionPage"
       },
       "ChangePasswordRequest": {
         "properties": {
@@ -21550,6 +22413,32 @@
           "fields"
         ],
         "title": "DbSchemaChange"
+      },
+      "DecidedSuggestions": {
+        "properties": {
+          "decided": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogSuggestion"
+            },
+            "type": "array",
+            "title": "Decided"
+          },
+          "skipped": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "description": "Suggestions asked for that were no longer pending (decided or expired)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decided",
+          "skipped"
+        ],
+        "title": "DecidedSuggestions"
       },
       "DecisionRequest": {
         "properties": {
@@ -24787,6 +25676,26 @@
           "items"
         ],
         "title": "KpiSuggestions"
+      },
+      "LatestCatalogSuggestionJob": {
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogSuggestionJob"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest run; null if none ran yet."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "title": "LatestCatalogSuggestionJob"
       },
       "LatestDwKpiSuggestionJob": {
         "properties": {
@@ -31505,6 +32414,22 @@
             ],
             "title": "Is Protected",
             "description": "`is_sensitive` or a `suggested`/`accepted` PII finding; set only in the Source Schema."
+          },
+          "ai_fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "const": "description"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Fields",
+            "description": "`description` when an accepted AI suggestion wrote it and nobody has changed it since (show an AI tag); set only in the Source Schema."
           }
         },
         "type": "object",
@@ -32166,6 +33091,26 @@
             ],
             "title": "Version",
             "description": "Send it back when editing the enhancements; set only in the Source Schema."
+          },
+          "ai_fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "description",
+                    "classification",
+                    "scd_hint"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Fields",
+            "description": "The data catalog fields an accepted AI suggestion wrote and nobody has changed since (show an AI tag); set only in the Source Schema."
           },
           "profiled_at": {
             "anyOf": [
@@ -33121,6 +34066,25 @@
           "table_ids"
         ],
         "title": "StartProfilingRequest"
+      },
+      "SuggestionIds": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "SuggestionIds"
       },
       "SuggestionKeyRequest": {
         "properties": {

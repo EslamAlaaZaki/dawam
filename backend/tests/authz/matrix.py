@@ -708,6 +708,38 @@ def relationship_id(roles: RoleClients) -> str:
         )
 
 
+def catalog_suggestion_id(roles: RoleClients) -> str:
+    """A pending data catalog suggestion (the stand-in table's description), written straight
+    into the table and reset to ``pending`` on every request, with the description cleared."""
+    table = table_id(roles)
+    with roles.app.state.engine.begin() as conn:
+        conn.execute(
+            sa.text("UPDATE src_tables SET description = NULL WHERE id = :t"), {"t": table}
+        )
+        found = conn.execute(
+            sa.text("SELECT id FROM catalog_suggestions WHERE src_table_id = :t"), {"t": table}
+        ).scalar()
+        if found is not None:
+            conn.execute(
+                sa.text(
+                    "UPDATE catalog_suggestions SET status = 'pending', edited_value = NULL, "
+                    "decided_by = NULL, decided_at = NULL WHERE id = :id"
+                ),
+                {"id": found},
+            )
+            return str(found)
+        return str(
+            conn.execute(
+                sa.text(
+                    "INSERT INTO catalog_suggestions (id, source_system_id, src_table_id, field, "
+                    "value, status, created_at) VALUES (:id, :s, :t, 'description', "
+                    "'Stand-in rows.', 'pending', now()) RETURNING id"
+                ),
+                {"id": uuid.uuid4(), "s": system_id(roles), "t": table},
+            ).scalar_one()
+        )
+
+
 def conversation_id(roles: RoleClients) -> uuid.UUID:
     """An assistant conversation the owner started and shared with the Workspace, so every
     member may read it while only the owner may post to it."""

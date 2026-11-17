@@ -109,6 +109,20 @@ def test_a_succeeded_job_notifies_its_creator(inline, roles):
     assert unread(roles, "owner") == []
 
 
+def test_a_failing_finish_hook_keeps_the_job_succeeded_with_the_default_notice(inline, roles):
+    def broken(title, params, result):
+        raise RuntimeError("no notice today")
+
+    inline._runner.on_finished("ok", broken)
+
+    job = submit(inline, roles, as_role="editor")
+
+    assert job.status == "succeeded"
+    [note] = unread(roles, "editor")
+    assert (note["ref_type"], note["ref_id"]) == ("job", str(job.id))
+    assert note["message"] == 'Job "ok job" finished.'
+
+
 def test_a_failed_job_keeps_its_log_and_says_why(inline, roles):
     job = submit(inline, roles, job_type="boom")
 

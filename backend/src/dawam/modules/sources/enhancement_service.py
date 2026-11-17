@@ -9,8 +9,9 @@ transaction that makes it. Reading them is part of the Source Schema.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -24,11 +25,13 @@ from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .tables import (
+    CATALOG_FIELDS,
     CLASSIFICATIONS,
     DESCRIPTION_MAX_LENGTH,
     MAX_TAGS,
     SCD_HINT_MAX_LENGTH,
     TAG_MAX_LENGTH,
+    CatalogSuggestionRecord,
     SourceSystemRecord,
     SrcColumnRecord,
     SrcDbSchemaRecord,
@@ -45,6 +48,8 @@ TABLE_FIELDS = (
 )
 COLUMN_FIELDS = ("description", "tags", "is_sensitive")
 """The enhancements of a table and of a column: what the audit trail records."""
+SCD_CLASSES = ("master", "reference")
+"""The classifications an SCD hint is suggested for (spec §6.19)."""
 
 
 @dataclass(frozen=True)
@@ -111,8 +116,11 @@ def _snapshot(record: Any, fields: tuple[str, ...]) -> dict[str, Any]:
 def set_fields(
     record: SrcTableRecord | SrcColumnRecord, entity_type: str, changes: Mapping[str, Any]
 ) -> None:
-    """Validate ``changes`` and set them on ``record`` (no version check, audit or flush)."""
+    """Validate ``changes`` and set them on ``record`` (no version check, audit or flush). A
+    field whose value changes loses its AI mark (``ai_fields``): the value is no longer the
+    AI's as accepted."""
     for field, value in changes.items():
+        before = getattr(record, field, None)
         if field == "description":
             record.description = _text(value, "description", field, DESCRIPTION_MAX_LENGTH)
         elif field == "tags":
@@ -129,6 +137,43 @@ def set_fields(
             record.scd_hint = _text(value, "SCD hint", field, SCD_HINT_MAX_LENGTH)
         else:  # pragma: no cover - a programming error
             raise ValueError(f"cannot change {entity_type} field {field!r}")
+        if getattr(record, field) != before and field in (record.ai_fields or []):
+            record.ai_fields = [f for f in record.ai_fields if f != field]
+
+
+def expire_pending_suggestions(
+    db: Session,
+    record: SrcTableRecord | SrcColumnRecord,
+    changed: Sequence[str],
+    *,
+    person: bool,
+    keep: uuid.UUID | None = None,
+) -> None:
+    """Expire the pending data catalog suggestions of ``record`` that a change of its
+    ``changed`` fields makes moot (spec §6.19): a person's value on a field (``person``), and
+    the SCD hint of a table no longer classified ``master`` or ``reference`` (any change).
+    ``keep`` (the suggestion being accepted) stays as it is."""
+    fields = {f for f in changed if f in CATALOG_FIELDS} if person else set()
+    is_table = isinstance(record, SrcTableRecord)
+    if is_table and "classification" in changed and record.classification not in SCD_CLASSES:
+        fields.add("scd_hint")
+    if not fields:
+        return
+    query = sa.update(CatalogSuggestionRecord).where(
+        CatalogSuggestionRecord.status == "pending",
+        CatalogSuggestionRecord.field.in_(sorted(fields)),
+    )
+    if is_table:
+        query = query.where(
+            CatalogSuggestionRecord.src_table_id == record.id,
+            CatalogSuggestionRecord.src_column_id.is_(None),
+        )
+    else:
+        query = query.where(CatalogSuggestionRecord.src_column_id == record.id)
+    if keep is not None:
+        query = query.where(CatalogSuggestionRecord.id != keep)
+    # "evaluate": suggestions this session already loaded (an accept batch) see it too.
+    db.execute(query.values(status="expired").execution_options(synchronize_session="evaluate"))
 
 
 def _not_found(what: str) -> ApiError:
@@ -236,33 +281,64 @@ class EnhancementService:
                 "Someone else changed this object since you loaded it. Reload and try again.",
                 {"current_version": record.version},
             )
-        before = _snapshot(record, fields)
-        set_fields(record, entity_type, changes)
-        after = _snapshot(record, fields)
-        changed = [f for f in fields if before[f] != after[f]]
-        if not changed:
-            return
-        record.version += 1
-        now = self._clock()
-        db.flush()
-        record_audit(
+        write_enhancements(
             db,
-            workspace_id=system.workspace_id,
             actor_id=user.id,
+            system=system,
+            record=record,
             entity_type=entity_type,
-            entity_id=record.id,
-            old={f: before[f] for f in changed},
-            new={f: after[f] for f in changed},
-            at=now,
+            changes=changes,
+            at=self._clock(),
         )
-        record_activity(
-            db,
-            workspace_id=system.workspace_id,
-            actor_id=user.id,
-            verb=f"{entity_type}.enhanced",
-            object_type=entity_type,
-            object_id=record.id,
-            object_label=record.name,
-            details={"source_system_id": str(system.id), "fields": changed},
-            at=now,
-        )
+
+
+def write_enhancements(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    system: SourceSystemRecord,
+    record: SrcTableRecord | SrcColumnRecord,
+    entity_type: str,
+    changes: Mapping[str, Any],
+    at: datetime,
+    via: str = "user",
+    keep: uuid.UUID | None = None,
+) -> list[str]:
+    """Validate and set ``changes`` on the locked ``record``; when a value changes, bump its
+    version, audit the change (``via``) and record it in the activity feed. The fields that
+    changed. No version check: the caller decides whether the record may change. Pending
+    catalog suggestions the change makes moot expire (``expire_pending_suggestions``), but
+    ``keep``, the suggestion being accepted."""
+    fields = TABLE_FIELDS if entity_type == "source_table" else COLUMN_FIELDS
+    before = _snapshot(record, fields)
+    set_fields(record, entity_type, changes)
+    after = _snapshot(record, fields)
+    changed = [f for f in fields if before[f] != after[f]]
+    if not changed:
+        return []
+    record.version += 1
+    expire_pending_suggestions(db, record, changed, person=via == "user", keep=keep)
+    db.flush()
+    record_audit(
+        db,
+        workspace_id=system.workspace_id,
+        actor_id=actor_id,
+        entity_type=entity_type,
+        entity_id=record.id,
+        old={f: before[f] for f in changed},
+        new={f: after[f] for f in changed},
+        at=at,
+        via=via,
+    )
+    record_activity(
+        db,
+        workspace_id=system.workspace_id,
+        actor_id=actor_id,
+        verb=f"{entity_type}.enhanced",
+        object_type=entity_type,
+        object_id=record.id,
+        object_label=record.name,
+        details={"source_system_id": str(system.id), "fields": changed},
+        at=at,
+    )
+    return changed

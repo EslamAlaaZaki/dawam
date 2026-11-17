@@ -109,6 +109,9 @@ class SnapshotColumn:
     """Set when a column is accepted as PII; only in the Source Schema."""
     is_protected: bool | None = None
     """By the one Protected Column policy; only in the Source Schema."""
+    ai_fields: list[str] | None = None
+    """``description`` when an accepted AI suggestion wrote it unchanged; only in the Source
+    Schema."""
 
 
 @dataclass(frozen=True)
@@ -153,6 +156,9 @@ class SnapshotTable:
     scd_hint: str | None = None
     include_view_in_staging: bool | None = None
     version: int | None = None
+    ai_fields: list[str] | None = None
+    """The data catalog fields an accepted AI suggestion wrote, unchanged since; only in the
+    Source Schema."""
     profiled_at: datetime | None = None
     """When its present columns were last profiled; set only in the Source Schema."""
 
@@ -778,6 +784,7 @@ class SnapshotService:
                             "version": current.version,
                             "pii_category": current.pii_category,
                             "is_protected": c.src_column_id in protected,
+                            "ai_fields": list(current.ai_fields or []),
                         }
                     ),
                     id=c.src_column_id,
@@ -830,6 +837,7 @@ class SnapshotService:
                         "scd_hint": current.scd_hint,
                         "include_view_in_staging": current.include_view_in_staging,
                         "version": current.version,
+                        "ai_fields": list(current.ai_fields or []),
                         "profiled_at": profiled_at.get(current.id),
                     }
                 ),
