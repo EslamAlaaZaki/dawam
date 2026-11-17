@@ -1,7 +1,7 @@
 "use client";
 
-import { Check, ChevronDown, ChevronRight, ListFilter, Pencil, X } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { Check, ChevronRight, Pencil, X } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import {
   FIELD_LABELS,
@@ -17,14 +17,6 @@ import { useMembers } from "../api/members";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
 import { toast } from "../components/ui/sonner";
 import {
   Table,
@@ -39,6 +31,7 @@ import type { Workspace } from "../api/workspaces";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
 import { CatalogInput, CatalogText, IconAction } from "./CatalogValue";
+import { ErTablePicker } from "./ErTablePicker";
 import {
   EmptyState,
   ErrorText,
@@ -98,7 +91,6 @@ export function DataCatalogReview({
       ),
     [page.data, filtered, shownTables],
   );
-  const schemas = useMemo(() => groupBySchema(tables), [tables]);
 
   // Database Schema, then table, then the table's own fields before its columns.
   const tree = useMemo(() => {
@@ -200,9 +192,9 @@ export function DataCatalogReview({
             ))}
           </TabsList>
         </Tabs>
-        <TableFilter
-          schemas={schemas}
-          shown={shownTables}
+        <ErTablePicker
+          tables={tables}
+          selected={shownTables}
           onChange={(next) => {
             setShownTables(next);
             setSelected(new Set());
@@ -455,15 +447,6 @@ type TableGroup = {
   items: CatalogSuggestion[];
 };
 
-/** The tables by Database Schema, in their listed order, for the filter's groups. */
-function groupBySchema(tables: { id: string; db_schema: string; name: string }[]) {
-  const bySchema = new Map<string, { id: string; name: string }[]>();
-  for (const t of tables) {
-    bySchema.set(t.db_schema, [...(bySchema.get(t.db_schema) ?? []), t]);
-  }
-  return [...bySchema.entries()];
-}
-
 /** A Database Schema (level 0) or table (level 1) heading row that folds its rows away. */
 function GroupRow({
   level,
@@ -520,126 +503,4 @@ function GroupRow({
       </TableCell>
     </TableRow>
   );
-}
-
-/**
- * Which tables the review shows, grouped by Database Schema: a schema's box ticks or clears
- * all its tables, and nothing ticked shows every table.
- */
-function TableFilter({
-  schemas,
-  shown,
-  onChange,
-}: {
-  schemas: [string, { id: string; name: string }[]][];
-  shown: ReadonlySet<string>;
-  onChange: (next: ReadonlySet<string>) => void;
-}) {
-  const set = (ids: string[], on: boolean) => {
-    const next = new Set(shown);
-    for (const id of ids) {
-      if (on) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-    }
-    onChange(next);
-  };
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="secondary" aria-label={`Tables: ${filterLabel(schemas, shown)}`}>
-          <ListFilter aria-hidden />
-          {filterLabel(schemas, shown)}
-          <ChevronDown aria-hidden className="text-subtle-foreground" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-96 min-w-56 overflow-y-auto">
-        <FilterItem checked={shown.size === 0} onToggle={() => onChange(new Set())}>
-          All tables
-        </FilterItem>
-        {schemas.map(([schema, schemaTables]) => {
-          const ids = schemaTables.map((t) => t.id);
-          const on = ids.filter((id) => shown.has(id)).length;
-          return (
-            <DropdownMenuGroup key={schema}>
-              <DropdownMenuSeparator />
-              <FilterItem
-                checked={on === ids.length ? true : on > 0 ? "indeterminate" : false}
-                onToggle={() => set(ids, on < ids.length)}
-                className={cn(monoClasses, "font-semibold")}
-              >
-                {schema}
-              </FilterItem>
-              {schemaTables.map((t) => (
-                <FilterItem
-                  key={t.id}
-                  checked={shown.has(t.id)}
-                  onToggle={() => set([t.id], !shown.has(t.id))}
-                  className={cn(monoClasses, "pl-8")}
-                >
-                  {t.name}
-                </FilterItem>
-              ))}
-            </DropdownMenuGroup>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-/**
- * A filter entry drawn with the same checkbox as the table rows (a dash when a schema is
- * partly ticked) instead of the menu's check mark. The menu stays open while ticking.
- */
-function FilterItem({
-  checked,
-  onToggle,
-  className,
-  children,
-}: {
-  checked: boolean | "indeterminate";
-  onToggle: () => void;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <DropdownMenuCheckboxItem
-      checked={checked}
-      onCheckedChange={onToggle}
-      onSelect={(event) => event.preventDefault()}
-      className={cn("gap-2 pl-2 [&>span:first-child]:hidden", className)}
-    >
-      <Checkbox
-        checked={checked}
-        tabIndex={-1}
-        aria-hidden
-        className="pointer-events-none"
-      />
-      {children}
-    </DropdownMenuCheckboxItem>
-  );
-}
-
-/** "All tables", one table's full name, one whole schema, or how many tables are ticked. */
-function filterLabel(
-  schemas: [string, { id: string; name: string }[]][],
-  shown: ReadonlySet<string>,
-) {
-  if (shown.size === 0) {
-    return "All tables";
-  }
-  for (const [schema, schemaTables] of schemas) {
-    const ids = schemaTables.map((t) => t.id);
-    if (ids.length === shown.size && ids.every((id) => shown.has(id))) {
-      return schemaTables.length === 1 ? `${schema}.${schemaTables[0]?.name}` : schema;
-    }
-    const one = shown.size === 1 ? schemaTables.find((t) => shown.has(t.id)) : undefined;
-    if (one) {
-      return `${schema}.${one.name}`;
-    }
-  }
-  return `${shown.size} tables`;
 }

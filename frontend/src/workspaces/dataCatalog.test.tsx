@@ -7,7 +7,6 @@ import type { SnapshotSummary, SourceSchema } from "../api/snapshots";
 import type { SourceSystem } from "../api/systems";
 import type { Workspace } from "../api/workspaces";
 import { Dialog } from "../components/ui/dialog";
-import { openMenu } from "../test/menus";
 import { json, renderApp, setCsrfCookie, type ApiRequest } from "../test/renderApp";
 import { ErTableDetails } from "./ErTableDetails";
 
@@ -268,11 +267,11 @@ function openTab(name: RegExp | string) {
   fireEvent.click(tab);
 }
 
-/** Ticks or clears one entry of the table filter (a schema, a table or "All tables"). */
+/** Ticks or clears one box of the table filter ("core.ledger", "All tables in core", "All tables"). */
 function pickTables(name: string) {
-  openMenu(screen.getByRole("button", { name: /^Tables:/ }));
-  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: new RegExp(`^${name}`) }));
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  fireEvent.click(screen.getByRole("button", { name: /^Tables shown:/ }));
+  fireEvent.click(screen.getByRole("checkbox", { name }));
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
 }
 
 const bodyOf = (writes: { path: string; body: unknown }[], path: string) =>
@@ -374,8 +373,8 @@ describe("The Data catalog tab", () => {
 
     openTab(/^Pending/);
     await screen.findByText("Posted entries");
-    pickTables("ledger");
-    expect(screen.getByRole("button", { name: "Tables: core.ledger" })).toBeInTheDocument();
+    pickTables("core.ledger");
+    expect(screen.getByRole("button", { name: "Tables shown: core.ledger" })).toBeInTheDocument();
     const list = await screen.findByRole("table", { name: "Data catalog suggestions" });
     await waitFor(() => expect(within(list).queryByText("customers")).not.toBeInTheDocument());
     expect(within(list).getByText("Posted entries")).toBeInTheDocument();
@@ -420,7 +419,7 @@ describe("The Data catalog tab", () => {
     renderApp(backend({ ws: OWNER }, writes), `${FOLDER}&tab=data-catalog`);
     await screen.findByText("Posted entries");
 
-    pickTables("ledger");
+    pickTables("core.ledger");
     const list = screen.getByRole("table", { name: "Data catalog suggestions" });
     expect(within(list).queryByText("customers")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Accept all pending" }));
@@ -428,15 +427,15 @@ describe("The Data catalog tab", () => {
       expect(bodyOf(writes, "/catalog-suggestions/accept")).toEqual({ ids: ["s4"] }),
     );
 
-    pickTables("customers");
-    expect(screen.getByRole("button", { name: "Tables: core" })).toBeInTheDocument();
+    pickTables("core.customers");
+    expect(screen.getByRole("button", { name: "Tables shown: core, all 2 tables" })).toBeInTheDocument();
     expect(
       within(await screen.findByRole("table", { name: "Data catalog suggestions" })).getByText(
         "customers",
       ),
     ).toBeInTheDocument();
     pickTables("All tables");
-    expect(screen.getByRole("button", { name: "Tables: All tables" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tables shown: All tables" })).toBeInTheDocument();
   });
 
   it("nests tables under their Database Schema, folds them, and accepts a whole schema", async () => {
@@ -454,7 +453,7 @@ describe("The Data catalog tab", () => {
     fireEvent.click(within(list).getByRole("checkbox", { name: "Select all in core" }));
     expect(screen.getByRole("button", { name: "Accept selected (4)" })).toBeEnabled();
 
-    pickTables("core");
+    pickTables("All tables in core");
     const all = screen.getByRole("button", { name: "Accept all pending" });
     await waitFor(() => expect(all).toBeEnabled());
     fireEvent.click(all);
