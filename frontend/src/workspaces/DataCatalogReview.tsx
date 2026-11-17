@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Pencil, X } from "lucide-react";
+import { Check, ChevronRight, Pencil, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -28,6 +28,7 @@ import {
 } from "../components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import type { Workspace } from "../api/workspaces";
+import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
 import { CatalogInput, CatalogText, IconAction } from "./CatalogValue";
 import {
@@ -66,9 +67,13 @@ export function DataCatalogReview({
   tables: { id: string; db_schema: string; name: string }[];
 }) {
   const [status, setStatus] = useState<CatalogStatus>("pending");
-  const [tableId, setTableId] = useState("");
+  // "" is every table, "schema:<name>" one Database Schema (narrowed here), else a table id.
+  const [scope, setScope] = useState("");
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [editing, setEditing] = useState<{ id: string; draft: string } | null>(null);
+  const schemaFilter = scope.startsWith("schema:") ? scope.slice("schema:".length) : null;
+  const tableId = scope && schemaFilter == null ? scope : "";
   const page = useCatalogSuggestions(
     workspace.id,
     systemId,
@@ -86,31 +91,48 @@ export function DataCatalogReview({
     accept.isPending || acceptAll.isPending || reject.isPending || acceptEdited.isPending;
   const onError = (error: Error) => toast.error(error.message);
 
-  const groups = useMemo(() => {
-    const order = new Map(tables.map((t, i) => [t.id, i]));
-    const byTable = new Map<string, { name: string; items: CatalogSuggestion[] }>();
-    for (const item of page.data?.items ?? []) {
-      const group = byTable.get(item.table_id) ?? {
-        name: `${item.db_schema}.${item.table}`,
-        items: [],
-      };
-      group.items.push(item);
-      byTable.set(item.table_id, group);
-    }
-    return [...byTable.entries()]
-      .sort(([a], [b]) => (order.get(a) ?? 0) - (order.get(b) ?? 0))
-      .map(([id, { name, items }]) => ({
-        id,
-        name,
-        items: [...items].sort(
-          (a, b) =>
-            Number(a.column != null) - Number(b.column != null) ||
-            FIELD_ORDER[a.field] - FIELD_ORDER[b.field],
-        ),
-      }));
-  }, [page.data, tables]);
+  const items = useMemo(
+    () =>
+      (page.data?.items ?? []).filter(
+        (item) => schemaFilter == null || item.db_schema === schemaFilter,
+      ),
+    [page.data, schemaFilter],
+  );
+  const schemas = useMemo(() => groupBySchema(tables), [tables]);
 
-  const visibleIds = (page.data?.items ?? []).map((s) => s.id);
+  // Database Schema, then table, then the table's own fields before its columns.
+  const tree = useMemo(() => {
+    const order = new Map(tables.map((t, i) => [t.id, i]));
+    const byTable = new Map<string, CatalogSuggestion[]>();
+    for (const item of items) {
+      byTable.set(item.table_id, [...(byTable.get(item.table_id) ?? []), item]);
+    }
+    const bySchema = new Map<string, TableGroup[]>();
+    for (const [id, rows] of [...byTable.entries()].sort(
+      ([a], [b]) => (order.get(a) ?? 0) - (order.get(b) ?? 0),
+    )) {
+      const { db_schema, table } = rows[0] as CatalogSuggestion;
+      bySchema.set(db_schema, [
+        ...(bySchema.get(db_schema) ?? []),
+        {
+          id,
+          name: table,
+          fullName: `${db_schema}.${table}`,
+          items: [...rows].sort(
+            (a, b) =>
+              Number(a.column != null) - Number(b.column != null) ||
+              FIELD_ORDER[a.field] - FIELD_ORDER[b.field],
+          ),
+        },
+      ]);
+    }
+    return [...bySchema.entries()].map(([name, tableGroups]) => ({
+      name,
+      tables: tableGroups,
+    }));
+  }, [items, tables]);
+
+  const visibleIds = items.map((s) => s.id);
   const chosen = visibleIds.filter((id) => selected.has(id));
   const pendingView = status === "pending";
 
@@ -129,6 +151,14 @@ export function DataCatalogReview({
         } else {
           next.delete(id);
         }
+      }
+      return next;
+    });
+  const fold = (key: string) =>
+    setCollapsed((now) => {
+      const next = new Set(now);
+      if (!next.delete(key)) {
+        next.add(key);
       }
       return next;
     });
@@ -173,17 +203,22 @@ export function DataCatalogReview({
         <NativeSelect
           aria-label="Table"
           className="w-auto min-w-44"
-          value={tableId}
+          value={scope}
           onChange={(event) => {
-            setTableId(event.target.value);
+            setScope(event.target.value);
             setSelected(new Set());
           }}
         >
           <option value="">All tables</option>
-          {tables.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.db_schema}.{t.name}
-            </option>
+          {schemas.map(([schema, schemaTables]) => (
+            <optgroup key={schema} label={schema}>
+              <option value={`schema:${schema}`}>All of {schema}</option>
+              {schemaTables.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </NativeSelect>
         {pendingView && (
@@ -218,10 +253,16 @@ export function DataCatalogReview({
               type="button"
               disabled={busy || visibleIds.length === 0}
               onClick={() =>
-                acceptAll.mutate(tableId || null, {
-                  onSuccess: (r) => decided("Accepted", r.decided.length, r.skipped.length),
-                  onError,
-                })
+                // A Database Schema is narrowed here, so accept what it shows.
+                schemaFilter != null
+                  ? accept.mutate(visibleIds, {
+                      onSuccess: (r) => decided("Accepted", r.decided.length, r.skipped.length),
+                      onError,
+                    })
+                  : acceptAll.mutate(tableId || null, {
+                      onSuccess: (r) => decided("Accepted", r.decided.length, r.skipped.length),
+                      onError,
+                    })
               }
             >
               Accept all pending
@@ -233,14 +274,14 @@ export function DataCatalogReview({
       {page.isError && (
         <ErrorText>Could not load the suggestions: {page.error.message}</ErrorText>
       )}
-      {page.isSuccess && groups.length === 0 && (
+      {page.isSuccess && tree.length === 0 && (
         <EmptyState>
           {pendingView
             ? "Nothing to review. Press Suggest catalog entries to fill the empty descriptions, classifications and SCD hints."
             : `No ${status} suggestions.`}
         </EmptyState>
       )}
-      {groups.length > 0 && (
+      {tree.length > 0 && (
         <TableCard>
           <Table aria-label="Data catalog suggestions">
             <TableHeader>
@@ -254,29 +295,44 @@ export function DataCatalogReview({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {groups.map((group) => {
-                const ids = group.items.map((s) => s.id);
-                const all = ids.every((id) => selected.has(id));
-                const some = ids.some((id) => selected.has(id));
+              {tree.flatMap((schema) => {
+                const schemaKey = `s:${schema.name}`;
+                const schemaIds = schema.tables.flatMap((t) => t.items.map((s) => s.id));
+                const span = pendingView ? 5 : 4;
                 return [
-                  <TableRow key={`g:${group.id}`} className="bg-muted/50">
-                    <TableCell>
-                      {pendingView && (
-                        <Checkbox
-                          aria-label={`Select all for ${group.name}`}
-                          checked={all ? true : some ? "indeterminate" : false}
-                          onCheckedChange={(on) => toggle(ids, on === true)}
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell colSpan={pendingView ? 5 : 4}>
-                      <span className={monoClasses}>{group.name}</span>
-                      <span className="ms-2 text-xs text-subtle-foreground tabular-nums">
-                        {group.items.length}
-                      </span>
-                    </TableCell>
-                  </TableRow>,
-                  ...group.items.map((item) => {
+                  <GroupRow
+                    key={schemaKey}
+                    level={0}
+                    span={span}
+                    label={schema.name}
+                    count={schemaIds.length}
+                    open={!collapsed.has(schemaKey)}
+                    onToggle={() => fold(schemaKey)}
+                    select={
+                      pendingView
+                        ? { label: `Select all in ${schema.name}`, ids: schemaIds, selected, toggle }
+                        : null
+                    }
+                  />,
+                  ...(collapsed.has(schemaKey) ? [] : schema.tables).flatMap((group) => {
+                const ids = group.items.map((s) => s.id);
+                const tableKey = `t:${group.id}`;
+                return [
+                  <GroupRow
+                    key={tableKey}
+                    level={1}
+                    span={span}
+                    label={group.name}
+                    count={ids.length}
+                    open={!collapsed.has(tableKey)}
+                    onToggle={() => fold(tableKey)}
+                    select={
+                      pendingView
+                        ? { label: `Select all for ${group.fullName}`, ids, selected, toggle }
+                        : null
+                    }
+                  />,
+                  ...(collapsed.has(tableKey) ? [] : group.items).map((item) => {
                     const label = `${item.column ?? "table"} ${FIELD_LABELS[item.field].toLowerCase()}`;
                     const isEditing = editing?.id === item.id;
                     const shown = item.edited_value ?? item.value;
@@ -285,13 +341,13 @@ export function DataCatalogReview({
                         <TableCell>
                           {pendingView && (
                             <Checkbox
-                              aria-label={`Select ${group.name} ${label}`}
+                              aria-label={`Select ${group.fullName} ${label}`}
                               checked={selected.has(item.id)}
                               onCheckedChange={(on) => toggle([item.id], on === true)}
                             />
                           )}
                         </TableCell>
-                        <TableCell className={monoClasses}>
+                        <TableCell className={cn(monoClasses, "ps-14")}>
                           {item.column ?? (
                             <span className="font-sans text-subtle-foreground">(table)</span>
                           )}
@@ -390,6 +446,8 @@ export function DataCatalogReview({
                     );
                   }),
                 ];
+                  }),
+                ];
               })}
             </TableBody>
           </Table>
@@ -400,5 +458,79 @@ export function DataCatalogReview({
         suggested again. Sensitivity stays with the PII folder.
       </p>
     </div>
+  );
+}
+
+type TableGroup = {
+  id: string;
+  name: string;
+  fullName: string;
+  items: CatalogSuggestion[];
+};
+
+/** The tables by Database Schema, in their listed order, for the filter's groups. */
+function groupBySchema(tables: { id: string; db_schema: string; name: string }[]) {
+  const bySchema = new Map<string, { id: string; name: string }[]>();
+  for (const t of tables) {
+    bySchema.set(t.db_schema, [...(bySchema.get(t.db_schema) ?? []), t]);
+  }
+  return [...bySchema.entries()];
+}
+
+/** A Database Schema (level 0) or table (level 1) heading row that folds its rows away. */
+function GroupRow({
+  level,
+  span,
+  label,
+  count,
+  open,
+  onToggle,
+  select,
+}: {
+  level: 0 | 1;
+  span: number;
+  label: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  select: {
+    label: string;
+    ids: string[];
+    selected: ReadonlySet<string>;
+    toggle: (ids: string[], on: boolean) => void;
+  } | null;
+}) {
+  const all = select != null && select.ids.every((id) => select.selected.has(id));
+  const some = select != null && select.ids.some((id) => select.selected.has(id));
+  return (
+    <TableRow className={level === 0 ? "bg-muted" : "bg-muted/40"}>
+      <TableCell>
+        {select && (
+          <Checkbox
+            aria-label={select.label}
+            checked={all ? true : some ? "indeterminate" : false}
+            onCheckedChange={(on) => select.toggle(select.ids, on === true)}
+          />
+        )}
+      </TableCell>
+      <TableCell colSpan={span}>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={onToggle}
+          className={cn(
+            "inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-start [&_svg]:size-3.5",
+            level === 1 && "ps-6",
+          )}
+        >
+          <ChevronRight
+            aria-hidden
+            className={cn("text-subtle-foreground transition-transform", open && "rotate-90")}
+          />
+          <span className={cn(monoClasses, level === 0 && "font-semibold")}>{label}</span>
+          <span className="text-xs text-subtle-foreground tabular-nums">{count}</span>
+        </button>
+      </TableCell>
+    </TableRow>
   );
 }

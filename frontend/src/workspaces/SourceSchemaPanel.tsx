@@ -272,8 +272,9 @@ export function SourceSchemaPanel({
 
   return (
     <section aria-labelledby="folder-title" className="flex flex-col gap-5">
-      <header className="flex flex-wrap items-start gap-4 border-b border-border pb-5">
-        <div className="flex min-w-0 flex-1 basis-80 flex-col gap-2">
+      {/* Below xl the Snapshot line takes the full width and the buttons wrap under it, from the left. */}
+      <header className="flex flex-col gap-4 border-b border-border pb-5 xl:flex-row xl:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
           <h1
             id="folder-title"
             className="sr-only"
@@ -281,7 +282,7 @@ export function SourceSchemaPanel({
             Source schema
           </h1>
           {hasSnapshot && (
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground tabular-nums">
+            <div className="flex flex-wrap items-center gap-2 text-sm whitespace-nowrap text-muted-foreground tabular-nums">
               {latest && (
                 <>
                   <Badge variant="accent">Latest</Badge>
@@ -327,23 +328,6 @@ export function SourceSchemaPanel({
               className={cn(refreshing && "motion-safe:animate-spin")}
             />
           </Button>
-          {hasSnapshot && canSuggestCatalog && (
-            <Button
-              type="button"
-              disabled={catalogRunning}
-              onClick={() =>
-                startCatalog.mutate(undefined, {
-                  onSuccess: () =>
-                    toast.success(
-                      "Suggesting catalog entries. Follow it under Background jobs.",
-                    ),
-                })
-              }
-            >
-              <ListPlus aria-hidden />
-              Suggest catalog entries
-            </Button>
-          )}
           {hasSnapshot && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -376,6 +360,23 @@ export function SourceSchemaPanel({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+          {hasSnapshot && canSuggestCatalog && (
+            <Button
+              type="button"
+              disabled={catalogRunning}
+              onClick={() =>
+                startCatalog.mutate(undefined, {
+                  onSuccess: () =>
+                    toast.success(
+                      "Suggesting catalog entries. Follow it under Background jobs.",
+                    ),
+                })
+              }
+            >
+              <ListPlus aria-hidden />
+              Suggest catalog entries
+            </Button>
           )}
           {canProfile && present.length > 0 && (
             <Button

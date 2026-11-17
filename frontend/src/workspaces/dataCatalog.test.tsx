@@ -271,14 +271,14 @@ const bodyOf = (writes: { path: string; body: unknown }[], path: string) =>
   writes.find((w) => w.path === path)?.body;
 
 describe("Suggest catalog entries", () => {
-  it("shows the button to a member who may ask the assistant, before Data dictionary", async () => {
+  it("shows the button to a member who may ask the assistant, after Data dictionary", async () => {
     renderApp(backend({ ws: OWNER }), FOLDER);
 
     const button = await screen.findByRole("button", { name: "Suggest catalog entries" });
     const dictionary = screen.getByRole("button", { name: /Data dictionary/ });
     expect(button).toBeEnabled();
     expect(
-      button.compareDocumentPosition(dictionary) & Node.DOCUMENT_POSITION_FOLLOWING,
+      button.compareDocumentPosition(dictionary) & Node.DOCUMENT_POSITION_PRECEDING,
     ).toBeTruthy();
   });
 
@@ -347,7 +347,8 @@ describe("The Data catalog tab", () => {
     expect(tab).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(tab).toHaveTextContent("4"));
     const list = await screen.findByRole("table", { name: "Data catalog suggestions" });
-    expect(within(list).getByText("core.customers")).toBeInTheDocument();
+    expect(within(list).getByText("customers")).toBeInTheDocument();
+    expect(within(list).getByText("core")).toBeInTheDocument();
     expect(within(list).getAllByText("(table)").length).toBeGreaterThan(0);
     expect(within(list).getByText("cust_no")).toBeInTheDocument();
     expect(within(list).getByText("The customer number")).toBeInTheDocument();
@@ -373,7 +374,7 @@ describe("The Data catalog tab", () => {
       ),
     );
     const list = await screen.findByRole("table", { name: "Data catalog suggestions" });
-    await waitFor(() => expect(within(list).queryByText("core.customers")).not.toBeInTheDocument());
+    await waitFor(() => expect(within(list).queryByText("customers")).not.toBeInTheDocument());
     expect(within(list).getByText("Posted entries")).toBeInTheDocument();
   });
 
@@ -407,10 +408,36 @@ describe("The Data catalog tab", () => {
     const all = await screen.findByRole("button", { name: "Accept all pending" });
     await waitFor(() => expect(all).toBeEnabled());
     await screen.findByText("Posted entries");
-    expect(within(screen.getByRole("table", { name: "Data catalog suggestions" })).queryByText("core.customers")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "Data catalog suggestions" })).queryByText("customers")).not.toBeInTheDocument();
     fireEvent.click(all);
     await waitFor(() =>
       expect(bodyOf(writes, "/catalog-suggestions/accept-all")).toEqual({ table_id: "t2" }),
+    );
+  });
+
+  it("nests tables under their Database Schema, folds them, and accepts a whole schema", async () => {
+    const writes: { path: string; body: unknown }[] = [];
+    renderApp(backend({ ws: OWNER }, writes), `${FOLDER}&tab=data-catalog`);
+    const list = await screen.findByRole("table", { name: "Data catalog suggestions" });
+
+    fireEvent.click(within(list).getByRole("button", { name: /^customers/ }));
+    expect(within(list).queryByText("cust_no")).not.toBeInTheDocument();
+    expect(within(list).getByText("Posted entries")).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole("button", { name: /^core/ }));
+    expect(within(list).queryByText("Posted entries")).not.toBeInTheDocument();
+    fireEvent.click(within(list).getByRole("button", { name: /^core/ }));
+
+    fireEvent.click(within(list).getByRole("checkbox", { name: "Select all in core" }));
+    expect(screen.getByRole("button", { name: "Accept selected (4)" })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText("Table"), { target: { value: "schema:core" } });
+    const all = screen.getByRole("button", { name: "Accept all pending" });
+    await waitFor(() => expect(all).toBeEnabled());
+    fireEvent.click(all);
+    await waitFor(() =>
+      expect(bodyOf(writes, "/catalog-suggestions/accept")).toEqual({
+        ids: ["s1", "s2", "s3", "s4"],
+      }),
     );
   });
 
