@@ -397,6 +397,16 @@ def replace_file(
     return _out(files.replace(user, workspace_id, file_id, content=file.file))
 
 
+@router.delete("/files/{file_id}", operation_id="deleteFile", status_code=204)
+def delete_file(
+    workspace_id: uuid.UUID, file_id: uuid.UUID, user: CurrentUser, files: FileServiceDep
+) -> Response:
+    """Delete a file (owners and editors), with a document's search passages, their
+    embeddings and its table and column links. There is no undo."""
+    files.delete(user, workspace_id, file_id)
+    return Response(status_code=204)
+
+
 class DocumentPassage(BaseModel):
     file_id: uuid.UUID
     document: str = Field(description="The document's name: the citation's first half.")
