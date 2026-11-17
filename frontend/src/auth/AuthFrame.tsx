@@ -4,6 +4,7 @@ import { Label } from "../components/ui/label";
 import { Wordmark } from "../components/Wordmark";
 import { cn } from "../lib/utils";
 import { ApiStatus } from "../shell/ApiStatus";
+import { ProjectTextLinks } from "../shell/ProjectLinks";
 
 /** The pages someone uses to get in (or, for /change-password, to finish getting in). */
 export const AUTH_PATHS: ReadonlySet<string> = new Set([
@@ -29,6 +30,17 @@ export function AuthFrame({ children }: { children: ReactNode }) {
           <p>Data Analysis &amp; Warehouse Architecture Modeler</p>
           <p>
             <ApiStatus />
+            <span aria-hidden className="mx-1.5 text-border-strong">
+              ·
+            </span>
+            <ProjectTextLinks />
+          </p>
+          <p>
+            © 2026 DAWAM
+            <span aria-hidden className="mx-1.5 text-border-strong">
+              ·
+            </span>
+            Apache-2.0
           </p>
         </footer>
       </div>
