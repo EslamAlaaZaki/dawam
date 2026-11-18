@@ -520,6 +520,8 @@ ROWS: list[Row] = [
     Row("GET", "/api/v1/admin/security-events", "review security events", admin_only()),
     Row("GET", "/api/v1/admin/assistant/runs", "browse assistant runs", admin_only()),
     Row("GET", "/api/v1/admin/assistant/runs/{run_id}", "open an assistant run", admin_only()),
+    Row("GET", "/api/v1/admin/ai/jobs", "browse background AI jobs", admin_only()),
+    Row("GET", "/api/v1/admin/ai/jobs/{key}", "open a background AI job", admin_only()),
     # Every Workspace's metadata, and the orphan rescue (§4.3, stories 21, 22).
     Row(
         "GET",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import threading
 import time
 import uuid
@@ -350,7 +351,8 @@ def test_the_app_and_the_worker_share_one_registry_of_handlers(
 
     create_app(settings, services=Services(email=outbox, jobs=runner, clock=clock))
 
-    assert runner.handler("ping") is job_handlers.JOB_HANDLERS["ping"]
+    # registered inside the wrapper that records its model calls for the job (#631)
+    assert inspect.unwrap(runner.handler("ping")) is job_handlers.JOB_HANDLERS["ping"]
 
 
 # Reading

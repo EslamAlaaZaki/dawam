@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Callable, Mapping
+from typing import Any
 
 import sqlalchemy as sa
 
@@ -33,8 +34,14 @@ from dawam.modules.files import (
     RegisteredVisionModels,
     WorkspaceDocumentAi,
 )
-from dawam.modules.jobs import JobHandler, JobRunner, UnknownJobTypeError
-from dawam.modules.llm import AdapterFactory, ProviderService, RoleService
+from dawam.modules.jobs import JobContext, JobHandler, JobRunner, UnknownJobTypeError
+from dawam.modules.llm import (
+    UNKNOWN_FEATURE,
+    AdapterFactory,
+    ProviderService,
+    RoleService,
+    ai_call_context,
+)
 from dawam.modules.sources import (
     CATALOG_SUGGEST_JOB,
     EXTRACT_JOB,
@@ -56,6 +63,31 @@ from dawam.platform.storage import create_storage
 from dawam.wiring import PiiDocuments, change_set_handlers, staging_sync_after_snapshot
 
 JOB_HANDLERS: Mapping[str, JobHandler] = {}
+
+AI_FEATURES: Mapping[str, str] = {
+    ASSISTANT_JOB: "assistant",
+    KPI_SUGGEST_JOB: "kpi_suggestions",
+    CATALOG_SUGGEST_JOB: "catalog_suggestions",
+    PII_SCAN_JOB: "pii_scan",
+    PII_AI_JOB: "pii_scan",
+    INFER_JOB: "relationships",
+    INDEX_JOB: "file_indexing",
+    REINDEX_JOB: "file_indexing",
+}
+"""The feature a job type's model calls are recorded under (#631); any other type's calls
+are ``unknown``, with the job's id all the same."""
+
+
+def with_ai_call_context(job_type: str, handler: JobHandler) -> JobHandler:
+    """``handler``, with every model call it makes recorded for its job and feature."""
+    feature = AI_FEATURES.get(job_type, UNKNOWN_FEATURE)
+
+    @functools.wraps(handler)
+    def run(params: Mapping[str, Any], ctx: JobContext) -> None:
+        with ai_call_context(feature, job_id=ctx.job_id):
+            handler(params, ctx)
+
+    return run
 
 
 def build_change_set_handlers(settings: Settings | None = None) -> ObjectHandlers:
@@ -249,4 +281,4 @@ def register_job_handlers(
         try:
             runner.handler(job_type)
         except UnknownJobTypeError:
-            runner.register(job_type, handler)
+            runner.register(job_type, with_ai_call_context(job_type, handler))

@@ -9,6 +9,7 @@ worker died resumes from its own checkpoint. Through the gateway with the script
 
 from __future__ import annotations
 
+import inspect
 from datetime import timedelta
 
 import pytest
@@ -215,7 +216,7 @@ def test_a_resumed_job_keeps_finished_specialists_tokens_and_the_mode_it_began_i
     with pytest.raises(WorkerKilled):
         queue.execute(queue.claim_next())
 
-    handler.__self__._job_supervisor = False  # the flag is turned off meanwhile
+    inspect.unwrap(handler).__self__._job_supervisor = False  # the flag is turned off meanwhile
     services.clock.advance(timedelta(minutes=5))
     assert queue.fail_lost() == 1
     queue.execute(queue.claim_next())

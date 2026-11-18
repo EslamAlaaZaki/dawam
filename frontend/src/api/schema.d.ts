@@ -4558,6 +4558,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ai/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ai Jobs
+         * @description Model calls made outside the assistant, newest first, at most 100 (admins only): one
+         *     row per background job, and one per Workspace per day of document searches. A time
+         *     without a time zone is UTC.
+         */
+        get: operations["listAiJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ai/jobs/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Job
+         * @description One job (or day of searches) with its calls per role and model and its failed calls
+         *     (admins only); 404 if it made no model call.
+         */
+        get: operations["getAiJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/web": {
         parameters: {
             query?: never;
@@ -5307,6 +5350,16 @@ export interface components {
              */
             next_cursor: string | null;
         };
+        /** AiCostOut */
+        AiCostOut: {
+            /** Amount */
+            amount: string;
+            /**
+             * Currency
+             * @description ISO 4217 code of the models' price.
+             */
+            currency: string;
+        };
         /** AiEvaluation */
         AiEvaluation: {
             /**
@@ -5339,6 +5392,83 @@ export interface components {
              * @description Newest first.
              */
             items: components["schemas"]["AiEvaluation"][];
+        };
+        /** AiJobDetailOut */
+        AiJobDetailOut: {
+            job: components["schemas"]["AiJobOut"];
+            /**
+             * Models
+             * @description The calls per role and model.
+             */
+            models: components["schemas"]["ModelCallsOut"][];
+            /**
+             * Failed Calls
+             * @description Oldest first, at most 100.
+             */
+            failed_calls: components["schemas"]["FailedCallOut"][];
+        };
+        /** AiJobListOut */
+        AiJobListOut: {
+            /** Items */
+            items: components["schemas"]["AiJobOut"][];
+        };
+        /** AiJobOut */
+        AiJobOut: {
+            /**
+             * Key
+             * @description The job's id, or `search:<workspace id>:<YYYY-MM-DD>` for a Workspace's searches of one UTC day.
+             */
+            key: string;
+            /**
+             * Feature
+             * @description `catalog_suggestions`, `pii_scan`, `relationships`, `kpi_suggestions`, `file_indexing`, `search` or `unknown`.
+             */
+            feature: string;
+            /**
+             * Target
+             * @description What the job worked on; null for searches.
+             */
+            target: string | null;
+            /** Job Id */
+            job_id: string | null;
+            /** Workspace Id */
+            workspace_id: string | null;
+            /** Workspace Name */
+            workspace_name: string | null;
+            /**
+             * Started By
+             * @description The member's email, `Scheduled`, or for searches how many members searched.
+             */
+            started_by: string;
+            /**
+             * Member Count
+             * @description For searches: the members who searched.
+             */
+            member_count: number | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @description `running`, `completed`, `partial` (some calls failed) or `failed`.
+             */
+            status: string;
+            /** Calls */
+            calls: number;
+            /** Failed Calls */
+            failed_calls: number;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** @description Null when a model has no price (unknown, not zero). */
+            cost: components["schemas"]["AiCostOut"] | null;
+            /** Models */
+            models: string[];
         };
         /** ApplyResult */
         ApplyResult: {
@@ -7209,6 +7339,20 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        };
+        /** FailedCallOut */
+        FailedCallOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Role */
+            role: string;
+            /** Model Name */
+            model_name: string;
         };
         /** FailedCheck */
         FailedCheck: {
@@ -9312,6 +9456,25 @@ export interface components {
              * @default false
              */
             fell_back: boolean;
+        };
+        /** ModelCallsOut */
+        ModelCallsOut: {
+            /** Role */
+            role: string;
+            /** Model Name */
+            model_name: string;
+            /** Calls */
+            calls: number;
+            /** Failed Calls */
+            failed_calls: number;
+            /** Avg Latency Ms */
+            avg_latency_ms: number | null;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** @description Null when the model has no price. */
+            cost: components["schemas"]["AiCostOut"] | null;
         };
         /** ModelChoice */
         ModelChoice: {
@@ -23735,6 +23898,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NewWorkspaceModels"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAiJobs: {
+        parameters: {
+            query?: {
+                workspace_id?: string | null;
+                /** @description `catalog_suggestions`, `pii_scan`, `relationships`, `kpi_suggestions`, `file_indexing`, `search` or `unknown`. */
+                feature?: string | null;
+                /** @description `running`, `completed`, `partial` or `failed`. */
+                status?: string | null;
+                /** @description Only those started at or after this time. */
+                started_from?: string | null;
+                /** @description Only those started before this time. */
+                started_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiJobListOut"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAiJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiJobDetailOut"];
                 };
             };
             /** @description Validation error */

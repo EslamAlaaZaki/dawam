@@ -30,6 +30,7 @@ from dawam.modules.llm import (
     RoleService,
     TextDelta,
     WorkspaceAiService,
+    in_ai_call_context,
 )
 from dawam.modules.workspaces import Action, WorkspaceScope, WorkspaceService
 from dawam.platform.clock import Clock
@@ -672,8 +673,19 @@ class AssistantService:
             light = self._roles.light_gateway(workspace_id=workspace_id, user_id=user.id)
             history = self._history(db, record, compaction=light is not None)
             started = Started(run.id, message.id)
-        return self._stream(
-            user, workspace_id, conversation_id, started, history, context, model_id, light, effort
+        return in_ai_call_context(
+            "assistant",
+            self._stream(
+                user,
+                workspace_id,
+                conversation_id,
+                started,
+                history,
+                context,
+                model_id,
+                light,
+                effort,
+            ),
         )
 
     def stop(self, user: User, workspace_id: uuid.UUID, conversation_id: uuid.UUID) -> None:

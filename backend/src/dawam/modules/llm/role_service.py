@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -23,8 +25,9 @@ from sqlalchemy.orm import Session
 
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
-from dawam.platform.tracing import tracing
+from dawam.platform.tracing import ModelSpan, tracing
 
+from .call_context import UNKNOWN_FEATURE, CallContext, current_call_context
 from .gateway import (
     Capabilities,
     ChatEvent,
@@ -258,6 +261,13 @@ def _check_cost_budget(budget: CostBudget) -> None:
         )
 
 
+def _error_code(error: BaseException) -> str:
+    """The code a failed call is recorded with: the gateway's (or the refusal's) error code,
+    else the error's type."""
+    code = getattr(error, "code", None)
+    return (code if isinstance(code, str) and code else type(error).__name__)[:64]
+
+
 FallBackListener = Callable[[str, LlmError, str], None]
 """Told ``(failed model, its error, the model taking over)`` each time a model hands over."""
 
@@ -452,11 +462,9 @@ class MeteredGateway:
         """Like ``Gateway.rerank``, checked and metered like ``embed``: rerank reports no
         usage, so the tokens of the query and every document are estimated."""
         self._ensure_allowed()
-        try:
+        tokens = sum(estimate_tokens(d) + estimate_tokens(query) for d in documents)
+        with self._call("rerank", Usage(tokens, 0, estimated=True)):
             return self._gateway.rerank(query, documents)
-        finally:
-            tokens = sum(estimate_tokens(d) + estimate_tokens(query) for d in documents)
-            self._record(Usage(tokens, 0, estimated=True))
 
     def _metered(
         self, start: Callable[[], Iterator[ChatEvent]], messages: Sequence[Message]
@@ -464,7 +472,10 @@ class MeteredGateway:
         produced: list[str] = []
         thought: list[str] = []
         reported: Usage | None = None
-        with tracing().model_call(self._model_name, self._role) as span:
+        call = current_call_context()
+        began = time.perf_counter()
+        error: BaseException | None = None
+        with self._span("chat", call) as span:
             try:
                 for event in start():
                     if isinstance(event, TextDelta):
@@ -476,6 +487,11 @@ class MeteredGateway:
                     elif isinstance(event, Done):
                         reported = event.usage
                     yield event
+            except GeneratorExit:
+                raise  # an abandoned stream did not fail
+            except BaseException as exc:
+                error = exc
+                raise
             finally:
                 # Errors and abandoned streams count too: estimate what was sent and received.
                 if reported is None:
@@ -483,7 +499,7 @@ class MeteredGateway:
                     reasoning = estimate_tokens("".join(thought))
                     completion = estimate_tokens("".join(produced)) + reasoning
                     reported = Usage(prompt, completion, estimated=True, reasoning_tokens=reasoning)
-                self._record(reported)
+                self._record(reported, call, began, error)
                 span.usage(reported.prompt_tokens, reported.completion_tokens)
                 if tracing().capture_content:
                     span.content("\n".join(_message_text(m) for m in messages), "".join(produced))
@@ -491,10 +507,9 @@ class MeteredGateway:
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """Like ``Gateway.embed``; embeddings report no usage, so the tokens are estimated."""
         self._ensure_allowed()
-        try:
+        tokens = sum(estimate_tokens(t) for t in texts)
+        with self._call("embeddings", Usage(tokens, 0, estimated=True)):
             return self._gateway.embed(texts)
-        finally:
-            self._record(Usage(sum(estimate_tokens(t) for t in texts), 0, estimated=True))
 
     def _ensure_allowed(self) -> None:
         """Refuse an external provider for an internal-only Workspace, whatever the role,
@@ -509,13 +524,44 @@ class MeteredGateway:
             )
         self._service.ensure_within_budget(self._workspace_id)
 
-    def _record(self, usage: Usage) -> None:
+    @contextmanager
+    def _span(self, operation: str, call: CallContext) -> Iterator[ModelSpan]:
+        job_id = str(call.job_id) if call.job_id else None
+        with tracing().model_call(
+            self._model_name, self._role, operation=operation, feature=call.feature, job_id=job_id
+        ) as span:
+            yield span
+
+    @contextmanager
+    def _call(self, operation: str, usage: Usage) -> Iterator[None]:
+        """One call that reports no usage (embed, rerank): traced, and recorded with
+        ``usage`` (estimated) whether it succeeds or fails."""
+        call = current_call_context()
+        began = time.perf_counter()
+        error: BaseException | None = None
+        with self._span(operation, call) as span:
+            try:
+                yield
+            except BaseException as exc:
+                error = exc
+                raise
+            finally:
+                self._record(usage, call, began, error)
+                span.usage(usage.prompt_tokens, usage.completion_tokens)
+
+    def _record(
+        self, usage: Usage, call: CallContext, began: float, error: BaseException | None
+    ) -> None:
         self._service.record_usage(
             usage,
             role=self._role,
             model_name=self._model_name,
             workspace_id=self._workspace_id,
             user_id=self._user_id,
+            feature=call.feature,
+            job_id=call.job_id,
+            duration_ms=round((time.perf_counter() - began) * 1000),
+            error_code=None if error is None else _error_code(error),
         )
 
 
@@ -861,7 +907,12 @@ class RoleService:
         model_name: str,
         workspace_id: uuid.UUID | None,
         user_id: uuid.UUID | None,
+        feature: str = UNKNOWN_FEATURE,
+        job_id: uuid.UUID | None = None,
+        duration_ms: int | None = None,
+        error_code: str | None = None,
     ) -> None:
+        """One call's row; ``error_code`` marks it ``failed``."""
         with Session(self._engine) as db, db.begin():
             db.add(
                 UsageRecord(
@@ -877,6 +928,11 @@ class RoleService:
                     cache_read_tokens=usage.cache_read_tokens,
                     cache_write_tokens=usage.cache_write_tokens,
                     reasoning_tokens=usage.reasoning_tokens,
+                    feature=feature,
+                    job_id=job_id,
+                    duration_ms=duration_ms,
+                    status="ok" if error_code is None else "failed",
+                    error_code=error_code,
                 )
             )
 

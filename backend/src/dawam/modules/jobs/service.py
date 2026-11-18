@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Collection, Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 
@@ -243,6 +243,8 @@ class Job:
     """What a ``paused`` job asks its creator."""
     result: dict[str, Any] | None = None
     """The outcome the handler reported (``JobContext.set_result``), if any."""
+    params: dict[str, Any] | None = None
+    """What it was submitted with; set only by ``by_ids``."""
 
 
 @dataclass(frozen=True)
@@ -390,6 +392,15 @@ class JobService:
             own.add(record)
         self._run_inline(job_id)
         return self._load_view(job_id)
+
+    def by_ids(self, job_ids: Collection[uuid.UUID]) -> dict[uuid.UUID, Job]:
+        """The jobs with these ids, with their params (an unknown id is left out). The caller
+        has authorized already."""
+        if not job_ids:
+            return {}
+        with Session(self._engine) as db:
+            records = db.scalars(sa.select(JobRecord).where(JobRecord.id.in_(list(job_ids))))
+            return {r.id: replace(_view(r), params=r.params) for r in records}
 
     def latest(
         self,

@@ -822,9 +822,26 @@ def suggested_kpi(roles: RoleClients) -> None:
     )
 
 
+def ai_job_key(roles: RoleClients) -> str:
+    """A day of the Workspace's document searches in the background AI explorer: one search
+    call written straight into ``llm_usage`` (no model is called)."""
+    now = datetime.now(UTC)
+    with roles.app.state.engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "INSERT INTO llm_usage (id, created_at, role, model_name, workspace_id, "
+                "prompt_tokens, completion_tokens, estimated, feature) "
+                "VALUES (:id, :now, 'embedding', 'm', :w, 1, 0, true, 'search')"
+            ),
+            {"id": uuid.uuid4(), "now": now, "w": roles.workspace_id},
+        )
+    return f"search:{roles.workspace_id}:{now.date()}"
+
+
 PATH_PARAMS: dict[str, Callable[[RoleClients], object]] = {
     "conversation_id": conversation_id,
     "run_id": run_id,
+    "key": ai_job_key,
     "candidate_id": lambda roles: rename_pair(roles)[0],
     "workspace_id": lambda roles: roles.workspace_id,
     "link_id": undelivered_link_id,

@@ -1,8 +1,9 @@
 """OpenTelemetry tracing of the AI side, off unless an OTLP endpoint is configured.
 
-One span per model call and per tool call, named and attributed after the GenAI semantic
-conventions. A span carries metadata only: model, token counts, tool name and (as the span's
-own duration) latency. Prompt, answer, tool arguments and tool results are added only when
+One span per model call (chat, vision, embeddings, rerank) and per tool call, named and
+attributed after the GenAI semantic conventions. A span carries metadata only: model, token
+counts, tool name, what the call was made for (``dawam.feature``, ``dawam.job_id``) and (as the
+span's own duration) latency. Prompt, answer, tool arguments and tool results are added only when
 ``DAWAM_OTEL_CAPTURE_CONTENT`` is on, and then redacted like everything else DAWAM stores.
 
 A broken exporter must never fail an answer: starting tracing never raises.
@@ -85,9 +86,23 @@ class Tracing:
         return redact_text(text)[:MAX_CONTENT_CHARS]
 
     @contextmanager
-    def model_call(self, model: str, role: str) -> Iterator[ModelSpan]:
-        with self._span(f"chat {model}", "chat", {"gen_ai.request.model": model}) as span:
+    def model_call(
+        self,
+        model: str,
+        role: str,
+        *,
+        operation: str = "chat",
+        feature: str | None = None,
+        job_id: str | None = None,
+    ) -> Iterator[ModelSpan]:
+        """``operation`` is ``chat`` (chat and vision), ``embeddings`` or ``rerank``;
+        ``feature`` and ``job_id`` say what the call was made for, so calls group by them."""
+        with self._span(f"{operation} {model}", operation, {"gen_ai.request.model": model}) as span:
             span.set_attribute("dawam.model_role", role)
+            if feature is not None:
+                span.set_attribute("dawam.feature", feature)
+            if job_id is not None:
+                span.set_attribute("dawam.job_id", job_id)
             yield ModelSpan(span, self)
 
     @contextmanager
