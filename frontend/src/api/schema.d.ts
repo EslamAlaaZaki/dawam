@@ -7514,6 +7514,16 @@ export interface components {
             /** Name */
             name: string;
             /**
+             * Source Kind
+             * @description Whose file area the file is in: `source_system` or `data_warehouse`.
+             */
+            source_kind: string;
+            /**
+             * Source Name
+             * @description The Source System's name; null for the Data Warehouse.
+             */
+            source_name: string | null;
+            /**
              * Index Status
              * @description `queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` or `failed`.
              */

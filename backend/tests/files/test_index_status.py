@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 
+from tests.files.test_file_areas import dw_upload, set_up_warehouse
 from tests.files.test_files import system
 from tests.files.test_search import (  # noqa: F401  (policy: autouse fixture)
     policy,
@@ -115,3 +116,21 @@ def test_an_unknown_file_is_not_found(roles):
 
 def test_non_members_do_not_see_the_page(roles):
     assert roles.client("non_member").get(status_url(roles)).status_code in (403, 404)
+
+
+def test_each_file_names_its_source(roles):
+    sid = system(roles)
+    upload_ok(roles, sid, "sad.md", "Postings are booked daily.")
+    set_up_warehouse(roles)
+    assert dw_upload(roles, "ddl.sql", b"CREATE TABLE a (id int);").status_code == 201
+
+    items = rows(roles)
+
+    assert (items["sad.md"]["source_kind"], items["sad.md"]["source_name"]) == (
+        "source_system",
+        "Core",
+    )
+    assert (items["ddl.sql"]["source_kind"], items["ddl.sql"]["source_name"]) == (
+        "data_warehouse",
+        None,
+    )

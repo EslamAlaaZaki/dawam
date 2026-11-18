@@ -35,6 +35,8 @@ const ROWS: FileIndexStatus[] = [
   {
     file_id: OK_ID,
     name: "sad.md",
+    source_kind: "source_system",
+    source_name: "Core Banking",
     index_status: "indexed",
     index_error: null,
     index_note: null,
@@ -46,6 +48,8 @@ const ROWS: FileIndexStatus[] = [
   {
     file_id: BAD_ID,
     name: "broken.pdf",
+    source_kind: "data_warehouse",
+    source_name: null,
     index_status: "failed",
     index_error: "parser exploded",
     index_note: null,
@@ -110,6 +114,15 @@ describe("the document index page", () => {
     const failed = screen.getByRole("row", { name: /broken\.pdf/ });
     expect(failed).toHaveTextContent("Failed");
     expect(failed).toHaveTextContent("parser exploded");
+  });
+
+  it("shows which Source System or the Data Warehouse each file comes from", async () => {
+    renderApp(backend("viewer"), FOLDER);
+
+    const ok = await screen.findByRole("row", { name: /sad\.md/ });
+    expect(ok).toHaveTextContent("Core Banking");
+    const failed = screen.getByRole("row", { name: /broken\.pdf/ });
+    expect(failed).toHaveTextContent("Data Warehouse");
   });
 
   it("gives a viewer no re-index buttons", async () => {

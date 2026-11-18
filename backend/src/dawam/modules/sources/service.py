@@ -70,6 +70,17 @@ def _view(record: SourceSystemRecord) -> SourceSystem:
     )
 
 
+def source_system_names(db: Session, workspace_id: uuid.UUID) -> dict[uuid.UUID, str]:
+    """Every Source System of the Workspace (deleted or not) by id, to its name. In the
+    caller's session, without a permission check."""
+    rows = db.execute(
+        sa.select(SourceSystemRecord.id, SourceSystemRecord.name).where(
+            SourceSystemRecord.workspace_id == workspace_id
+        )
+    )
+    return {system_id: name for system_id, name in rows}
+
+
 def _not_found() -> ApiError:
     return ApiError(404, "not_found", "Source System not found.")
 

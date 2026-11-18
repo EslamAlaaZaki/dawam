@@ -56,7 +56,7 @@ from dawam.modules.llm import (
     workspace_embedding_model_id,
     workspace_model_id,
 )
-from dawam.modules.sources import hidden_source_system_ids
+from dawam.modules.sources import hidden_source_system_ids, source_system_names
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -129,6 +129,8 @@ class FileIndexStatus:
 
     file_id: uuid.UUID
     name: str
+    source_kind: str
+    source_name: str | None
     index_status: str
     index_error: str | None
     index_note: str | None
@@ -1011,6 +1013,7 @@ class DocumentSearchService:
         files = WorkspaceFileRecord
         with Session(self._engine) as db:
             hidden = hidden_source_system_ids(db, workspace_id)
+            systems = source_system_names(db, workspace_id)
             query = (
                 sa.select(files, chunks.c.total, chunks.c.embedded, chunks.c.stale)
                 .outerjoin(chunks, chunks.c.file_id == files.id)
@@ -1027,6 +1030,12 @@ class DocumentSearchService:
                 FileIndexStatus(
                     file_id=record.id,
                     name=record.path,
+                    source_kind=record.owner_kind,
+                    source_name=(
+                        systems.get(record.owner_id)
+                        if record.owner_kind == "source_system"
+                        else None
+                    ),
                     index_status=record.index_status,
                     index_error=record.index_error,
                     index_note=record.index_note,
