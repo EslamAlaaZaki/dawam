@@ -24,7 +24,10 @@ Public interface. Other modules import only what is re-exported here:
   default light model, else its default agent model; ``embedding``: its embedding model;
   ``vision``: its vision model, which is optional and reads scanned pages): the
   ``MeteredGateway`` checks the budgets before every call (429 ``token_budget_exhausted``) and
-  records tokens per call.
+  records tokens per call, with what the call was made for (``feature`` and ``job_id``, from
+  the ambient ``ai_call_context``: a job handler's, the assistant's or a search's, set with
+  ``ai_call_context``, ``in_ai_call_context`` and ``default_ai_feature``), its duration and
+  whether it failed.
 - ``WorkspaceAiService``: a Workspace's AI settings (its Workspace Models, internal-only,
   data-sharing level; owners only, audited). ``policy(workspace_id)`` is the one
   ``DataSharingPolicy`` other modules ask before sending data to a model:
@@ -48,17 +51,28 @@ Public interface. Other modules import only what is re-exported here:
   change), ``GET /ai/new-workspace-models`` (the "New workspace" form's choices), then,
   admins only, ``/admin/llm/document-ai``, ``/admin/llm/budgets[...]``,
   ``/admin/llm/usage``, ``/admin/llm/providers[/{provider_id}[/models]]``,
-  ``/admin/llm/models/{model_id}[/test]`` and ``/admin/llm/setup``, admins only.
+  ``/admin/llm/models/{model_id}[/test]``, ``/admin/llm/setup`` and
+  ``/admin/ai/jobs[/{key}]`` (the background AI explorer: model calls per job and per day of
+  searches), admins only.
 
 Owns the ``llm_providers``, ``llm_models``, ``llm_settings``, ``llm_workspace_budgets``,
 ``llm_usage``, ``llm_workspace_settings``, ``llm_workspace_models``,
 ``llm_document_ai_settings`` and ``llm_workspace_document_ai`` tables. Imports
-``auth``, ``activity``, ``audit`` and ``workspaces`` (for the admin policy).
+``auth``, ``activity``, ``audit``, ``workspaces`` (for the admin policy) and ``jobs`` (the
+background AI explorer reads the jobs its calls were made for).
 """
 
 from fastapi import APIRouter
 
+from .ai_jobs_api import router as ai_jobs_router
 from .api import router as admin_router
+from .call_context import (
+    FEATURES,
+    UNKNOWN_FEATURE,
+    ai_call_context,
+    default_ai_feature,
+    in_ai_call_context,
+)
 from .document_ai import DocumentAiConfig, document_ai_config
 from .document_ai_api import admin_router as document_ai_admin_router
 from .document_ai_api import router as document_ai_router
@@ -121,10 +135,13 @@ router.include_router(document_ai_admin_router)
 router.include_router(workspace_ai_router)
 router.include_router(document_ai_router)
 router.include_router(new_workspace_router)
+router.include_router(ai_jobs_router)
 
 __all__ = [
     "CONTEXT_OVERFLOW",
+    "FEATURES",
     "REASONING_EFFORTS",
+    "UNKNOWN_FEATURE",
     "Adapter",
     "AdapterConfig",
     "AdapterFactory",
@@ -164,9 +181,12 @@ __all__ = [
     "WorkspaceAiSettings",
     "WorkspaceAiView",
     "adapter_for",
+    "ai_call_context",
     "call_cost",
+    "default_ai_feature",
     "document_ai_config",
     "fake_adapter_factory",
+    "in_ai_call_context",
     "on_workspace_created",
     "router",
     "workspace_document_sharing",

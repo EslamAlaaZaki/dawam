@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "d4e7a2c9f135"
+  "e8b3f1a6c254"
  ],
  "modules": [
   {
@@ -10367,12 +10367,110 @@ a.tlink:hover { text-decoration: underline; }
      "description": "Part of ``completion_tokens`` spent on reasoning (not additional to it).",
      "pk": false,
      "fk": []
+    },
+    {
+     "name": "feature",
+     "type": "character varying(32)",
+     "nullable": false,
+     "default": "'unknown'::character varying",
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "feature",
+     "app_default": null,
+     "description": "What the call was made for: ``assistant``, ``catalog_suggestions``, ``pii_scan``,\n``relationships``, ``kpi_suggestions``, ``file_indexing``, ``search``, or ``unknown``\n(made outside any of them, or recorded before features were).",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "job_id",
+     "type": "uuid",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "job_id",
+     "app_default": null,
+     "description": "The background job the call was made for; null outside a job.",
+     "pk": false,
+     "fk": [
+      {
+       "table": "jobs",
+       "column": "id"
+      }
+     ]
+    },
+    {
+     "name": "duration_ms",
+     "type": "integer",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "duration_ms",
+     "app_default": null,
+     "description": "How long the call took; null on calls recorded before it was measured.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "status",
+     "type": "character varying(8)",
+     "nullable": false,
+     "default": "'ok'::character varying",
+     "identity": null,
+     "generated": null,
+     "enum": {
+      "source": "CHECK ck_llm_usage_status",
+      "values": [
+       "ok",
+       "failed"
+      ]
+     },
+     "in_orm": true,
+     "attribute": "status",
+     "app_default": null,
+     "description": "``ok``, or ``failed`` when the call raised (an abandoned stream is ``ok``).",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "error_code",
+     "type": "character varying(64)",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "error_code",
+     "app_default": null,
+     "description": "Why a failed call failed: the gateway's error code (``rate_limit``, ``unavailable``,\n...), else the error's type.",
+     "pk": false,
+     "fk": []
     }
    ],
    "primary_key": [
     "id"
    ],
    "foreign_keys": [
+    {
+     "name": "fk_llm_usage_job_id_jobs",
+     "columns": [
+      "job_id"
+     ],
+     "ref_table": "jobs",
+     "ref_columns": [
+      "id"
+     ],
+     "on_update": "NO ACTION",
+     "on_delete": "SET NULL"
+    },
     {
      "name": "fk_llm_usage_user_id_users",
      "columns": [
@@ -10399,6 +10497,22 @@ a.tlink:hover { text-decoration: underline; }
     }
    ],
    "constraints": [
+    {
+     "name": "ck_llm_usage_status",
+     "kind": "CHECK",
+     "columns": [
+      "status"
+     ],
+     "definition": "CHECK (((status)::text = ANY ((ARRAY['ok'::character varying, 'failed'::character varying])::text[])))"
+    },
+    {
+     "name": "fk_llm_usage_job_id_jobs",
+     "kind": "FOREIGN KEY",
+     "columns": [
+      "job_id"
+     ],
+     "definition": "FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE SET NULL"
+    },
     {
      "name": "fk_llm_usage_user_id_users",
      "kind": "FOREIGN KEY",
@@ -10437,6 +10551,30 @@ a.tlink:hover { text-decoration: underline; }
      "backs_constraint": false
     },
     {
+     "name": "ix_llm_usage_feature_created_at",
+     "unique": false,
+     "method": "btree",
+     "columns": [
+      "feature",
+      "created_at"
+     ],
+     "predicate": null,
+     "definition": "CREATE INDEX ix_llm_usage_feature_created_at ON public.llm_usage USING btree (feature, created_at)",
+     "backs_constraint": false
+    },
+    {
+     "name": "ix_llm_usage_job_id_created_at",
+     "unique": false,
+     "method": "btree",
+     "columns": [
+      "job_id",
+      "created_at"
+     ],
+     "predicate": null,
+     "definition": "CREATE INDEX ix_llm_usage_job_id_created_at ON public.llm_usage USING btree (job_id, created_at)",
+     "backs_constraint": false
+    },
+    {
      "name": "pk_llm_usage",
      "unique": true,
      "method": "btree",
@@ -10453,7 +10591,7 @@ a.tlink:hover { text-decoration: underline; }
    "module": "llm",
    "orm_class": "UsageRecord",
    "source": "backend/src/dawam/modules/llm/tables.py",
-   "description": "Tokens one model call used, with who and what it was for."
+   "description": "Tokens one model call used, with who and what it was for, how long it took and whether\nit failed. Each model a fallback tried is a call of its own. No prompt or output is kept."
   },
   {
    "name": "llm_workspace_budgets",
@@ -21427,6 +21565,21 @@ a.tlink:hover { text-decoration: underline; }
    "cardinality": "N:1",
    "optional": false,
    "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "name": "fk_llm_usage_job_id_jobs",
+   "from_table": "llm_usage",
+   "from_columns": [
+    "job_id"
+   ],
+   "to_table": "jobs",
+   "to_columns": [
+    "id"
+   ],
+   "cardinality": "N:1",
+   "optional": true,
+   "on_delete": "SET NULL",
    "on_update": "NO ACTION"
   },
   {

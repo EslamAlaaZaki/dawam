@@ -8,7 +8,8 @@ Public interface. Other modules import only what is re-exported here:
   ``answer`` resumes a job that paused (a handler raises ``JobPausedError(question)`` after
   saving a checkpoint; the answer is under ``"answer"`` in its checkpoint).
   ``latest(workspace_id, job_type, params)`` is the newest job of a type whose params
-  contain ``params`` (one job per object, e.g. per Source System; the caller authorizes).
+  contain ``params`` (one job per object, e.g. per Source System; the caller authorizes);
+  ``by_ids(job_ids)`` the jobs with those ids, with their params (the caller authorizes).
   The worker uses ``claim_next``, ``execute``, ``heartbeat`` and ``fail_lost``.
   ``Job`` and ``JobPage`` are what it returns.
 - ``JobRunner`` (the handlers by job type): a module registers ``handler(params, ctx)``

@@ -185,10 +185,16 @@ class RoleFallbackRecord(Base):
 
 
 class UsageRecord(Base):
-    """Tokens one model call used, with who and what it was for."""
+    """Tokens one model call used, with who and what it was for, how long it took and whether
+    it failed. Each model a fallback tried is a call of its own. No prompt or output is kept."""
 
     __tablename__ = "llm_usage"
-    __table_args__ = (sa.Index("ix_llm_usage_created_at", "created_at"),)
+    __table_args__ = (
+        sa.CheckConstraint("status IN ('ok', 'failed')", name="status"),
+        sa.Index("ix_llm_usage_created_at", "created_at"),
+        sa.Index("ix_llm_usage_feature_created_at", "feature", "created_at"),
+        sa.Index("ix_llm_usage_job_id_created_at", "job_id", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
@@ -209,6 +215,19 @@ class UsageRecord(Base):
     cache_write_tokens: Mapped[int] = mapped_column(server_default="0")
     reasoning_tokens: Mapped[int] = mapped_column(server_default="0")
     """Part of ``completion_tokens`` spent on reasoning (not additional to it)."""
+    feature: Mapped[str] = mapped_column(sa.String(32), server_default="unknown")
+    """What the call was made for: ``assistant``, ``catalog_suggestions``, ``pii_scan``,
+    ``relationships``, ``kpi_suggestions``, ``file_indexing``, ``search``, or ``unknown``
+    (made outside any of them, or recorded before features were)."""
+    job_id: Mapped[uuid.UUID | None] = mapped_column(sa.ForeignKey("jobs.id", ondelete="SET NULL"))
+    """The background job the call was made for; null outside a job."""
+    duration_ms: Mapped[int | None]
+    """How long the call took; null on calls recorded before it was measured."""
+    status: Mapped[str] = mapped_column(sa.String(8), server_default="ok")
+    """``ok``, or ``failed`` when the call raised (an abandoned stream is ``ok``)."""
+    error_code: Mapped[str | None] = mapped_column(sa.String(64))
+    """Why a failed call failed: the gateway's error code (``rate_limit``, ``unavailable``,
+    ...), else the error's type."""
 
 
 class ModelPriceRecord(Base):

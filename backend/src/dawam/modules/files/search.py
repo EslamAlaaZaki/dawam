@@ -50,6 +50,7 @@ from dawam.modules.llm import (
     MeteredGateway,
     ProviderService,
     RoleService,
+    default_ai_feature,
     document_ai_config,
     workspace_document_sharing,
     workspace_embedding_model_id,
@@ -1217,7 +1218,32 @@ class DocumentSearchService:
         where the passages were embedded, vector rankings are fused (weighted RRF), passages
         below the relevance floor are dropped and the rest are diversified (MMR). The
         Workspace's Document AI settings tune every step and give ``limit`` its default.
-        A ``trace`` is filled with what each stage produced."""
+        A ``trace`` is filled with what each stage produced. Its model calls are ``search``
+        calls, unless the assistant or a job searches: then they are part of that."""
+        with default_ai_feature("search"):
+            return self._search(
+                user,
+                workspace_id,
+                query,
+                system_id=system_id,
+                limit=limit,
+                filters=filters,
+                tuning=tuning,
+                trace=trace,
+            )
+
+    def _search(
+        self,
+        user: User,
+        workspace_id: uuid.UUID,
+        query: str,
+        *,
+        system_id: uuid.UUID | None,
+        limit: int | None,
+        filters: PassageFilters | None,
+        tuning: SearchTuning | None,
+        trace: SearchTrace | None,
+    ) -> list[Passage]:
         self._workspaces.authorize(user, Action.VIEW_WORKSPACE, workspace_id)
         config = document_ai_config(self._engine, workspace_id)
         tune = tuning or SearchTuning.of(config)

@@ -16864,6 +16864,194 @@
         }
       }
     },
+    "/api/v1/admin/ai/jobs": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "List Ai Jobs",
+        "description": "Model calls made outside the assistant, newest first, at most 100 (admins only): one\nrow per background job, and one per Workspace per day of document searches. A time\nwithout a time zone is UTC.",
+        "operationId": "listAiJobs",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "feature",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`catalog_suggestions`, `pii_scan`, `relationships`, `kpi_suggestions`, `file_indexing`, `search` or `unknown`.",
+              "title": "Feature"
+            },
+            "description": "`catalog_suggestions`, `pii_scan`, `relationships`, `kpi_suggestions`, `file_indexing`, `search` or `unknown`."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`running`, `completed`, `partial` or `failed`.",
+              "title": "Status"
+            },
+            "description": "`running`, `completed`, `partial` or `failed`."
+          },
+          {
+            "name": "started_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only those started at or after this time.",
+              "title": "Started From"
+            },
+            "description": "Only those started at or after this time."
+          },
+          {
+            "name": "started_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only those started before this time.",
+              "title": "Started To"
+            },
+            "description": "Only those started before this time."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiJobListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/ai/jobs/{key}": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Ai Job",
+        "description": "One job (or day of searches) with its calls per role and model and its failed calls\n(admins only); 404 if it made no model call.",
+        "operationId": "getAiJob",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiJobDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/web": {
       "get": {
         "tags": [
@@ -19333,6 +19521,25 @@
         ],
         "title": "AdminWorkspacePage"
       },
+      "AiCostOut": {
+        "properties": {
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "ISO 4217 code of the models' price."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "AiCostOut"
+      },
       "AiEvaluation": {
         "properties": {
           "id": {
@@ -19401,6 +19608,199 @@
           "items"
         ],
         "title": "AiEvaluationList"
+      },
+      "AiJobDetailOut": {
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/AiJobOut"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCallsOut"
+            },
+            "type": "array",
+            "title": "Models",
+            "description": "The calls per role and model."
+          },
+          "failed_calls": {
+            "items": {
+              "$ref": "#/components/schemas/FailedCallOut"
+            },
+            "type": "array",
+            "title": "Failed Calls",
+            "description": "Oldest first, at most 100."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "models",
+          "failed_calls"
+        ],
+        "title": "AiJobDetailOut"
+      },
+      "AiJobListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AiJobOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "AiJobListOut"
+      },
+      "AiJobOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "The job's id, or `search:<workspace id>:<YYYY-MM-DD>` for a Workspace's searches of one UTC day."
+          },
+          "feature": {
+            "type": "string",
+            "title": "Feature",
+            "description": "`catalog_suggestions`, `pii_scan`, `relationships`, `kpi_suggestions`, `file_indexing`, `search` or `unknown`."
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "What the job worked on; null for searches."
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          },
+          "workspace_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Name"
+          },
+          "started_by": {
+            "type": "string",
+            "title": "Started By",
+            "description": "The member's email, `Scheduled`, or for searches how many members searched."
+          },
+          "member_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Count",
+            "description": "For searches: the members who searched."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "`running`, `completed`, `partial` (some calls failed) or `failed`."
+          },
+          "calls": {
+            "type": "integer",
+            "title": "Calls"
+          },
+          "failed_calls": {
+            "type": "integer",
+            "title": "Failed Calls"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AiCostOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when a model has no price (unknown, not zero)."
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "feature",
+          "target",
+          "job_id",
+          "workspace_id",
+          "workspace_name",
+          "started_by",
+          "member_count",
+          "started_at",
+          "status",
+          "calls",
+          "failed_calls",
+          "duration_ms",
+          "input_tokens",
+          "output_tokens",
+          "cost",
+          "models"
+        ],
+        "title": "AiJobOut"
       },
       "ApplyResult": {
         "properties": {
@@ -23595,6 +23995,42 @@
           "status"
         ],
         "title": "ExtractionStarted"
+      },
+      "FailedCallOut": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "error_code",
+          "role",
+          "model_name"
+        ],
+        "title": "FailedCallOut"
       },
       "FailedCheck": {
         "properties": {
@@ -28243,6 +28679,68 @@
           "model"
         ],
         "title": "MessageOut"
+      },
+      "ModelCallsOut": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "calls": {
+            "type": "integer",
+            "title": "Calls"
+          },
+          "failed_calls": {
+            "type": "integer",
+            "title": "Failed Calls"
+          },
+          "avg_latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Latency Ms"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AiCostOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the model has no price."
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "model_name",
+          "calls",
+          "failed_calls",
+          "avg_latency_ms",
+          "input_tokens",
+          "output_tokens",
+          "cost"
+        ],
+        "title": "ModelCallsOut"
       },
       "ModelChoice": {
         "properties": {
