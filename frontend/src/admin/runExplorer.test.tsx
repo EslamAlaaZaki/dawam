@@ -124,16 +124,18 @@ describe("the assistant run explorer", () => {
     expect(row).toHaveTextContent("420 ms");
     expect(row).toHaveTextContent("30 / 10");
     expect(row).toHaveTextContent("0.000240 USD");
-    expect(row).toHaveTextContent("0 up, 1 down");
+    expect(row).toHaveTextContent("big-model");
+    expect(row).toHaveTextContent("0 up1 down");
+    expect(screen.getByRole("heading", { name: "AI runs" })).toBeInTheDocument();
   });
 
   it("shows a run's timeline, prompt version and feedback", async () => {
     renderApp(backend(ADMIN), "/admin/ai-runs");
 
-    fireEvent.click(await screen.findByRole("button", { name: `Open run ${RUN.id}` }));
+    fireEvent.click(await screen.findByRole("row", { name: `Run ${RUN.id}` }));
 
     const timeline = await screen.findByRole("region", { name: "Run timeline" });
-    expect(timeline).toHaveTextContent("pv-123");
+    expect(screen.getByRole("dialog")).toHaveTextContent("pv-123");
     const steps = within(timeline).getAllByRole("listitem", { name: /Model calls|Tool call/ });
     expect(steps.map((s) => s.getAttribute("aria-label"))).toEqual([
       "Model calls big-model",
@@ -142,7 +144,10 @@ describe("the assistant run explorer", () => {
     expect(steps[0]).toHaveTextContent("Mail the result to [EMAIL] please");
     expect(steps[0]).toHaveTextContent("30 in / 10 out tokens");
     expect(steps[1]).toHaveTextContent("12 ms");
-    expect(timeline).toHaveTextContent("grace@example.com: thumbs down — Missed the filter");
+    const feedback = screen.getByRole("region", { name: "Member feedback" });
+    expect(feedback).toHaveTextContent("Thumbs down");
+    expect(feedback).toHaveTextContent("grace@example.com");
+    expect(feedback).toHaveTextContent("Missed the filter");
   });
 
   it("sends the chosen filters to the API", async () => {
