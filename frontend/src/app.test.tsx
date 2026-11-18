@@ -226,6 +226,15 @@ describe("the sign-in pages", () => {
       expect(screen.getByText("DAWAM")).toBeInTheDocument();
       expect(screen.queryByRole("banner")).not.toBeInTheDocument();
       expect(await screen.findByText("API version 1.2.3")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
+        "href",
+        "https://github.com/EslamAlaaZaki/dawam",
+      );
+      expect(screen.getByRole("link", { name: "Website" })).toHaveAttribute(
+        "href",
+        "https://eslamalaazaki.github.io/dawam/",
+      );
+      expect(screen.getByText(/© 2026 DAWAM/)).toBeInTheDocument();
     },
   );
 });
@@ -240,6 +249,14 @@ describe("the signed-in shell", () => {
     expect(within(sidebar).getByText("DAWAM")).toBeInTheDocument();
     expect(within(sidebar).getByRole("link", { name: "Workspaces" })).toHaveAttribute("href", "/");
     expect(within(sidebar).getByText("API version 1.2.3")).toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: "Source on GitHub" })).toHaveAttribute(
+      "href",
+      "https://github.com/EslamAlaaZaki/dawam",
+    );
+    expect(within(sidebar).getByRole("link", { name: "DAWAM website" })).toHaveAttribute(
+      "href",
+      "https://eslamalaazaki.github.io/dawam/",
+    );
     expect(within(header).queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
   });
 

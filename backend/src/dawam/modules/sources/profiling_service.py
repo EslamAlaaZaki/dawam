@@ -136,11 +136,16 @@ class ProfilingService:
         *,
         row_cap: int = DEFAULT_ROW_CAP,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        keep_top_values: bool = False,
     ) -> Job:
-        """Queue a ``profile`` job for the tables (owners and editors). 409
+        """Queue a ``profile`` job for the tables (owners and editors). With
+        ``keep_top_values`` (owners only) top-N capture is first switched on, audited, for
+        each table that has it off; otherwise each table keeps its own setting. 409
         ``profiling_unavailable`` if the Source System has no live Connection (a Schema
         Import has none); 404 for a table that is not a present table of the system."""
         self._workspaces.authorize(user, Action.RUN_PROFILING, workspace_id)
+        if keep_top_values:
+            self._workspaces.authorize(user, Action.ENABLE_TOP_N, workspace_id)
         if not 1 <= row_cap <= MAX_ROW_CAP:
             raise ApiError(422, "invalid_row_cap", f"The row cap must be 1 to {MAX_ROW_CAP}.")
         if not 1 <= timeout_seconds <= MAX_TIMEOUT_SECONDS:
@@ -179,6 +184,8 @@ class ProfilingService:
             )
             if found != set(wanted):
                 raise _not_found("Table")
+            if keep_top_values:
+                self._switch_top_n_on(db, system.workspace_id, user, wanted)
             return self._jobs.submit(
                 workspace_id,
                 PROFILE_JOB,
@@ -192,6 +199,31 @@ class ProfilingService:
                 title=f"Profile {len(wanted)} table(s): {system.name}",
                 created_by=user.id,
                 db=db,
+            )
+
+    def _switch_top_n_on(
+        self, db: Session, workspace_id: uuid.UUID, user: User, table_ids: list[uuid.UUID]
+    ) -> None:
+        """Switch top-N capture on, audited, for each of the tables that has it off."""
+        now = self._clock()
+        tables = db.scalars(
+            sa.select(SrcTableRecord)
+            .where(SrcTableRecord.id.in_(table_ids), SrcTableRecord.top_n_enabled.is_(False))
+            .order_by(SrcTableRecord.id)
+            .with_for_update()
+        )
+        for table in tables:
+            table.top_n_enabled = True
+            table.version += 1
+            record_audit(
+                db,
+                workspace_id=workspace_id,
+                actor_id=user.id,
+                entity_type="source_table",
+                entity_id=table.id,
+                old={"top_n_enabled": False},
+                new={"top_n_enabled": True},
+                at=now,
             )
 
     def table_profile(

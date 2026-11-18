@@ -31,6 +31,8 @@ const ADA: Me = {
 const PERMISSIONS: Record<WorkspaceRole, Workspace["permissions"]> = {
   owner: [
     "source_system.extract",
+    "source_system.profile",
+    "source_table.top_n",
     "job.cancel_any",
     "job.cancel_own",
     "workspace.view",
@@ -395,7 +397,7 @@ describe("a Source System's Source Schema", () => {
     expect(requests.find((r) => r.method === "POST")).toMatchObject({
       path: `${SYSTEM}/profiling`,
       csrf: CSRF_TOKEN,
-      body: { table_ids: ["t1", "t2"] },
+      body: { table_ids: ["t1", "t2"], keep_top_values: false },
     });
     await waitFor(() =>
       expect(
@@ -405,6 +407,40 @@ describe("a Source System's Source Schema", () => {
     const views = screen.getByRole("list", { name: "Views of core" });
     expect(within(views).getByRole("img", { name: "Profiled" })).toBeVisible();
   });
+
+  it.each([
+    ["With top values", true, "Top values switched on. Profiling started for 2 tables and views."],
+    ["Without top values", false, "Profiling started for 2 tables and views."],
+  ])(
+    "lets an owner profile all tables %s",
+    async (choice, keepTopValues, message) => {
+      const requests = renderApp(
+        backend("owner", { snapshots: [snapshot({})], jobs: [] }, (r) => {
+          switch (`${r.method} ${r.path}`) {
+            case `GET ${SYSTEM}/schema`:
+              return json(SCHEMA);
+            case `GET ${SYSTEM}/import`:
+              return json(CONNECTED);
+            case `POST ${SYSTEM}/profiling`:
+              return json({ job_id: PROFILE_JOB_ID, status: "queued" }, 202);
+          }
+          return undefined;
+        }),
+        FOLDER,
+      );
+
+      openMenu(
+        await screen.findByRole("button", { name: "Profile all tables" }),
+      );
+      fireEvent.click(await screen.findByRole("menuitem", { name: choice }));
+
+      expect(await screen.findByText(new RegExp(`^${message}`))).toBeVisible();
+      expect(requests.find((r) => r.method === "POST")).toMatchObject({
+        path: `${SYSTEM}/profiling`,
+        body: { table_ids: ["t1", "t2"], keep_top_values: keepTopValues },
+      });
+    },
+  );
 
   it("does not offer Profile all tables to a viewer", async () => {
     renderApp(

@@ -2485,7 +2485,8 @@ export interface paths {
         put?: never;
         /**
          * Start Profiling
-         * @description Profile the chosen tables (owners and editors) as a background job. 409
+         * @description Profile the chosen tables (owners and editors) as a background job; with
+         *     `keep_top_values` (owners only) top-N capture is switched on for each first. 409
          *     `profiling_unavailable` for a Source System with no live Connection (a Schema Import
          *     has none): profiling needs one.
          */
@@ -3753,6 +3754,27 @@ export interface paths {
         put: operations["replaceFile"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete File
+         * @description Delete a file (owners and editors), with a document's search passages, their
+         *     embeddings and its table and column links. There is no undo.
+         */
+        delete: operations["deleteFile"];
         options?: never;
         head?: never;
         patch?: never;
@@ -11927,6 +11949,12 @@ export interface components {
              * @default 30
              */
             timeout_seconds: number;
+            /**
+             * Keep Top Values
+             * @description Owners only: switch top-N value capture on for every chosen table first (audited). Left off, each table keeps its own setting.
+             * @default false
+             */
+            keep_top_values: boolean;
         };
         /** SuggestionIds */
         SuggestionIds: {
@@ -21695,6 +21723,45 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WorkspaceFile"];
                 };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation error */
             422: {

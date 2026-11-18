@@ -347,6 +347,53 @@ describe("a Source System's Documents folder", () => {
   });
 });
 
+describe("deleting a file", () => {
+  it("lets an editor delete a file after confirming, and the list drops it", async () => {
+    let files = [SAD];
+    const requests = renderApp((r: ApiRequest) => {
+      if (r.method === "GET" && r.path === FILES) {
+        return json({ items: files, next_cursor: null });
+      }
+      if (
+        r.method === "DELETE" &&
+        r.path === `/api/v1/workspaces/${WORKSPACE_ID}/files/${SAD.id}`
+      ) {
+        files = [];
+        return new Response(null, { status: 204 });
+      }
+      return backend("editor", files)(r);
+    }, FOLDER);
+
+    openMenu(
+      await screen.findByRole("button", { name: "Actions for sad.pdf" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete sad.pdf?",
+    });
+    expect(dialog).toHaveTextContent("search passages and embeddings");
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("Deleted sad.pdf.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("link", { name: "sad.pdf" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(requests.filter((r) => r.method === "DELETE")).toHaveLength(1);
+  });
+
+  it("does not offer delete to a viewer", async () => {
+    renderApp(backend("viewer", [SAD]), FOLDER);
+
+    await screen.findByRole("link", { name: "sad.pdf" });
+    expect(
+      screen.queryByRole("button", { name: "Actions for sad.pdf" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("the Data Warehouse's file area", () => {
   it("lists its files", async () => {
     const DDL: WorkspaceFile = {

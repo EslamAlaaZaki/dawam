@@ -8,6 +8,7 @@ import {
   fileDownloadUrl,
   isEditable,
   useAreaFiles,
+  useDeleteFile,
   useFileText,
   useReplaceFile,
   useSaveFileText,
@@ -17,6 +18,7 @@ import {
 } from "../api/files";
 import { useMembers } from "../api/members";
 import { allows, type Workspace } from "../api/workspaces";
+import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { PageHeader } from "../components/PageHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -32,6 +34,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { toast } from "../components/ui/sonner";
@@ -201,17 +204,22 @@ function TextEditor({
   );
 }
 
-/** The row's `⋯` menu: download, then edit (text files) or replace (the others). */
+/**
+ * The row's `⋯` menu: download, then edit (text files) or replace (the others), then
+ * delete.
+ */
 function RowActions({
   workspaceId,
   file,
   replace,
   onEdit,
+  onDelete,
 }: {
   workspaceId: string;
   file: WorkspaceFile;
   replace: ReturnType<typeof useReplaceFile>;
   onEdit: () => void;
+  onDelete: () => void;
 }) {
   const picker = useRef<HTMLInputElement>(null);
   return (
@@ -261,6 +269,10 @@ function RowActions({
               Replace…
             </DropdownMenuItem>
           )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="danger" onSelect={onDelete}>
+            Delete…
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </>
@@ -284,6 +296,8 @@ function FileRow({
   onEdit: () => void;
 }) {
   const replace = useReplaceFile(workspaceId, area, file.id);
+  const remove = useDeleteFile(workspaceId, area, file.id);
+  const [confirming, setConfirming] = useState(false);
   return (
     <TableRow>
       <TableCell className={monoClasses}>
@@ -320,6 +334,27 @@ function FileRow({
             file={file}
             replace={replace}
             onEdit={onEdit}
+            onDelete={() => {
+              remove.reset();
+              setConfirming(true);
+            }}
+          />
+          <ConfirmDialog
+            open={confirming}
+            onOpenChange={setConfirming}
+            title={`Delete ${file.name}?`}
+            description="The file is removed for everyone, with its search passages and embeddings, and its links to tables and columns. This cannot be undone."
+            confirmLabel="Delete"
+            pending={remove.isPending}
+            error={remove.error}
+            onConfirm={() =>
+              remove.mutate(undefined, {
+                onSuccess: () => {
+                  setConfirming(false);
+                  toast.success(`Deleted ${file.name}.`);
+                },
+              })
+            }
           />
         </TableCell>
       )}
@@ -331,7 +366,7 @@ function FileRow({
  * The file area of a Source System (its Documents folder) or of the Data Warehouse: every
  * file with its type, size, author and last update; any member downloads a file or the
  * whole area as a zip; owners and editors edit text files in the browser, replace
- * binary ones, and upload.
+ * binary ones, delete files, and upload.
  */
 export function DocumentsPanel({
   workspace,

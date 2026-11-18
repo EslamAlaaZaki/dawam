@@ -16,7 +16,9 @@ def systems_path(roles: RoleClients) -> str:
 
 
 def add(roles: RoleClients, code: str = "cbs", *, as_role="editor", **fields: str):
-    body = {"name": "Core Banking", "code": code, **fields}
+    # Names are unique among a Workspace's Source Systems too: one per code.
+    name = "Core Banking" if code == "cbs" else f"Core Banking {code}"
+    body = {"name": name, "code": code, **fields}
     return roles.client(as_role).post(systems_path(roles), json=body)
 
 
@@ -321,3 +323,43 @@ def test_a_refused_change_records_no_activity(roles: RoleClients):
     )
 
     assert [verb for _, verb, _, _ in feed(roles)] == ["source_system.created"]
+
+
+def test_a_system_name_is_unique_among_the_workspaces_systems(roles: RoleClients):
+    created(roles, "cbs")
+
+    again = add(roles, "crm", name="  core BANKING ")
+
+    assert again.status_code == 409, again.text
+    assert error_code(again) == "system_name_taken"
+    assert len(roles.client("owner").get(systems_path(roles)).json()["items"]) == 1
+
+
+def test_a_deleted_systems_name_can_be_used_again(roles: RoleClients):
+    gone = created(roles, "cbs")
+    assert roles.client("owner").delete(f"{systems_path(roles)}/{gone['id']}").status_code == 204
+
+    assert add(roles, "crm", name="Core Banking").status_code == 201
+
+
+def test_the_same_name_may_be_used_in_another_workspace(roles: RoleClients):
+    created(roles, "cbs")
+    other = roles.client("owner").post("/api/v1/workspaces", json={"name": "Other"}).json()
+
+    response = roles.client("owner").post(
+        f"/api/v1/workspaces/{other['id']}/systems", json={"name": "Core Banking", "code": "x"}
+    )
+
+    assert response.status_code == 201, response.text
+
+
+def test_a_system_cannot_be_renamed_to_another_systems_name(roles: RoleClients):
+    created(roles, "cbs")
+    crm = created(roles, "crm")
+    path = f"{systems_path(roles)}/{crm['id']}"
+
+    taken = roles.client("editor").patch(path, json={"version": 1, "name": "Core banking"})
+    own = roles.client("editor").patch(path, json={"version": 1, "name": crm["name"].upper()})
+
+    assert (taken.status_code, error_code(taken)) == (409, "system_name_taken")
+    assert own.status_code == 200, own.text

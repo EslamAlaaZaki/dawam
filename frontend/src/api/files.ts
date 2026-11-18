@@ -326,6 +326,35 @@ export function useReplaceFile(
   });
 }
 
+/** Delete a file, with a document's search passages and their embeddings; no undo. */
+export function useDeleteFile(
+  workspaceId: string,
+  area: FileArea,
+  fileId: string,
+) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error, response } = await client.DELETE(
+        "/api/v1/workspaces/{workspace_id}/files/{file_id}",
+        { params: { path: { workspace_id: workspaceId, file_id: fileId } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: filesKey(workspaceId, area),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: indexStatusKey(workspaceId),
+      });
+    },
+  });
+}
+
 export type RetrievalTrace = components["schemas"]["RetrievalTrace"];
 export type TraceEntry = components["schemas"]["TraceEntry"];
 

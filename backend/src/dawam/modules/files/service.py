@@ -364,6 +364,38 @@ class FileService:
         data = read_limited(content, self.max_upload_bytes)
         return self._overwrite(user, workspace_id, file_id, data, text_only=False)
 
+    def delete(self, user: User, workspace_id: uuid.UUID, file_id: uuid.UUID) -> None:
+        """Delete a file (owners and editors): its row, and with it by foreign key a
+        document's search passages, their embeddings and its table and column links; then
+        its stored bytes once that has committed. A queued index job for it finds nothing
+        and stops. 404 for a file not in the Workspace."""
+        self._workspaces.authorize(user, Action.UPLOAD_FILE, workspace_id)
+        with Session(self._engine) as db, db.begin():
+            record = db.scalars(
+                sa.select(WorkspaceFileRecord)
+                .where(
+                    WorkspaceFileRecord.id == file_id,
+                    WorkspaceFileRecord.workspace_id == workspace_id,
+                )
+                .with_for_update()
+            ).first()
+            if record is None:
+                raise _not_found()
+            key, name = record.storage_key, record.path
+            record_activity(
+                db,
+                workspace_id=workspace_id,
+                actor_id=user.id,
+                verb="file.deleted",
+                object_type="file",
+                object_id=record.id,
+                object_label=name,
+                details={},
+                at=self._clock(),
+            )
+            db.execute(sa.delete(WorkspaceFileRecord).where(WorkspaceFileRecord.id == file_id))
+        self._storage.delete(key)
+
     def read_text(self, user: User, workspace_id: uuid.UUID, file_id: uuid.UUID) -> TextFile:
         """A text file's content for the browser editor (any member). 415
         ``not_editable`` for a binary file."""

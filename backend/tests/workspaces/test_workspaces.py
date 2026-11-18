@@ -139,7 +139,14 @@ def test_the_list_is_ordered_by_name_and_paged_with_a_cursor(signed_in_client: T
 
 def test_paging_through_the_list_returns_every_workspace_once(signed_in_client: TestClient):
     names = ["İstanbul", "ÄRZTE", "äpfel", "Same", "same", "Same", "Zeta", "ẞtraße", "عربي"]
-    created = {create(signed_in_client, name)["id"] for name in names}
+    created: set[str] = set()
+    for name in names:
+        workspace_id = create(signed_in_client, name)["id"]
+        created.add(workspace_id)
+        if name.lower() == "same":
+            # Only one active Workspace may have a name: archive it to reuse the name.
+            archived = signed_in_client.post(f"/api/v1/workspaces/{workspace_id}/archive")
+            assert archived.status_code in (200, 204), archived.text
 
     seen: list[str] = []
     cursor = None
@@ -309,3 +316,50 @@ def test_non_members_and_admins_cannot_tell_a_workspace_exists(roles: RoleClient
             assert hidden.json() == absent.json()
 
     assert roles.client("owner").get(real).json()["name"] == "Permission Matrix"
+
+
+def test_two_active_workspaces_cannot_share_a_name(roles: RoleClients):
+    taken = roles.workspace["name"]  # "Permission Matrix", owned by another user
+
+    for name in (taken, f"  {taken.upper()} "):
+        response = roles.client("non_member").post("/api/v1/workspaces", json={"name": name})
+        assert response.status_code == 409, response.text
+        assert response.json()["error"]["code"] == "workspace_name_taken"
+
+
+def test_an_archived_workspaces_name_can_be_used_again(roles: RoleClients):
+    owner = roles.client("owner")
+    assert owner.post(f"/api/v1/workspaces/{roles.workspace_id}/archive").status_code in (200, 204)
+
+    create(roles.client("non_member"), roles.workspace["name"])
+
+
+def test_a_workspace_cannot_be_renamed_to_another_active_workspaces_name(roles: RoleClients):
+    assert roles.workspace["name"] == "Permission Matrix"
+    other = create(roles.client("owner"), "Second")
+
+    renamed = roles.client("owner").patch(
+        f"/api/v1/workspaces/{other['id']}",
+        json={"version": other["version"], "name": "permission matrix"},
+    )
+    kept = roles.client("owner").patch(
+        f"/api/v1/workspaces/{roles.workspace_id}",
+        json={"version": 1, "name": roles.workspace["name"], "domain": "Banking"},
+    )
+
+    assert renamed.status_code == 409, renamed.text
+    assert renamed.json()["error"]["code"] == "workspace_name_taken"
+    assert kept.status_code == 200, kept.text
+
+
+def test_unarchiving_is_refused_while_another_active_workspace_has_the_name(
+    roles: RoleClients,
+):
+    owner = roles.client("owner")
+    owner.post(f"/api/v1/workspaces/{roles.workspace_id}/archive")
+    create(roles.client("non_member"), roles.workspace["name"])
+
+    response = owner.post(f"/api/v1/workspaces/{roles.workspace_id}/unarchive")
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "workspace_name_taken"

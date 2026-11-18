@@ -136,11 +136,21 @@ export function useImportStatus(workspaceId: string, systemId: string) {
 
 /** Start one profiling job for tables and views; 409 `profiling_unavailable` without a
  * Connection. */
+/**
+ * Start profiling the tables: pass their ids, or `{ tableIds, keepTopValues: true }` for an
+ * owner to switch Keep top values on for each of them first (each keeps its own setting
+ * otherwise).
+ */
 export function useStartProfiling(workspaceId: string, systemId: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (tableIds: string[]) => {
+    mutationFn: async (
+      input: string[] | { tableIds: string[]; keepTopValues: boolean },
+    ) => {
+      const { tableIds, keepTopValues } = Array.isArray(input)
+        ? { tableIds: input, keepTopValues: false }
+        : input;
       const { data, error, response } = await client.POST(
         "/api/v1/workspaces/{workspace_id}/systems/{system_id}/profiling",
         {
@@ -149,6 +159,7 @@ export function useStartProfiling(workspaceId: string, systemId: string) {
             table_ids: tableIds,
             row_cap: DEFAULT_ROW_CAP,
             timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
+            keep_top_values: keepTopValues,
           },
         },
       );

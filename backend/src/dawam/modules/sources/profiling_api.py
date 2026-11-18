@@ -72,6 +72,11 @@ class StartProfilingRequest(BaseModel):
         le=MAX_TIMEOUT_SECONDS,
         description="Each source query is stopped after this long.",
     )
+    keep_top_values: bool = Field(
+        default=False,
+        description="Owners only: switch top-N value capture on for every chosen table "
+        "first (audited). Left off, each table keeps its own setting.",
+    )
 
 
 class ProfilingStarted(BaseModel):
@@ -227,7 +232,8 @@ def start_profiling(
     user: CurrentUser,
     profiling: ProfilingServiceDep,
 ) -> ProfilingStarted:
-    """Profile the chosen tables (owners and editors) as a background job. 409
+    """Profile the chosen tables (owners and editors) as a background job; with
+    `keep_top_values` (owners only) top-N capture is switched on for each first. 409
     `profiling_unavailable` for a Source System with no live Connection (a Schema Import
     has none): profiling needs one."""
     job = profiling.start_profiling(
@@ -237,6 +243,7 @@ def start_profiling(
         body.table_ids,
         row_cap=body.row_cap,
         timeout_seconds=body.timeout_seconds,
+        keep_top_values=body.keep_top_values,
     )
     return ProfilingStarted(job_id=job.id, status=job.status)  # type: ignore[arg-type]
 

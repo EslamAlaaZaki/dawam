@@ -245,6 +245,17 @@ def file_id(roles: RoleClients) -> uuid.UUID:
     return uuid.UUID(response.json()["id"])
 
 
+def deletable_file_id(roles: RoleClients) -> uuid.UUID:
+    """A file in the Source System's file area (a fresh one per request, so deleting it in
+    one request does not affect the next)."""
+    owner = roles.client("owner")
+    path = f"/api/v1/workspaces/{roles.workspace_id}/systems/{system_id(roles)}/files"
+    name = f"gone-{uuid.uuid4().hex[:8]}.md"
+    response = owner.post(path, files={"file": (name, b"# Gone", "text/markdown")})
+    assert response.status_code == 201, response.text
+    return uuid.UUID(response.json()["id"])
+
+
 def source_link_id(roles: RoleClients) -> uuid.UUID:
     """A link of the Source System (a fresh one per request, so deleting it in one
     request does not affect the next)."""

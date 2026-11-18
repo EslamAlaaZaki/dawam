@@ -365,7 +365,12 @@ describe("table profiles", () => {
 
     await waitFor(() =>
       expect(requests.profiling).toEqual([
-        { table_ids: ["t1"], row_cap: 100000, timeout_seconds: 30 },
+        {
+          table_ids: ["t1"],
+          row_cap: 100000,
+          timeout_seconds: 30,
+          keep_top_values: false,
+        },
       ]),
     );
     const panel = await openProfile();
@@ -395,7 +400,12 @@ describe("table profiles", () => {
 
     await waitFor(() =>
       expect(requests.profiling).toEqual([
-        { table_ids: ["t1"], row_cap: 100000, timeout_seconds: 30 },
+        {
+          table_ids: ["t1"],
+          row_cap: 100000,
+          timeout_seconds: 30,
+          keep_top_values: false,
+        },
       ]),
     );
     expect(requests.topN).toEqual([{ enabled: true }]);
@@ -515,7 +525,12 @@ describe("table profiles", () => {
     expect(within(page).getByRole("button", { name: "Profile again" })).toBeEnabled();
     expect(within(tables).getByRole("img", { name: "Profiled" })).toBeVisible();
     expect(requests.profiling).toEqual([
-      { table_ids: ["t1"], row_cap: 100000, timeout_seconds: 30 },
+      {
+          table_ids: ["t1"],
+          row_cap: 100000,
+          timeout_seconds: 30,
+          keep_top_values: false,
+        },
     ]);
   });
 

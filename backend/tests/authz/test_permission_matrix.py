@@ -23,6 +23,7 @@ from tests.authz.matrix import (
     catalog_suggestion_id,
     colleague_id,
     credentials_of,
+    deletable_file_id,
     describe,
     dw_column_id,
     dw_table_id,
@@ -1555,6 +1556,13 @@ ROWS: list[Row] = [
         "Upload, edit, delete Workspace files (replace a file)",
         workspace(admin=False, owner=True, editor=True, viewer=False),
         files=lambda roles: {"file": ("sad.md", b"# Replaced", "text/markdown")},
+    ),
+    Row(
+        "DELETE",
+        "/api/v1/workspaces/{workspace_id}/files/{file_id}",
+        "Upload, edit, delete Workspace files (delete a file)",
+        workspace(admin=False, owner=True, editor=True, viewer=False),
+        path_params={"file_id": deletable_file_id},
     ),
     Row(
         "GET",

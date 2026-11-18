@@ -23,6 +23,7 @@ import { Fragment, Suspense } from "react";
 
 import { useMe } from "../api/queries";
 import { ApiStatus } from "./ApiStatus";
+import { ProjectIconLinks } from "./ProjectLinks";
 import { Wordmark } from "../components/Wordmark";
 import {
   WorkspaceSidebar,
@@ -237,9 +238,12 @@ export function SidebarNav() {
           )}
         </>
       )}
-      <p className="mt-auto flex items-center border-t border-border px-2 pt-3 pb-1 text-xs text-subtle-foreground">
-        <ApiStatus dot />
-      </p>
+      <div className="mt-auto flex items-center gap-2 border-t border-border px-2 pt-3 pb-1 text-xs text-subtle-foreground">
+        <p className="min-w-0 flex-1 truncate">
+          <ApiStatus dot />
+        </p>
+        <ProjectIconLinks />
+      </div>
     </>
   );
 }
