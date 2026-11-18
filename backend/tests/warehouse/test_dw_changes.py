@@ -266,3 +266,54 @@ def test_a_warehouse_with_only_kpi_formulas_cannot_change_platform_directly(
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "use_change_set"
+
+
+def test_every_staging_table_gets_the_new_code_whatever_its_audit_column_is_called(
+    warehouse: RoleClients,
+):
+    system = staged_system(warehouse)
+    seed(warehouse, system, "public", {"orders": CUSTOMER})
+    assert generate(warehouse).status_code == 200
+    tables = staging_tables(warehouse)
+    assert len(tables) == 2
+    # A table staged under an earlier source_system name (#620): its audit column is
+    # still the System Code constant, under another name.
+    with warehouse.app.state.engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "update dw_columns set name = 'src_old' "
+                "where name = 'source_system' and table_id = :t"
+            ),
+            {"t": tables["stg_crm_public_orders"]["id"]},
+        )
+
+    accept(warehouse, code_change(warehouse, system, "crm2").json()["change_set_id"])
+
+    expressions = query(
+        warehouse,
+        "select c.name, m.sql_expression from column_mappings m "
+        "join dw_columns c on c.id = m.dw_column_id where c.role = 'audit' "
+        "and c.name in ('source_system', 'src_old')",
+    )
+    assert sorted(expressions) == [("source_system", "'crm2'"), ("src_old", "'crm2'")]
+
+
+@pytest.mark.parametrize("rule", ["load_ts_column", "source_system_column"])
+def test_a_staging_audit_name_cannot_change_once_staging_tables_exist(
+    warehouse: RoleClients, rule: str
+):
+    staged_system(warehouse)
+    current = warehouse.client("editor").get(base(warehouse)).json()
+
+    response = warehouse.client("editor").patch(
+        base(warehouse),
+        json={
+            "version": current["version"],
+            "naming_rules": current["naming_rules"] | {rule: "etl_renamed"},
+        },
+    )
+
+    assert response.status_code == 409, response.text
+    error = response.json()["error"]
+    assert error["code"] == "audit_names_in_use"
+    assert error["details"]["fields"] == [f"naming_rules.{rule}"]

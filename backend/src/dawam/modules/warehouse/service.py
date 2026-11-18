@@ -30,6 +30,8 @@ Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "satur
 
 AUDIT_NAME_RULES = ("created_ts_column", "updated_ts_column", "source_system_column")
 """The naming rules the audit columns of Core and Mart tables are named by."""
+STAGING_AUDIT_NAME_RULES = ("load_ts_column", "source_system_column")
+"""The naming rules the audit columns of Staging Tables are named by."""
 MAX_PREFIX_LENGTH = 20
 MAX_DATE_RANGE_YEARS = 200
 _PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
@@ -359,6 +361,7 @@ class DataWarehouseService:
         """Every Core and Mart table carries audit columns named by these rules, as system
         columns nobody can rename or delete: once one exists, a new name would leave the old
         column beside the new one. 409 ``audit_names_in_use``."""
+        DataWarehouseService._ensure_staging_audit_names_kept(db, record, current, wanted)
         changed = [f for f in AUDIT_NAME_RULES if getattr(wanted, f) != getattr(current, f)]
         if not changed:
             return
@@ -377,6 +380,34 @@ class DataWarehouseService:
                 409,
                 "audit_names_in_use",
                 "The audit column names cannot be changed once Core or Mart tables exist: "
+                "their audit columns already use them.",
+                {"fields": [f"naming_rules.{f}" for f in changed]},
+            )
+
+    @staticmethod
+    def _ensure_staging_audit_names_kept(
+        db: Session, record: DataWarehouseRecord, current: NamingRules, wanted: NamingRules
+    ) -> None:
+        """Staging Tables carry the load-timestamp and System Code columns under these names;
+        once one exists, a new name would leave the old column beside the new one. 409
+        ``audit_names_in_use``."""
+        changed = [f for f in STAGING_AUDIT_NAME_RULES if getattr(wanted, f) != getattr(current, f)]
+        if not changed:
+            return
+        in_use = db.scalar(
+            sa.select(DwTableRecord.id)
+            .where(
+                DwTableRecord.data_warehouse_id == record.id,
+                DwTableRecord.layer == "staging",
+                DwTableRecord.status != DELETED,
+            )
+            .limit(1)
+        )
+        if in_use is not None:
+            raise ApiError(
+                409,
+                "audit_names_in_use",
+                "The audit column names cannot be changed once Staging Tables exist: "
                 "their audit columns already use them.",
                 {"fields": [f"naming_rules.{f}" for f in changed]},
             )
