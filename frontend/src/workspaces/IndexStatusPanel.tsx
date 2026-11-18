@@ -52,6 +52,12 @@ function StatusCell({ row }: { row: FileIndexStatus }) {
   );
 }
 
+function source(row: FileIndexStatus): string {
+  return row.source_kind === "data_warehouse"
+    ? "Data Warehouse"
+    : (row.source_name ?? "—");
+}
+
 function coverage(row: FileIndexStatus): string {
   if (row.chunk_count === 0) {
     return "—";
@@ -61,7 +67,8 @@ function coverage(row: FileIndexStatus): string {
 }
 
 /**
- * The index status page: every file of the Workspace with where its indexing is, its
+ * The index status page: every file of the Workspace with its source (a Source System or
+ * the Data Warehouse), where its indexing is, its
  * passages, how many of them are embedded, how many were embedded by an older model and
  * the last error. Owners and editors index one file or all of them again.
  */
@@ -108,6 +115,7 @@ export function IndexStatusPanel({ workspace }: { workspace: Workspace }) {
             <TableHeader>
               <TableRow>
                 <TableHead scope="col">File</TableHead>
+                <TableHead scope="col">Source</TableHead>
                 <TableHead scope="col">Status</TableHead>
                 <TableHead scope="col">Passages</TableHead>
                 <TableHead scope="col">Embedded</TableHead>
@@ -119,6 +127,7 @@ export function IndexStatusPanel({ workspace }: { workspace: Workspace }) {
               {rows.map((row) => (
                 <TableRow key={row.file_id}>
                   <TableCell className={monoClasses}>{row.name}</TableCell>
+                  <TableCell>{source(row)}</TableCell>
                   <TableCell>
                     <StatusCell row={row} />
                   </TableCell>

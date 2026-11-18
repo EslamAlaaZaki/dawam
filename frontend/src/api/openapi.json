@@ -24332,6 +24332,23 @@
             "type": "string",
             "title": "Name"
           },
+          "source_kind": {
+            "type": "string",
+            "title": "Source Kind",
+            "description": "Whose file area the file is in: `source_system` or `data_warehouse`."
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name",
+            "description": "The Source System's name; null for the Data Warehouse."
+          },
           "index_status": {
             "type": "string",
             "title": "Index Status",
@@ -24386,6 +24403,8 @@
         "required": [
           "file_id",
           "name",
+          "source_kind",
+          "source_name",
           "index_status",
           "index_error",
           "index_note",

@@ -104,6 +104,8 @@ Public interface. Other modules import only what is re-exported here:
   ``hidden_source_system_ids`` their ids, for hiding what other modules keep for them),
   ``source_system_contents`` (``SourceSystemContents``) counts the Source Objects and
   Snapshots that go with one, and ``purge_source_system`` deletes it for good.
+- ``source_system_names`` (in the caller's session, no permission check) maps every Source
+  System of a Workspace, deleted or not, to its name: the document index shows each file's.
 - ``router``: ``GET|PUT /workspaces/{workspace_id}/systems/{system_id}/connection``,
   ``POST .../connection/test``, ``POST .../systems/{system_id}/extractions``,
   ``GET .../systems/{system_id}/snapshots[/{snapshot_id}]``,
@@ -186,7 +188,13 @@ from .profiling_service import PROFILE_JOB, ProfilingService, TableProfile
 from .relationship_changes import SourceRelationshipHandler
 from .relationship_service import INFER_JOB, Relationship, RelationshipService
 from .rename_service import RenameCandidate, RenamedObject, RenameService
-from .service import SourceSystem, SourceSystemPage, SourceSystemService, SystemStagedCheck
+from .service import (
+    SourceSystem,
+    SourceSystemPage,
+    SourceSystemService,
+    SystemStagedCheck,
+    source_system_names,
+)
 from .snapshot_service import (
     EXTRACT_JOB,
     SearchHit,
@@ -301,6 +309,7 @@ __all__ = [
     "shown_cell",
     "source_column_labels",
     "source_system_contents",
+    "source_system_names",
     "source_table_names",
     "untraceable_views",
     "workspace_source_table_names",

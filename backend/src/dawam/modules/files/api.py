@@ -560,6 +560,12 @@ def reindex_all_documents(
 class FileIndexStatus(BaseModel):
     file_id: uuid.UUID
     name: str
+    source_kind: str = Field(
+        description="Whose file area the file is in: `source_system` or `data_warehouse`."
+    )
+    source_name: str | None = Field(
+        description="The Source System's name; null for the Data Warehouse."
+    )
     index_status: str = Field(
         description="`queued`, `extracting`, `ocr`, `chunking`, `embedding`, then `indexed` "
         "or `failed`."
