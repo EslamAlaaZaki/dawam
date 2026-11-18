@@ -20,6 +20,7 @@ import { useMembers } from "../api/members";
 import { allows, type Workspace } from "../api/workspaces";
 import { ConfirmDialog } from "../components/entity/ConfirmDialog";
 import { PageHeader } from "../components/PageHeader";
+import { WarningMark } from "../components/WarningMark";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
@@ -104,12 +105,19 @@ function typeLabel(mime: string): string {
   return (subtype.split("+")[0] ?? subtype).replace(/^x-/, "").toUpperCase();
 }
 
-/** The merged Text + Indexing column: the index badge, then one caption line. */
+/** The merged Text + Indexing column: the index badge, then one caption line. An indexed
+ * file whose passages were not (all) embedded shows a "!" with the reason; with no vector at
+ * all it reads Text only (search still finds it by its words). */
 function StatusCell({ file }: { file: WorkspaceFile }) {
-  const label = INDEX_STATUS[file.index_status] ?? file.index_status;
+  const indexed = file.index_status === "indexed";
+  const textOnly = indexed && file.text_only === true;
+  const label = textOnly
+    ? "Text only"
+    : (INDEX_STATUS[file.index_status] ?? file.index_status);
   const textStatus = TEXT_STATUS[file.text_status] ?? file.text_status;
-  const variant =
-    file.index_status === "indexed"
+  const variant = textOnly
+    ? "warning"
+    : indexed
       ? "success"
       : file.index_status === "failed"
         ? "danger"
@@ -118,7 +126,12 @@ function StatusCell({ file }: { file: WorkspaceFile }) {
   const caption = failed || file.index_note || textStatus;
   return (
     <div className="flex flex-col items-start gap-1">
-      <Badge variant={variant}>{label}</Badge>
+      <span className="inline-flex items-center">
+        <Badge variant={variant}>{label}</Badge>
+        {indexed && file.embedding_error && (
+          <WarningMark message={file.embedding_error} />
+        )}
+      </span>
       <span
         className={`text-xs ${failed ? "text-danger-strong" : "text-muted-foreground"}`}
       >

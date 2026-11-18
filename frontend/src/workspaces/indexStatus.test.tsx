@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { FileIndexStatus } from "../api/files";
@@ -16,6 +16,7 @@ const FOLDER = `/workspaces/${WORKSPACE_ID}?folder=document-index`;
 const BASE = `/api/v1/workspaces/${WORKSPACE_ID}/documents`;
 const OK_ID = "44444444-4444-4444-8444-444444444444";
 const BAD_ID = "55555555-5555-4555-8555-555555555555";
+const TEXT_ONLY_ID = "66666666-6666-4666-8666-666666666666";
 
 const ADA: Me = {
   id: "8d6f1c1e-1f43-4c1b-9b8f-5a1f2b3c4d5e",
@@ -40,6 +41,8 @@ const ROWS: FileIndexStatus[] = [
     index_status: "indexed",
     index_error: null,
     index_note: null,
+    embedding_error: null,
+    text_only: false,
     chunk_count: 4,
     embedded_count: 3,
     stale_count: 2,
@@ -53,6 +56,8 @@ const ROWS: FileIndexStatus[] = [
     index_status: "failed",
     index_error: "parser exploded",
     index_note: null,
+    embedding_error: null,
+    text_only: false,
     chunk_count: 0,
     embedded_count: 0,
     stale_count: 0,
@@ -123,6 +128,39 @@ describe("the document index page", () => {
     expect(ok).toHaveTextContent("Core Banking");
     const failed = screen.getByRole("row", { name: /broken\.pdf/ });
     expect(failed).toHaveTextContent("Data Warehouse");
+  });
+
+  it("marks a text-only file with why it was not embedded", async () => {
+    ROWS.push({
+      file_id: TEXT_ONLY_ID,
+      name: "glossary.md",
+      source_kind: "source_system",
+      source_name: "Core Banking",
+      index_status: "indexed",
+      index_error: null,
+      index_note: null,
+      embedding_error:
+        "Not embedded: the re-index was cancelled before reaching this document. Re-index to embed it.",
+      text_only: true,
+      chunk_count: 5,
+      embedded_count: 0,
+      stale_count: 0,
+      updated_at: "2026-01-05T09:00:00Z",
+    });
+    try {
+      renderApp(backend("viewer"), FOLDER);
+
+      const row = await screen.findByRole("row", { name: /glossary\.md/ });
+      expect(row).toHaveTextContent("Text only");
+      expect(
+        within(row).getByRole("img", { name: /re-index was cancelled/ }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("row", { name: /sad\.md/ })).queryByRole("img"),
+      ).not.toBeInTheDocument();
+    } finally {
+      ROWS.pop();
+    }
   });
 
   it("gives a viewer no re-index buttons", async () => {
