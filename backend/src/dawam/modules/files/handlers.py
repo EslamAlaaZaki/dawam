@@ -101,6 +101,7 @@ class FileContentHandler:
         record.index_status = "queued"  # the after-accept hook queues the index_document job
         record.index_error = None
         record.index_note = None
+        record.embedding_error = None
         record.updated_by = actor_id
         record.updated_at = at
         db.flush()

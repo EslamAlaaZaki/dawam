@@ -25,7 +25,7 @@ from dawam.platform.storage import FileStorage, new_key
 
 from .internal.content import TEXT_TYPES, Unsupported, detect
 from .search import DocumentSearchService
-from .tables import PATH_MAX_LENGTH, WorkspaceFileRecord
+from .tables import PATH_MAX_LENGTH, WorkspaceFileRecord, is_text_only
 
 logger = logging.getLogger(__name__)
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
@@ -45,8 +45,14 @@ class WorkspaceFile:
     index_status: str
     index_error: str | None
     index_note: str | None
+    embedding_error: str | None
     updated_by: uuid.UUID | None
     updated_at: datetime
+
+    @property
+    def text_only(self) -> bool:
+        """Indexed, but no passage has a vector (``embedding_error`` says why)."""
+        return is_text_only(self.embedding_error)
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,7 @@ def _view(record: WorkspaceFileRecord) -> WorkspaceFile:
         index_status=record.index_status,
         index_error=record.index_error,
         index_note=record.index_note,
+        embedding_error=record.embedding_error,
         updated_by=record.updated_by,
         updated_at=record.updated_at,
     )
@@ -295,6 +302,7 @@ class FileService:
         record.index_status = "queued"
         record.index_error = None
         record.index_note = None
+        record.embedding_error = None
         record.updated_by = user.id
         record.updated_at = self._clock()
         db.flush()

@@ -14,7 +14,7 @@ import uuid
 import pytest
 import sqlalchemy as sa
 
-from dawam.modules.llm import LlmError, ProviderService
+from dawam.modules.llm import HNSW_MAX_DIMENSION, LlmError, ProviderService
 from dawam.platform.crypto import SecretBox
 from tests.llm.stub_server import StubLlmServer
 
@@ -342,6 +342,20 @@ def test_test_connection_of_an_embedding_model_records_its_dimension(admin_clien
 
     assert tested["test_ok"] is True and tested["embedding_dimension"] == 768
     assert tested["tool_calling"] is None
+    assert tested["dimension_warning"] is None
+
+
+def test_an_embedding_dimension_too_wide_for_a_vector_index_is_warned_about(admin_client, fake_llm):
+    fake_llm.dimension = HNSW_MAX_DIMENSION + 1
+    provider = add_provider(admin_client)
+    model = add_model(admin_client, provider, name="nemotron", roles=("embedding",))
+
+    tested = admin_client.post(f"{BASE}/models/{model['id']}/test").json()
+
+    assert tested["embedding_dimension"] == HNSW_MAX_DIMENSION + 1
+    assert tested["dimension_warning"].startswith(
+        f"Above {HNSW_MAX_DIMENSION:,} dimensions, documents can't get a vector index"
+    )
 
 
 def test_a_failed_test_is_recorded_with_the_common_error_code(admin_client, fake_llm):
@@ -357,18 +371,20 @@ def test_a_failed_test_is_recorded_with_the_common_error_code(admin_client, fake
     assert failed["test_error"] == "The provider rejected the API key."
 
 
-def test_changing_the_base_url_drops_the_test_results(admin_client, fake_llm):
+def test_changing_the_base_url_or_key_keeps_the_test_results(admin_client, fake_llm):
     provider = add_provider(admin_client)
     model = add_model(admin_client, provider)
-    admin_client.post(f"{BASE}/models/{model['id']}/test")
+    tested = admin_client.post(f"{BASE}/models/{model['id']}/test").json()
 
     moved = admin_client.put(
         f"{BASE}/providers/{provider['id']}",
         json=provider_body(base_url="http://elsewhere/v1", api_key="sk-new"),
     )
 
-    assert moved.json()["models"][0]["test_ok"] is None
-    assert moved.json()["models"][0]["tool_calling"] is None
+    # Kept until someone runs Test again (#622): resetting them silently stopped embeddings.
+    kept = moved.json()["models"][0]
+    assert kept["test_ok"] is True and kept["test_ok"] == tested["test_ok"]
+    assert kept["tool_calling"] == tested["tool_calling"]
 
 
 def test_setup_is_incomplete_until_an_agent_model_is_tested(admin_client, fake_llm):

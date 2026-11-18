@@ -6,7 +6,9 @@
 
 A handler is ``handler(params, ctx)``: it reports ``ctx.progress(percent)`` and
 ``ctx.log(line)`` and should call ``ctx.raise_if_cancelled()`` between steps. Returning
-means the job succeeded; raising fails it with the exception's text as the reason.
+means the job succeeded; raising fails it with the exception's text as the reason. A
+handler that stops itself (e.g. superseded by a newer job) raises
+``JobCancelledError(reason)``: the job ends ``cancelled`` with that reason.
 """
 
 from __future__ import annotations
@@ -62,7 +64,9 @@ class UnknownJobTypeError(LookupError):
 
 
 class JobCancelledError(Exception):
-    """Raised by ``JobContext.raise_if_cancelled``; ends the handler quietly."""
+    """Raised by ``JobContext.raise_if_cancelled``; ends the handler quietly. Raised by a
+    handler of a job nobody cancelled, it ends the job ``cancelled`` with its text as the
+    reason."""
 
 
 class JobPausedError(Exception):
@@ -409,10 +413,11 @@ class JobService:
         params: Mapping[str, Any],
         *,
         db: Session | None = None,
+        active: bool = False,
     ) -> Job | None:
         """The Workspace's newest job of ``job_type`` whose params contain ``params`` (e.g.
-        one Source System's), or ``None``; in ``db``'s transaction when given. The caller has
-        authorized already."""
+        one Source System's), or ``None``; in ``db``'s transaction when given. With
+        ``active``, only a job that has not ended counts. The caller has authorized already."""
         query = (
             sa.select(JobRecord)
             .where(
@@ -423,6 +428,8 @@ class JobService:
             .order_by(JobRecord.created_at.desc(), JobRecord.id.desc())
             .limit(1)
         )
+        if active:
+            query = query.where(JobRecord.status.in_(ACTIVE))
         if db is not None:
             record = db.scalars(query).first()
             return _view(record) if record is not None else None
@@ -554,14 +561,15 @@ class JobService:
 
     def execute(self, job: Job) -> None:
         """Run a claimed job's handler and record how it ended. A job cancelled meanwhile
-        keeps its ``cancelled`` status."""
+        keeps its ``cancelled`` status; one whose handler cancelled itself ends ``cancelled``
+        with the handler's reason."""
         ctx = _Context(self, job.id, job.attempts)
         with Session(self._engine) as db:
             params = db.scalar(sa.select(JobRecord.params).where(JobRecord.id == job.id)) or {}
         try:
             self._runner.handler(job.type)(params, ctx)
-        except JobCancelledError:
-            return
+        except JobCancelledError as stopped:
+            self._finish(job.id, job.attempts, "cancelled", str(stopped) or None)
         except JobPausedError as paused:
             self._pause(job.id, job.attempts, paused.question)
         except UnknownJobTypeError:
@@ -714,14 +722,15 @@ class JobService:
     def _end(
         self, db: Session, record: JobRecord, status: str, error: str | None, at: datetime
     ) -> None:
-        """Mark a running job ``succeeded`` or ``failed`` and tell its creator."""
+        """Mark a running job ``succeeded``, ``failed`` or (stopped by its own handler)
+        ``cancelled``, and tell its creator unless it was cancelled."""
         record.status = status
         record.error = error[:ERROR_MAX_LENGTH] if error else None
         record.finished_at = at
         record.checkpoint = None
         if status == "succeeded":
             record.progress = 100
-        if record.created_by is not None:
+        if record.created_by is not None and status != "cancelled":
             message = (
                 f'Job "{record.title}" finished.'
                 if status == "succeeded"

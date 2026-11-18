@@ -106,6 +106,7 @@ from .role_service import (
     call_cost,
 )
 from .service import (
+    HNSW_MAX_DIMENSION,
     Model,
     ModelInput,
     Provider,
@@ -140,6 +141,7 @@ router.include_router(ai_jobs_router)
 __all__ = [
     "CONTEXT_OVERFLOW",
     "FEATURES",
+    "HNSW_MAX_DIMENSION",
     "REASONING_EFFORTS",
     "UNKNOWN_FEATURE",
     "Adapter",

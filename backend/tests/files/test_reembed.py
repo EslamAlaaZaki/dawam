@@ -185,3 +185,90 @@ def test_a_rebuild_whose_job_is_cancelled_while_queued_still_switches(
     worker()
     assert {str(m) for m, _ in chunk_rows(app) if m} == {second}
     assert [p["document"] for p in search(roles, "zzz").json()["items"]] == ["new.md"]
+
+
+def reindex_jobs(roles: RoleClients) -> list[dict]:
+    listed = roles.client("owner").get(f"/api/v1/workspaces/{roles.workspace_id}/jobs")
+    return [j for j in listed.json()["items"] if j["type"] == "reindex_documents"]
+
+
+def reindex_all(roles: RoleClients) -> dict:
+    started = roles.client("editor").post(
+        f"/api/v1/workspaces/{roles.workspace_id}/documents/reindex"
+    )
+    assert started.status_code == 202, started.text
+    return started.json()
+
+
+def file_errors(app) -> dict[str, str | None]:
+    with app.state.engine.connect() as conn:
+        rows = conn.execute(sa.text("SELECT path, embedding_error FROM workspace_files"))
+        return {path: error for path, error in rows}
+
+
+def test_reindex_all_while_one_is_queued_joins_it(roles, fake_llm, app, jobs, worker):
+    register_embedding_model(roles, internal=True)
+    two_documents(roles, fake_llm)
+    jobs.inline = False
+
+    first = reindex_all(roles)
+    second = reindex_all(roles)
+
+    assert second["job_id"] == first["job_id"]
+    assert len(reindex_jobs(roles)) == 1
+    assert worker() == 1
+
+
+def test_a_superseded_rebuild_ends_cancelled_not_succeeded(roles, fake_llm, app, jobs, worker):
+    register_embedding_model(roles, internal=True, name="bge-small")
+    two_documents(roles, fake_llm)
+    second = register_embedding_model(roles, internal=True, name="bge-large", use=False)
+    third = register_embedding_model(roles, internal=True, name="e5", use=False)
+    jobs.inline = False
+    assert choose(roles, second).status_code == 200
+    assert choose(roles, third).status_code == 200
+
+    worker()
+
+    older, newer = sorted(reindex_jobs(roles), key=lambda j: j["status"])
+    superseded = "Superseded by a newer re-index, which covers every document."
+    assert (older["status"], older["error"]) == ("cancelled", superseded)
+    assert superseded in older["log"]
+    assert newer["status"] == "succeeded"
+    assert {str(m) for m, _ in chunk_rows(app)} == {third}
+
+
+def test_reindex_all_joins_a_rebuild_and_cancelling_it_marks_what_it_never_reached(
+    roles, fake_llm, app, jobs, worker
+):
+    """The #621 sequence: a model change queues a re-embed, Re-index all is pressed twice
+    (it joins that job), then the job is cancelled: nothing reports success, and every
+    document left without a vector of the new model says so."""
+    register_embedding_model(roles, internal=True, name="bge-small")
+    two_documents(roles, fake_llm)
+    second = register_embedding_model(roles, internal=True, name="bge-large", use=False)
+    jobs.inline = False
+    assert choose(roles, second).status_code == 200
+    [rebuild] = reindex_jobs(roles)
+
+    reindex_all(roles)
+    reindex_all(roles)
+
+    assert [j["id"] for j in reindex_jobs(roles)] == [rebuild["id"]]
+    cancelled = roles.client("owner").post(f"/api/v1/jobs/{rebuild['id']}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
+    worker()
+
+    assert [j["status"] for j in reindex_jobs(roles)] == ["cancelled"]
+    unreached = (
+        "Not embedded: the re-index was cancelled before reaching this document. "
+        "Re-index to embed it."
+    )
+    assert file_errors(app) == {"ledger.md": unreached, "risk.md": unreached}
+    assert ai_settings(roles)["embedding_rebuilding"] is False
+
+    reindex_all(roles)
+    worker()
+
+    assert file_errors(app) == {"ledger.md": None, "risk.md": None}
+    assert {str(m) for m, _ in chunk_rows(app)} == {second}
