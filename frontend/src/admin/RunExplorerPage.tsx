@@ -1,12 +1,9 @@
 "use client";
 
-import { X } from "lucide-react";
 import {
   Fragment,
-  useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
 
@@ -25,10 +22,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
   Sheet,
-  SheetClose,
   SheetContent,
-  SheetDescription,
-  SheetTitle,
 } from "../components/ui/sheet";
 import {
   Table,
@@ -48,41 +42,23 @@ import {
   TableCard,
   labelClasses,
 } from "./parts";
+import { JobsAndSearch } from "./RunExplorerJobs";
+import {
+  Cost,
+  Details,
+  SheetHeader,
+  SummaryStats,
+  count,
+  duration,
+  money,
+  rowClasses,
+  startOfDay,
+  statusVariant,
+  useRowSheet,
+  when,
+} from "./runExplorerParts";
 
 const STATUSES = ["running", "completed", "tool_limit", "cancelled", "failed"];
-
-function statusVariant(status: string): "success" | "danger" | "warning" | "neutral" {
-  if (status === "completed" || status === "ok") return "success";
-  if (status === "failed") return "danger";
-  if (status === "tool_limit" || status === "cancelled") return "warning";
-  return "neutral";
-}
-
-/** Midnight at the start of a `YYYY-MM-DD` day in the admin's time zone, `days` later. */
-function startOfDay(day: string, days = 0): string {
-  const [year, month, date] = day.split("-").map(Number);
-  return new Date(year!, month! - 1, date! + days).toISOString();
-}
-
-function when(iso: string): string {
-  return new Date(iso).toLocaleString();
-}
-
-function money(cost: RunSummary["cost"]): string {
-  return cost ? `${Number(cost.amount).toFixed(6)} ${cost.currency}` : "unpriced";
-}
-
-/** A duration as "420 ms", "8.4 s" or "1m 5s". */
-function duration(ms: number): string {
-  if (ms >= 60000) return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
-  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
-}
-
-/** A token count, shortened from a thousand up ("24.2k"). */
-function count(n: number): string {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  return n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n);
-}
 
 /** How long the run took; a run still going has no time yet. */
 function responseTime(run: RunSummary): string {
@@ -118,9 +94,13 @@ export function RunExplorerPage() {
       <Tabs defaultValue="assistant" className="gap-4">
         <TabsList aria-label="Run source" className="px-0">
           <TabsTrigger value="assistant">Assistant runs</TabsTrigger>
+          <TabsTrigger value="jobs">Jobs &amp; search</TabsTrigger>
         </TabsList>
         <TabsContent value="assistant">
           <AssistantRuns />
+        </TabsContent>
+        <TabsContent value="jobs">
+          <JobsAndSearch />
         </TabsContent>
       </Tabs>
     </section>
@@ -130,27 +110,10 @@ export function RunExplorerPage() {
 /** The assistant's runs across all Workspaces; a row opens the run's step timeline in a side sheet. */
 function AssistantRuns() {
   const [filters, setFilters] = useState<RunFilters>({});
-  const [selected, setSelected] = useState<string | null>(null);
-  const [lastRun, setLastRun] = useState<string | null>(null); // kept so the sheet stays filled while it closes
-  const opener = useRef<string | null>(null);
-  const rows = useRef(new Map<string, HTMLTableRowElement>());
+  const sheet = useRowSheet();
   const runs = useAssistantRuns(filters);
   const workspaces = useAdminWorkspaces();
   const members = useUsers({});
-
-  function open(id: string) {
-    opener.current = id;
-    setSelected(id);
-    setLastRun(id);
-  }
-
-  function onRowKey(event: KeyboardEvent<HTMLTableRowElement>, id: string) {
-    if (event.target !== event.currentTarget) return;
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      open(id);
-    }
-  }
 
   function onFilter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -250,16 +213,13 @@ function AssistantRuns() {
               {runs.data.map((run) => (
                 <TableRow
                   key={run.id}
-                  ref={(node) => {
-                    if (node) rows.current.set(run.id, node);
-                    else rows.current.delete(run.id);
-                  }}
+                  ref={sheet.rowRef(run.id)}
                   aria-label={`Run ${run.id}`}
-                  data-state={selected === run.id ? "selected" : undefined}
+                  data-state={sheet.selected === run.id ? "selected" : undefined}
                   tabIndex={0}
-                  className="cursor-pointer outline-none focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset data-[state=selected]:bg-primary-subtle"
-                  onClick={() => open(run.id)}
-                  onKeyDown={(event) => onRowKey(event, run.id)}
+                  className={rowClasses}
+                  onClick={() => sheet.open(run.id)}
+                  onKeyDown={(event) => sheet.onRowKey(event, run.id)}
                 >
                   <TableCell className="text-muted-foreground">{when(run.started_at)}</TableCell>
                   <TableCell>
@@ -307,30 +267,16 @@ function AssistantRuns() {
           {runs.data.length === 0 && <EmptyState>No runs match.</EmptyState>}
         </TableCard>
       )}
-      <Sheet open={selected !== null} onOpenChange={(isOpen) => !isOpen && setSelected(null)}>
+      <Sheet open={sheet.selected !== null} onOpenChange={(isOpen) => !isOpen && sheet.close()}>
         <SheetContent
           side="right"
           className="max-w-2xl bg-surface-raised"
-          onCloseAutoFocus={(event) => {
-            const row = opener.current ? rows.current.get(opener.current) : undefined;
-            if (row) {
-              event.preventDefault();
-              row.focus();
-            }
-          }}
+          onCloseAutoFocus={sheet.onCloseAutoFocus}
         >
-          {lastRun && <RunSheet runId={lastRun} />}
+          {sheet.last && <RunSheet runId={sheet.last} />}
         </SheetContent>
       </Sheet>
     </div>
-  );
-}
-
-function Cost({ cost }: { cost: RunSummary["cost"] }) {
-  return cost ? (
-    <>{money(cost)}</>
-  ) : (
-    <span className="text-subtle-foreground">unpriced</span>
   );
 }
 
@@ -361,23 +307,7 @@ function SummaryRow({ runs }: { runs: RunSummary[] }) {
       hint: "thumbs up / down",
     },
   ];
-  return (
-    <dl
-      aria-label="Summary"
-      className="grid grid-cols-2 overflow-hidden rounded-pill border border-border bg-surface-raised sm:grid-cols-5"
-    >
-      {stats.map((stat) => (
-        <div
-          key={stat.label}
-          className="flex min-w-0 flex-col gap-0.5 border-s border-b border-border px-3.5 py-3 first:border-s-0 max-sm:odd:border-s-0 sm:border-b-0"
-        >
-          <dt className="text-xs text-subtle-foreground">{stat.label}</dt>
-          <dd className="truncate text-2xl font-semibold tabular-nums">{stat.value}</dd>
-          <dd className="text-xs text-subtle-foreground">{stat.hint}</dd>
-        </div>
-      ))}
-    </dl>
-  );
+  return <SummaryStats stats={stats} />;
 }
 
 /** The sheet's content: the run's header, details, step timeline and member feedback. */
@@ -386,26 +316,17 @@ function RunSheet({ runId }: { runId: string }) {
   const status = run.data?.run.status;
   return (
     <>
-      <header className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <div className="min-w-0 flex-1">
-          <SheetTitle className="flex items-center gap-2 text-lg font-semibold">
-            Assistant run
-            {status && (
-              <Badge variant={statusVariant(status)} dot>
-                {status}
-              </Badge>
-            )}
-          </SheetTitle>
-          <SheetDescription className="mt-0.5 font-mono text-xs break-all text-subtle-foreground">
-            {runId}
-          </SheetDescription>
-        </div>
-        <SheetClose asChild>
-          <Button type="button" variant="ghost" size="icon" aria-label="Close">
-            <X aria-hidden />
-          </Button>
-        </SheetClose>
-      </header>
+      <SheetHeader
+        title="Assistant run"
+        badge={
+          status && (
+            <Badge variant={statusVariant(status)} dot>
+              {status}
+            </Badge>
+          )
+        }
+        id={runId}
+      />
       <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-4">
         {run.isPending ? (
           <Loading />
@@ -448,14 +369,7 @@ function RunDetailView({ detail }: { detail: RunDetail }) {
   ];
   return (
     <>
-      <dl className="grid grid-cols-2 gap-x-5 gap-y-3 text-sm sm:grid-cols-3">
-        {details.map(([label, value]) => (
-          <div key={label} className="min-w-0">
-            <dt className="text-xs text-subtle-foreground">{label}</dt>
-            <dd className="break-words tabular-nums">{value}</dd>
-          </div>
-        ))}
-      </dl>
+      <Details items={details} />
       <section aria-label="Run timeline" className="flex flex-col gap-2.5">
         <h3 className="text-sm font-semibold">Timeline</h3>
         <ol className="flex flex-col">
