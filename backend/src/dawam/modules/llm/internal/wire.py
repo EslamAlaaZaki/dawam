@@ -65,12 +65,10 @@ def is_tool_call_failure(message: str) -> bool:
     return any(marker in lowered for marker in _TOOL_CALL_MARKERS)
 
 
-def mid_stream_error(
-    payload: Any, redact: Callable[[str], str] | None = None, *, message: str | None = None
-) -> LlmError:
+def mid_stream_error(payload: Any, redact: Callable[[str], str] | None = None) -> LlmError:
     """The error for an error chunk in a stream: ``invalid_tool_call`` when the model's tool
     call was rejected, else ``unavailable``."""
-    explanation = detail(payload, redact) if message is None else message
+    explanation = detail(payload, redact)
     if is_tool_call_failure(explanation):
         return LlmError(INVALID_TOOL_CALL, explanation)
     return LlmError(UNAVAILABLE, "The provider failed mid-stream: " + explanation)

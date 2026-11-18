@@ -1008,6 +1008,7 @@ def run_agent(
                 hand_over(exc)  # raises when no model is left
                 adopt()
                 continue  # this step again, fitted to the model that took over
+            streamed = len(run.text)
             try:
                 with closing(started) as events:
                     for event in events:
@@ -1040,6 +1041,7 @@ def run_agent(
                 if exc.code != INVALID_TOOL_CALL:
                     raise
                 pending.clear()  # the calls of the rejected turn are not run
+                del run.text[streamed:]  # nor does its partial text join the answer
                 rejected = reject(exc)
                 if rejected is not None:
                     yield rejected

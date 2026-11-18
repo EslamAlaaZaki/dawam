@@ -6,7 +6,15 @@ from __future__ import annotations
 import itertools
 
 from dawam.modules.assistant.internal.agent import Finished, run_agent
-from dawam.modules.llm import FakeAdapter, Gateway, LlmError, Message, Reply, ToolCall
+from dawam.modules.llm import (
+    FakeAdapter,
+    Gateway,
+    LlmError,
+    Message,
+    Reply,
+    TextDelta,
+    ToolCall,
+)
 from dawam.modules.llm.gateway import INVALID_TOOL_CALL
 from tests.assistant.test_agent import Tools
 
@@ -80,3 +88,21 @@ def test_rejections_that_are_not_in_a_row_do_not_add_up():
     finished = run(adapter)[-1]
 
     assert finished.status == "completed"
+
+
+def test_text_streamed_before_a_rejection_is_not_kept():
+    class Partial(FakeAdapter):
+        def chat(self, *args, **kwargs):
+            if not self.calls:
+                self.calls.append(None)
+                yield TextDelta("half an ans")
+                raise rejected()
+            yield from super().chat(*args, **kwargs)
+
+    adapter = Partial().script(Reply(text="Whole answer."))
+    adapter.calls = []
+
+    finished = run(adapter)[-1]
+
+    assert finished.status == "completed"
+    assert finished.text == "Whole answer."
