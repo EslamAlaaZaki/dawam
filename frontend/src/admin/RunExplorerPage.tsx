@@ -101,7 +101,7 @@ function summarise(runs: RunSummary[]) {
       ? Math.round(finished.reduce((sum, run) => sum + run.duration_ms, 0) / finished.length)
       : null,
     cost: priced.reduce((sum, run) => sum + Number(run.cost!.amount), 0),
-    currency: priced[0]?.cost?.currency ?? "USD",
+    currency: new Set(priced.map((run) => run.cost!.currency)).size > 1 ? null : (priced[0]?.cost?.currency ?? "USD"),
     up: runs.reduce((sum, run) => sum + run.thumbs_up, 0),
     down: runs.reduce((sum, run) => sum + run.thumbs_down, 0),
   };
@@ -131,6 +131,7 @@ export function RunExplorerPage() {
 function AssistantRuns() {
   const [filters, setFilters] = useState<RunFilters>({});
   const [selected, setSelected] = useState<string | null>(null);
+  const [lastRun, setLastRun] = useState<string | null>(null); // kept so the sheet stays filled while it closes
   const opener = useRef<string | null>(null);
   const rows = useRef(new Map<string, HTMLTableRowElement>());
   const runs = useAssistantRuns(filters);
@@ -140,6 +141,7 @@ function AssistantRuns() {
   function open(id: string) {
     opener.current = id;
     setSelected(id);
+    setLastRun(id);
   }
 
   function onRowKey(event: KeyboardEvent<HTMLTableRowElement>, id: string) {
@@ -253,9 +255,9 @@ function AssistantRuns() {
                     else rows.current.delete(run.id);
                   }}
                   aria-label={`Run ${run.id}`}
-                  aria-selected={selected === run.id}
+                  data-state={selected === run.id ? "selected" : undefined}
                   tabIndex={0}
-                  className="cursor-pointer aria-selected:bg-primary-subtle"
+                  className="cursor-pointer outline-none focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset data-[state=selected]:bg-primary-subtle"
                   onClick={() => open(run.id)}
                   onKeyDown={(event) => onRowKey(event, run.id)}
                 >
@@ -291,7 +293,7 @@ function AssistantRuns() {
                   <TableCell>
                     {run.thumbs_up || run.thumbs_down ? (
                       <span className="inline-flex gap-2.5">
-                        <span className="text-success">{run.thumbs_up} up</span>
+                        <span className="text-success">{run.thumbs_up} up</span>{" "}
                         <span className="text-danger">{run.thumbs_down} down</span>
                       </span>
                     ) : (
@@ -317,7 +319,7 @@ function AssistantRuns() {
             }
           }}
         >
-          {selected && <RunSheet runId={selected} />}
+          {lastRun && <RunSheet runId={lastRun} />}
         </SheetContent>
       </Sheet>
     </div>
@@ -347,7 +349,7 @@ function SummaryRow({ runs }: { runs: RunSummary[] }) {
       value: sum.average === null ? "—" : duration(sum.average),
       hint: "finished runs",
     },
-    { label: "Cost", value: `${sum.cost.toFixed(2)} ${sum.currency}`, hint: "priced runs only" },
+    { label: "Cost", value: sum.currency ? money({ amount: String(sum.cost), currency: sum.currency }) : "mixed currencies", hint: "priced runs only" },
     {
       label: "Feedback",
       value: (
@@ -371,7 +373,7 @@ function SummaryRow({ runs }: { runs: RunSummary[] }) {
         >
           <dt className="text-xs text-subtle-foreground">{stat.label}</dt>
           <dd className="truncate text-2xl font-semibold tabular-nums">{stat.value}</dd>
-          <p className="text-xs text-subtle-foreground">{stat.hint}</p>
+          <dd className="text-xs text-subtle-foreground">{stat.hint}</dd>
         </div>
       ))}
     </dl>
@@ -529,7 +531,7 @@ function Step({ step, share, last }: { step: RunStep; share: number; last: boole
             {step.status}
           </Badge>
         </div>
-        {step.kind !== "error" && (
+        {(
           <>
             <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-subtle-foreground tabular-nums">
               {step.duration_ms !== null && <span>{duration(step.duration_ms)}</span>}

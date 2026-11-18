@@ -125,7 +125,7 @@ describe("the assistant run explorer", () => {
     expect(row).toHaveTextContent("30 / 10");
     expect(row).toHaveTextContent("0.000240 USD");
     expect(row).toHaveTextContent("big-model");
-    expect(row).toHaveTextContent("0 up1 down");
+    expect(row).toHaveTextContent("0 up 1 down");
     expect(screen.getByRole("heading", { name: "AI runs" })).toBeInTheDocument();
   });
 
