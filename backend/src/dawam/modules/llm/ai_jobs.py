@@ -32,6 +32,8 @@ from .tables import UsageRecord
 
 JOB_LIST_LIMIT = 100
 FAILED_CALLS_LIMIT = 100
+STATUS_CANDIDATES = 1000
+"""With a status filter, how many of the newest rows the status is worked out for."""
 LISTED_FEATURES = (*(f for f in FEATURES if f != "assistant"), UNKNOWN_FEATURE)
 """The assistant's own calls are its runs, in the run explorer."""
 JOB_STATUSES = ("completed", "partial", "failed", "running")
@@ -170,18 +172,19 @@ class AiJobExplorer:
         calls = _calls(*where)
         started = sa.func.min(calls.c.created_at)
         query = (
-            sa.select(calls.c.job_id, calls.c.workspace_id, calls.c.day)
-            .group_by(calls.c.job_id, calls.c.workspace_id, calls.c.day)
-            .order_by(started.desc(), calls.c.job_id, calls.c.workspace_id, calls.c.day)
+            sa.select(calls.c.job_id, calls.c.group_workspace_id, calls.c.day)
+            .group_by(calls.c.job_id, calls.c.group_workspace_id, calls.c.day)
+            .order_by(started.desc(), calls.c.job_id, calls.c.group_workspace_id, calls.c.day)
         )
         if started_from is not None:
             query = query.having(started >= started_from)
         if started_to is not None:
             query = query.having(started < started_to)
-        if status is None:  # else the status, known only once the job is read, filters below
-            query = query.limit(JOB_LIST_LIMIT)
+        # The status is known only once the job is read: with one, it filters the newest
+        # ``STATUS_CANDIDATES`` rows.
+        query = query.limit(JOB_LIST_LIMIT if status is None else STATUS_CANDIDATES)
         with Session(self._engine) as db:
-            keys = list(dict.fromkeys(_Key.of(*row) for row in db.execute(query)))
+            keys = [_Key.of(*row) for row in db.execute(query)]
             summaries = [s for s, _ in self._read(db, keys)]
         if status is not None:
             summaries = [s for s in summaries if s.status == status]
@@ -216,7 +219,7 @@ class AiJobExplorer:
         if not keys:
             return []
         calls = _calls()
-        group = (calls.c.job_id, calls.c.workspace_id, calls.c.day)
+        group = (calls.c.job_id, calls.c.group_workspace_id, calls.c.day)
         rows = db.execute(
             sa.select(
                 *group,
@@ -236,7 +239,7 @@ class AiJobExplorer:
             .group_by(*group, calls.c.feature, calls.c.role, calls.c.model_name)
         ).all()
         members = {
-            _Key.of(r.job_id, r.workspace_id, r.day): r.members
+            _Key.of(r.job_id, r.group_workspace_id, r.day): r.members
             for r in db.execute(
                 sa.select(*group, sa.func.count(sa.distinct(calls.c.user_id)).label("members"))
                 .where(_matching(keys, calls))
@@ -245,7 +248,7 @@ class AiJobExplorer:
         }
         by_key: dict[_Key, list[Any]] = {}
         for row in rows:
-            by_key.setdefault(_Key.of(row.job_id, row.workspace_id, row.day), []).append(row)
+            by_key.setdefault(_Key.of(row.job_id, row.group_workspace_id, row.day), []).append(row)
         jobs = self._jobs({k.job_id for k in keys if k.job_id is not None})
         prices = {p.model_name: p for p in self._roles.prices()}
         workspace_ids = {k.workspace_id for k in by_key} | {j.workspace_id for j in jobs.values()}
@@ -328,6 +331,10 @@ def _calls(*where: sa.ColumnElement[bool]) -> sa.Subquery:
         sa.select(
             *UsageRecord.__table__.c,
             sa.case((UsageRecord.job_id.is_(None), day), else_=sa.null()).label("day"),
+            # a job is one row whatever Workspace its calls name; searches are one per Workspace
+            sa.case(
+                (UsageRecord.job_id.is_(None), UsageRecord.workspace_id), else_=sa.null()
+            ).label("group_workspace_id"),
         )
         .where(
             sa.or_(

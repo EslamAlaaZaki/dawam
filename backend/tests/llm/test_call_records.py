@@ -172,3 +172,19 @@ def test_a_stream_is_stepped_in_its_feature_even_when_abandoned(app, role_servic
     stream.close()  # abandoned: the open call is still recorded, and did not fail
 
     assert [(r.feature, r.status) for r in usage_rows(app)] == [("assistant", "ok")]
+
+
+def test_a_call_whose_usage_cannot_be_recorded_still_answers_or_fails_as_itself(
+    role_service, setup, fake_llm, monkeypatch
+):
+    def broken(*args, **kwargs):
+        raise RuntimeError("database down")
+
+    monkeypatch.setattr(role_service, "record_usage", broken)
+    fake_llm.script(Reply(text="hi"), *[LlmError(AUTH, "bad key")] * 4)
+    gateway = role_service.gateway_for_role("agent", workspace_id=setup)
+
+    assert text(gateway) == "hi"
+    with pytest.raises(LlmError) as raised:
+        text(role_service.gateway_for_role("agent", workspace_id=setup))
+    assert raised.value.code == AUTH

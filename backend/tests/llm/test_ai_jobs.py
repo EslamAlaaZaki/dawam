@@ -13,8 +13,9 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from dawam.modules.jobs.tables import JobRecord
-from dawam.modules.llm import LlmError, Reply, ai_call_context
+from dawam.modules.llm import LlmError, Reply, ai_call_context, ai_jobs
 from dawam.modules.llm.gateway import AUTH
+from dawam.modules.llm.tables import UsageRecord
 from tests.llm.test_model_fallback import text
 from tests.llm.test_roles_budgets import BASE, role_service, setup  # noqa: F401
 from tests.roles import RoleClients
@@ -210,3 +211,49 @@ def test_cost_is_unknown_without_a_price_and_follows_it_with_one(
     assert row["cost"]["currency"] == "USD"
     expected = (Decimal(row["input_tokens"]) * 3 + Decimal(row["output_tokens"]) * 15) / 1_000_000
     assert Decimal(row["cost"]["amount"]) == expected
+
+
+def test_a_job_is_one_row_whatever_workspaces_its_calls_name(
+    app, clock, roles: RoleClients, role_service, setup, fake_llm
+):
+    job = a_job(app, clock, setup)
+    with ai_call_context("file_indexing", job_id=job):
+        call(role_service, setup, fake_llm)
+    with Session(app.state.engine) as db, db.begin():  # a call made for no Workspace
+        db.add(
+            UsageRecord(
+                id=uuid.uuid4(),
+                created_at=clock() + timedelta(seconds=1),
+                role="embedding",
+                model_name="embedder",
+                workspace_id=None,
+                prompt_tokens=3,
+                completion_tokens=0,
+                estimated=True,
+                feature="file_indexing",
+                job_id=job,
+            )
+        )
+
+    [row] = listed(roles.client("admin"))
+
+    assert (row["key"], row["calls"]) == (str(job), 2)
+
+
+def test_a_status_filter_looks_at_the_newest_candidates_only(
+    app, clock, roles: RoleClients, role_service, setup, fake_llm, monkeypatch
+):
+    old = a_job(app, clock, setup)
+    with ai_call_context("pii_scan", job_id=old):
+        call(role_service, setup, fake_llm)
+    clock.advance(timedelta(minutes=1))
+    new = a_job(app, clock, setup, status="running")
+    with ai_call_context("pii_scan", job_id=new):
+        call(role_service, setup, fake_llm)
+    admin = roles.client("admin")
+    assert [r["key"] for r in listed(admin, status="completed")] == [str(old)]
+
+    monkeypatch.setattr(ai_jobs, "STATUS_CANDIDATES", 1)
+
+    assert listed(admin, status="completed") == []
+    assert [r["key"] for r in listed(admin, status="running")] == [str(new)]

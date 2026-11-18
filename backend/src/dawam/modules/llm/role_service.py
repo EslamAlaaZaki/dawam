@@ -10,6 +10,7 @@ before each call and records the tokens the call used.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 import uuid
@@ -64,6 +65,8 @@ from .workspace_ai import (
     model_is_internal,
     workspace_model_ids,
 )
+
+logger = logging.getLogger(__name__)
 
 FALLBACK_ROLES = ("agent", "light")
 MAX_BUDGET = 10**15
@@ -550,6 +553,16 @@ class MeteredGateway:
                 span.usage(usage.prompt_tokens, usage.completion_tokens)
 
     def _record(
+        self, usage: Usage, call: CallContext, began: float, error: BaseException | None
+    ) -> None:
+        """Called from ``finally``: a failure to record is logged, never raised over the
+        call's own result or error."""
+        try:
+            self._record_usage(usage, call, began, error)
+        except Exception:
+            logger.exception("could not record a model call", extra={"model": self._model_name})
+
+    def _record_usage(
         self, usage: Usage, call: CallContext, began: float, error: BaseException | None
     ) -> None:
         self._service.record_usage(
