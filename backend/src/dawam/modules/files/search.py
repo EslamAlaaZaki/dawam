@@ -1389,7 +1389,13 @@ class DocumentSearchService:
             .where(
                 WorkspaceFileRecord.workspace_id == workspace_id,
                 WorkspaceFileRecord.index_status == "indexed",
-                WorkspaceFileRecord.embedding_error.is_(None),
+                # A partly-embedded note is about vectors just dropped: replace it too.
+                sa.or_(
+                    WorkspaceFileRecord.embedding_error.is_(None),
+                    WorkspaceFileRecord.embedding_error.like(
+                        "% of % passages could not be embedded: %"
+                    ),
+                ),
                 sa.exists().where(chunks.file_id == WorkspaceFileRecord.id),
                 ~sa.exists().where(
                     chunks.file_id == WorkspaceFileRecord.id,

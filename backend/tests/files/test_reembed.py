@@ -272,3 +272,33 @@ def test_reindex_all_joins_a_rebuild_and_cancelling_it_marks_what_it_never_reach
 
     assert file_errors(app) == {"ledger.md": None, "risk.md": None}
     assert {str(m) for m, _ in chunk_rows(app)} == {second}
+
+
+def test_a_cancelled_rebuild_replaces_a_partly_embedded_note_it_never_reached(
+    roles, fake_llm, app, jobs, worker
+):
+    """A partly-embedded note describes vectors of the old model, which the switch drops:
+    a document the cancelled re-embed never reached says it was not reached instead."""
+    register_embedding_model(roles, internal=True, name="bge-small")
+    two_documents(roles, fake_llm)
+    with app.state.engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "UPDATE workspace_files SET embedding_error = "
+                "'1 of 2 passages could not be embedded: refused' WHERE path = 'ledger.md'"
+            )
+        )
+    second = register_embedding_model(roles, internal=True, name="bge-large", use=False)
+    jobs.inline = False
+    assert choose(roles, second).status_code == 200
+    [rebuild] = reindex_jobs(roles)
+
+    cancelled = roles.client("owner").post(f"/api/v1/jobs/{rebuild['id']}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
+    worker()
+
+    unreached = (
+        "Not embedded: the re-index was cancelled before reaching this document. "
+        "Re-index to embed it."
+    )
+    assert file_errors(app) == {"ledger.md": unreached, "risk.md": unreached}
