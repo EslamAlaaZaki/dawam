@@ -82,9 +82,11 @@ function summarise(jobs: AiJob[]): Stat[] {
       label: "Cost",
       value:
         currencies.size > 1 ? (
-          "mixed currencies"
+          "mixed"
         ) : (
-          <Cost cost={{ amount: String(cost), currency: [...currencies][0] ?? "USD" }} />
+          <Cost
+            cost={priced.length ? { amount: String(cost), currency: [...currencies][0]! } : null}
+          />
         ),
       hint: priced.length < jobs.length ? "priced jobs only" : "all jobs priced",
     },

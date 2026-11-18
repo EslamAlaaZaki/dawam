@@ -230,6 +230,8 @@ const JOB_DETAIL: AiJobDetail = {
   ],
 };
 
+const seenKeys: string[] = [];
+
 function jobsBackend(seen: ApiRequest[] = []) {
   const base = backend(ADMIN);
   return (r: ApiRequest) => {
@@ -239,6 +241,10 @@ function jobsBackend(seen: ApiRequest[] = []) {
         return json({ items: [JOB, SEARCH] });
       case `GET /api/v1/admin/ai/jobs/${JOB.key}`:
         return json(JOB_DETAIL);
+      case `GET /api/v1/admin/ai/jobs/${encodeURIComponent(SEARCH.key)}`:
+      case `GET /api/v1/admin/ai/jobs/${SEARCH.key}`:
+        seenKeys.push(r.path);
+        return json({ ...JOB_DETAIL, job: SEARCH, failed_calls: [] });
       default:
         return base(r);
     }
@@ -298,5 +304,22 @@ describe("the Jobs & search tab", () => {
     const errors = screen.getByRole("region", { name: "Errors" });
     expect(errors).toHaveTextContent("rate_limited");
     expect(errors).toHaveTextContent("big-model");
+  });
+
+  it("shows both tabs' counts", async () => {
+    renderApp(jobsBackend(), "/admin/ai-runs");
+
+    expect(await screen.findByRole("tab", { name: /Jobs & search\s*2/ })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: /Assistant runs\s*1/ })).toBeInTheDocument();
+  });
+
+  it("opens a search row, asks for its key and notes the per-day grouping", async () => {
+    renderApp(jobsBackend(), "/admin/ai-runs");
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /Jobs & search/ }), { button: 0 });
+
+    fireEvent.click(await screen.findByRole("row", { name: `Job ${SEARCH.key}` }));
+
+    expect(await screen.findByText(/grouped per Workspace per day/)).toBeInTheDocument();
+    expect(seenKeys.length).toBeGreaterThan(0);
   });
 });

@@ -15,6 +15,7 @@ import {
   type RunStep,
   type RunSummary,
 } from "../api/adminRuns";
+import { useAiJobs } from "../api/adminAiJobs";
 import { useAdminWorkspaces } from "../api/adminWorkspaces";
 import { useUsers } from "../api/users";
 import { Badge } from "../components/ui/badge";
@@ -85,6 +86,9 @@ function summarise(runs: RunSummary[]) {
 
 /** The admin's view of the AI's runs; a tab per kind of run, Assistant runs first. */
 export function RunExplorerPage() {
+  // The tabs' counts, kept in view while the other tab is open (the same lists as each tab's first load).
+  const runCount = useAssistantRuns({}).data?.length;
+  const jobCount = useAiJobs({}).data?.length;
   return (
     <section className="flex flex-col gap-6">
       <PageHead
@@ -93,8 +97,8 @@ export function RunExplorerPage() {
       />
       <Tabs defaultValue="assistant" className="gap-4">
         <TabsList aria-label="Run source" className="px-0">
-          <TabsTrigger value="assistant">Assistant runs</TabsTrigger>
-          <TabsTrigger value="jobs">Jobs &amp; search</TabsTrigger>
+          <TabsTrigger value="assistant">Assistant runs{runCount !== undefined && <TabCount n={runCount} />}</TabsTrigger>
+          <TabsTrigger value="jobs">Jobs &amp; search{jobCount !== undefined && <TabCount n={jobCount} />}</TabsTrigger>
         </TabsList>
         <TabsContent value="assistant">
           <AssistantRuns />
@@ -105,6 +109,10 @@ export function RunExplorerPage() {
       </Tabs>
     </section>
   );
+}
+
+function TabCount({ n }: { n: number }) {
+  return <span className="ms-1.5 font-mono text-xs text-subtle-foreground">{n}</span>;
 }
 
 /** The assistant's runs across all Workspaces; a row opens the run's step timeline in a side sheet. */
