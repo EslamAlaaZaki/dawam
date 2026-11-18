@@ -50,7 +50,7 @@ from ..gateway import (
 )
 from .thinking import thinking_budget
 from .transport import HttpResponse, Transport, TransportError
-from .wire import MAX_LIST_PAGES, detail, error_for, json_body, received_call_id
+from .wire import MAX_LIST_PAGES, error_for, json_body, mid_stream_error, received_call_id
 
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
@@ -626,7 +626,7 @@ def _stream_events(response: HttpResponse, redact: Callable[[str], str]) -> Iter
         except ValueError:
             raise LlmError(INVALID_RESPONSE, "The provider's stream was malformed.") from None
         if isinstance(chunk, dict) and "error" in chunk:
-            raise LlmError(UNAVAILABLE, "The provider failed mid-stream: " + detail(chunk, redact))
+            raise mid_stream_error(chunk, redact)
         parts, finish = _candidate_parts(chunk)
         for event in _part_events(parts):
             called = called or isinstance(event, ToolCallEvent)

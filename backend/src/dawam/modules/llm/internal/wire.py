@@ -15,6 +15,7 @@ from ..gateway import (
     BAD_REQUEST,
     CONTEXT_OVERFLOW,
     INVALID_RESPONSE,
+    INVALID_TOOL_CALL,
     RATE_LIMIT,
     UNAVAILABLE,
     LlmError,
@@ -41,6 +42,38 @@ _CONTEXT_MARKERS = (
     "exceeds the maximum number of tokens",  # Gemini
     "too long for requested model",  # Bedrock
 )
+
+
+_TOOL_CALL_MARKERS = (
+    "tool call validation",
+    "tool_use_failed",
+    "invalid tool call",
+    "invalid_tool_call",
+    "did not match schema",
+    "does not match schema",
+    "did not match the schema",
+    "failed to validate tool",
+    "failed to parse tool",
+    "failed to call a function",
+)
+
+
+def is_tool_call_failure(message: str) -> bool:
+    """Whether a mid-stream error message says the model's tool call broke the tool's schema
+    (matched loosely, as every provider words it its own way)."""
+    lowered = message.lower()
+    return any(marker in lowered for marker in _TOOL_CALL_MARKERS)
+
+
+def mid_stream_error(
+    payload: Any, redact: Callable[[str], str] | None = None, *, message: str | None = None
+) -> LlmError:
+    """The error for an error chunk in a stream: ``invalid_tool_call`` when the model's tool
+    call was rejected, else ``unavailable``."""
+    explanation = detail(payload, redact) if message is None else message
+    if is_tool_call_failure(explanation):
+        return LlmError(INVALID_TOOL_CALL, explanation)
+    return LlmError(UNAVAILABLE, "The provider failed mid-stream: " + explanation)
 
 
 def received_call_id(raw: Any) -> str:

@@ -335,6 +335,22 @@ def _title_from(content: str) -> str:
     return line if len(line) <= 60 else line[:57] + "..."
 
 
+def _log_fall_back(run_id: uuid.UUID) -> Callable[[str, LlmError, str], None]:
+    """A listener for a run's gateway that logs why another model took over (not stored)."""
+
+    def listener(failed: str, error: LlmError, model: str) -> None:
+        logger.warning(
+            "assistant run %s: fell back from %s to %s (%s: %s)",
+            run_id,
+            failed,
+            model,
+            error.code,
+            redact_text(error.message)[:300],
+        )
+
+    return listener
+
+
 class AssistantService:
     def __init__(
         self,
@@ -1063,6 +1079,7 @@ class AssistantService:
                         with_fallbacks=True,
                         effort=effort,
                     )
+                gateway.on_fall_back = _log_fall_back(started.run_id)
                 tools = self._tools.bind(
                     user,
                     workspace_id,
