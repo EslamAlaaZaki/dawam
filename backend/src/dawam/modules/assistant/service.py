@@ -335,6 +335,23 @@ def _title_from(content: str) -> str:
     return line if len(line) <= 60 else line[:57] + "..."
 
 
+def _log_fall_back(what: str, run_id: uuid.UUID) -> Callable[[str, LlmError, str], None]:
+    """A listener for a run's gateway that logs why another model took over (not stored)."""
+
+    def listener(failed: str, error: LlmError, model: str) -> None:
+        logger.warning(
+            "assistant %s %s: fell back from %s to %s (%s: %s)",
+            what,
+            run_id,
+            failed,
+            model,
+            error.code,
+            redact_text(error.message)[:300],
+        )
+
+    return listener
+
+
 class AssistantService:
     def __init__(
         self,
@@ -825,10 +842,13 @@ class AssistantService:
         finished: Finished
         took_over: list[str] = []
 
+        log_fall_back = _log_fall_back("job", ctx.job_id)
+
         def handed_over(failed: str, error: LlmError, model: str) -> None:
             line = f"{model} took over from {failed}, which failed: {error.message}"
             took_over.append(line)
             ctx.log(redact_text(line)[:500])
+            log_fall_back(failed, error, model)
 
         try:
             # The effort the conversation had when the job started, kept in the job's params.
@@ -1063,6 +1083,7 @@ class AssistantService:
                         with_fallbacks=True,
                         effort=effort,
                     )
+                gateway.on_fall_back = _log_fall_back("run", started.run_id)
                 tools = self._tools.bind(
                     user,
                     workspace_id,

@@ -27,6 +27,7 @@ import {
   type EntityColumn,
 } from "../components/entity/EntityTable";
 import { PageHeader } from "../components/PageHeader";
+import { WarningMark } from "../components/WarningMark";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -142,6 +143,9 @@ function TestResult({ model }: { model: LlmModel }) {
         context window: {model.context_window ?? "unknown"}
         {model.embedding_dimension !== null &&
           ` · dimension: ${model.embedding_dimension}`}
+        {model.dimension_warning && (
+          <WarningMark message={model.dimension_warning} />
+        )}
         {model.reasoning.enabled &&
           ` · reasoning: ${model.reasoning.show ? "shown" : "hidden"}`}
       </p>

@@ -101,6 +101,17 @@ class WorkspaceFile(BaseModel):
         "e.g. that the self-hosted OCR engine read the scanned pages instead of the Workspace's "
         "vision model; null otherwise.",
     )
+    embedding_error: str | None = Field(
+        default=None,
+        description="Why some or all passages of an `indexed` file have no vector (search "
+        "still finds them by full-text); null when every passage is embedded or embedding is "
+        "off by the Workspace's settings.",
+    )
+    text_only: bool = Field(
+        default=False,
+        description="Indexed, but no passage has a vector: shown as Text only. False for a "
+        "partly embedded file (`embedding_error` then says how many passages missed out).",
+    )
     updated_by: uuid.UUID | None
     updated_at: datetime
 
@@ -537,7 +548,8 @@ def reindex_documents(
     workspace_id: uuid.UUID, user: CurrentUser, search: DocumentSearchDep
 ) -> ReindexStarted:
     """Index every document of the Workspace again (owners and editors), as a background
-    job: run it after the embedding model or its dimension changes."""
+    job: run it after the embedding model or its dimension changes. While a re-index is
+    queued or running, that job is returned instead of a second one."""
     job = search.start_reindex(user, workspace_id)
     return ReindexStarted(job_id=job.id, status=job.status)
 
@@ -572,6 +584,10 @@ class FileIndexStatus(BaseModel):
     )
     index_error: str | None = Field(description="Why indexing `failed`; null otherwise.")
     index_note: str | None = Field(description="Something worth knowing that did not fail it.")
+    embedding_error: str | None = Field(
+        description="Why some or all passages have no vector; null otherwise."
+    )
+    text_only: bool = Field(description="Indexed, but no passage has a vector.")
     chunk_count: int = Field(description="Passages the file is cut into.")
     embedded_count: int = Field(description="Passages that have a vector.")
     stale_count: int = Field(

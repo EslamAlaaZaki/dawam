@@ -34,7 +34,7 @@ from ..gateway import (
 from .local_tokens import local_counter
 from .think_tags import ThinkTagSplitter
 from .transport import HttpResponse, Transport, TransportError
-from .wire import detail, error_for, json_body, received_call_id
+from .wire import error_for, json_body, mid_stream_error, received_call_id
 
 _CONTEXT_WINDOW_KEYS = ("max_model_len", "context_length", "context_window", "max_context_length")
 
@@ -428,7 +428,7 @@ def _stream_events(
         if not isinstance(chunk, dict):
             raise LlmError(INVALID_RESPONSE, "The provider's stream was malformed.")
         if "error" in chunk:
-            raise LlmError(UNAVAILABLE, "The provider failed mid-stream: " + detail(chunk))
+            raise mid_stream_error(chunk)
         usage = _usage(chunk.get("usage")) or usage
         for choice in chunk.get("choices") or []:
             delta = choice.get("delta") or {}

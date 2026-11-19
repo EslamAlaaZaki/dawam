@@ -41,6 +41,7 @@ const MODEL: LlmModel = {
   streaming: null,
   json_schema: null,
   embedding_dimension: null,
+  dimension_warning: null,
   limited: false,
   test_ok: null,
   test_error_code: null,
@@ -659,6 +660,22 @@ describe("language models page", () => {
     expect(
       await screen.findByText("The context window is unknown."),
     ).toBeInTheDocument();
+  });
+
+  it("marks an embedding dimension too wide for a vector index", async () => {
+    const warning =
+      "Above 2,000 dimensions, documents can't get a vector index: search still works but scans every passage and slows as documents grow.";
+    const wide: LlmModel = {
+      ...MODEL,
+      roles: ["embedding"],
+      test_ok: true,
+      embedding_dimension: 4096,
+      dimension_warning: warning,
+    };
+    renderApp(providersApi([{ ...PROVIDER, models: [wide] }]), "/admin/llm");
+
+    expect(await screen.findByText(/dimension: 4096/)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: warning })).toBeInTheDocument();
   });
 
   it("shows why a test failed", async () => {

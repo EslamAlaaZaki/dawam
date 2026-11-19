@@ -5,6 +5,8 @@ sent to a model, and documents uploaded earlier are indexed again when it is tur
 
 from __future__ import annotations
 
+import sqlalchemy as sa
+
 from dawam.modules.llm import Reply
 from tests.files.test_chunk_context import DOC, headers, light_calls, use_light
 from tests.files.test_files import PNG, blank_pdf, system, upload
@@ -147,3 +149,44 @@ def test_with_documents_off_an_internal_rerank_model_receives_no_passage(
 
     assert order(roles) == ["a.md", "b.md", "c.md"]
     assert rerank_calls(fake_llm) == []
+
+
+def test_a_model_change_before_the_extract_pass_finishes_keeps_extracting(
+    roles,
+    ocr,  # noqa: F811
+    fake_llm,
+    worker,  # noqa: F811
+):
+    """#573: Documents on queues an extract pass; an embedding model change saved separately
+    before it ran supersedes it, and the surviving rebuild still reads the image."""
+    first = register_embedding_model(roles, internal=True, name="bge-small")
+    second = register_embedding_model(roles, internal=True, name="bge-large", use=False)
+    use_vision(roles, internal=True)
+    sid = system(roles)
+    upload(roles, sid, "erd.png", PNG)
+    upload(roles, sid, "sad.md", b"Postings are booked daily.")
+    worker()
+    assert listed(roles, sid)["erd.png"]["text_status"] == "none"
+    with roles.app.state.engine.begin() as conn:  # embedded while Documents were on before
+        conn.execute(
+            sa.text(
+                "UPDATE document_chunks SET embedding = '[0.1,0.1,0.1,0.1]', "
+                "embedding_model_id = :m, embedding_dimension = 4"
+            ),
+            {"m": first},
+        )
+    share_documents(roles, True)
+    changed = roles.client("owner").put(
+        f"/api/v1/workspaces/{roles.workspace_id}/ai-settings",
+        json={"internal_only": False, "embedding_model_id": second},
+    )
+    assert changed.status_code == 200, changed.text
+    before = len(vision_calls(fake_llm))
+    fake_llm.script(Reply(text="Customer and account tables joined by customer_id."))
+
+    worker()
+
+    assert len(vision_calls(fake_llm)) == before + 1
+    assert listed(roles, sid)["erd.png"]["text_status"] == "extracted"
+    assert sorted(j["status"] for j in reindex_jobs(roles)) == ["cancelled", "succeeded"]
+    assert {str(m) for m, _ in chunk_rows(app=roles.app)} == {second}

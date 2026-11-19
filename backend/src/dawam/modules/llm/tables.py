@@ -62,7 +62,8 @@ class ModelRecord(Base):
     reasoning_show: Mapped[bool] = mapped_column(server_default=sa.false())
     """Stream the reasoning to the member; off: it is counted and hidden."""
     test_ok: Mapped[bool | None]
-    """Null: not tested since the model or its provider last changed."""
+    """Null: never tested. A provider change (base URL, key) keeps the last result until
+    someone runs "Test connection" again; an indexing job tests an untested embedding model."""
     test_error_code: Mapped[str | None] = mapped_column(sa.String(32))
     test_error: Mapped[str | None] = mapped_column(sa.Text)
     last_tested_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))

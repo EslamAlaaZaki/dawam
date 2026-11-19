@@ -48,7 +48,10 @@ class Job(BaseModel):
     status: Literal["queued", "running", "paused", "succeeded", "failed", "cancelled"]
     progress: int = Field(description="Percent done, 0 to 100.")
     log: str = Field(description="The job's log, one timestamped line per entry.")
-    error: str | None = Field(description="Why the job failed; null otherwise.")
+    error: str | None = Field(
+        description="Why the job failed, or why it stopped itself (e.g. superseded); null "
+        "otherwise."
+    )
     question: str | None = Field(
         description="What a paused job asks its creator; null unless the status is `paused`."
     )

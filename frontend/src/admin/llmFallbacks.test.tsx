@@ -29,6 +29,7 @@ function model(id: string, name: string, test_ok: boolean | null): LlmModel {
     streaming: null,
     json_schema: null,
     embedding_dimension: null,
+    dimension_warning: null,
     limited: false,
     test_ok,
     test_error_code: null,

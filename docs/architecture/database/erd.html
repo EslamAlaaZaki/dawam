@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "e8b3f1a6c254"
+  "a3c8e1f5b927"
  ],
  "modules": [
   {
@@ -5572,6 +5572,21 @@ a.tlink:hover { text-decoration: underline; }
      "description": null,
      "pk": false,
      "fk": []
+    },
+    {
+     "name": "extract",
+     "type": "boolean",
+     "nullable": false,
+     "default": "false",
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "extract",
+     "app_default": null,
+     "description": "The rebuild runs the whole ``index_document`` pipeline on every file (Documents were\njust shared). A newer rebuild that supersedes it before it switched keeps this (#573).",
+     "pk": false,
+     "fk": []
     }
    ],
    "primary_key": [
@@ -9507,7 +9522,7 @@ a.tlink:hover { text-decoration: underline; }
      "in_orm": true,
      "attribute": "test_ok",
      "app_default": null,
-     "description": "Null: not tested since the model or its provider last changed.",
+     "description": "Null: never tested. A provider change (base URL, key) keeps the last result until\nsomeone runs \"Test connection\" again; an indexing job tests an untested embedding model.",
      "pk": false,
      "fk": []
     },
@@ -19914,6 +19929,21 @@ a.tlink:hover { text-decoration: underline; }
      "attribute": "index_note",
      "app_default": null,
      "description": "Something worth knowing about the last indexing that did not fail it (e.g. the\nself-hosted OCR engine read the scans instead of the vision model); ``None`` otherwise.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "embedding_error",
+     "type": "text",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "embedding_error",
+     "app_default": null,
+     "description": "Why some or all of an ``indexed`` file's passages have no vector (the provider\nrefused or failed, the embedding model failed its test, or a cancelled re-embed never\nreached the file); search still finds them by full-text. ``None`` when every passage\nis embedded or embedding was skipped on purpose (settings). A successful embed clears it.",
      "pk": false,
      "fk": []
     }

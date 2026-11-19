@@ -44,9 +44,9 @@ from .transport import HttpResponse, Transport, TransportError
 from .wire import (
     MAX_LIST_PAGES,
     SentCallIds,
-    detail,
     error_for,
     json_body,
+    mid_stream_error,
     received_call_id,
 )
 
@@ -413,7 +413,7 @@ def _stream_events(response: HttpResponse) -> Iterator[ChatEvent]:
             raise LlmError(INVALID_RESPONSE, "The provider's stream was malformed.")
         kind = event.get("type")
         if kind == "error":
-            raise LlmError(UNAVAILABLE, "The provider failed mid-stream: " + detail(event))
+            raise mid_stream_error(event)
         if kind == "message_start":
             message = event.get("message")
             message = message if isinstance(message, dict) else {}

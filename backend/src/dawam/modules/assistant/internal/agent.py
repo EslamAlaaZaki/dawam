@@ -40,6 +40,7 @@ from typing import Any, Literal, Protocol
 
 from dawam.modules.llm import (
     CONTEXT_OVERFLOW,
+    INVALID_TOOL_CALL,
     Capabilities,
     ChatEvent,
     Done,
@@ -517,6 +518,16 @@ class _Run:
 
 logger = logging.getLogger(__name__)
 
+MAX_TOOL_CALL_REJECTIONS = 2
+"""Tool calls the provider may refuse in a row before the run fails."""
+INVALID_TOOL_CALL_MESSAGE = (
+    "The model made an invalid tool call. Sending the prompt again usually works."
+)
+REJECTED_CALL_NOTE = (
+    "Your last tool call was rejected: {reason}. "
+    "Call the tool again with arguments that match its schema."
+)
+
 MAX_PARALLEL_READS = 8
 """Most read calls of one turn that run at the same time."""
 
@@ -735,6 +746,8 @@ def run_agent(
     shortenable: list[tuple[Message, Message]] = []
     """The run's tool results, oldest first, each with its digest form."""
     retries = 0
+    rejections = 0
+    """Tool calls the provider refused in a row."""
     empty_retried = False
     compaction_tried = summarize is None
     last_poll = timer()
@@ -819,6 +832,17 @@ def run_agent(
         messages.append(result)
         shortenable.append((result, short_result))
         pending.remove(call)
+
+    def reject(exc: LlmError) -> Finished | None:
+        """The provider refused the model's tool call (it broke the tool's schema): the model is
+        told why and the step runs again; ``Finished`` (failed) after too many in a row."""
+        nonlocal rejections
+        rejections += 1
+        if rejections >= MAX_TOOL_CALL_REJECTIONS:
+            return run.finish("failed", INVALID_TOOL_CALL, INVALID_TOOL_CALL_MESSAGE)
+        messages.append(Message("user", REJECTED_CALL_NOTE.format(reason=exc.message)))
+        save()
+        return None
 
     def shorten(refused: int, size: Callable[[], int]) -> bool:
         """Swap the oldest tool results for their digests until the request's ``size`` is
@@ -973,38 +997,57 @@ def run_agent(
                         raise
                     started = ask(prepare(), sent_tools)
             except LlmError as exc:
+                if exc.code == INVALID_TOOL_CALL:
+                    rejected = reject(exc)
+                    if rejected is not None:
+                        yield rejected
+                        return
+                    continue  # this step again, with the note
                 if hand_over is None:
                     raise
                 hand_over(exc)  # raises when no model is left
                 adopt()
                 continue  # this step again, fitted to the model that took over
-            with closing(started) as events:
-                for event in events:
-                    # Reading the stop flag is a query: while text streams, not on every delta.
-                    if timer() - last_poll >= delta_poll_seconds:
-                        last_poll = timer()
-                        if is_cancelled():
-                            yield run.finish("cancelled")
-                            return
-                    if isinstance(event, ReasoningDelta):
-                        yield Reasoning(event.text)
-                    elif isinstance(event, TextDelta):
-                        answer.append(event.text)
-                        if not prompted:
-                            run.text.append(event.text)
-                            yield Text(event.text)
-                    elif isinstance(event, ToolCallEvent):
-                        if offered and not prompted:
-                            asking = any(c.name == ASK_MEMBER for c in pending)
-                            if not (asking and event.call.name == ASK_MEMBER):
-                                pending.append(event.call)
-                    elif isinstance(event, Done):
-                        finish = event.finish_reason
-                        thinking = event.thinking
-                        _log_transformations(event.input_transformations, serving)
-                        if event.usage is not None:
-                            run.prompt += event.usage.prompt_tokens
-                            run.completion += event.usage.completion_tokens
+            streamed = len(run.text)
+            try:
+                with closing(started) as events:
+                    for event in events:
+                        # Reading the stop flag is a query: not on every delta.
+                        if timer() - last_poll >= delta_poll_seconds:
+                            last_poll = timer()
+                            if is_cancelled():
+                                yield run.finish("cancelled")
+                                return
+                        if isinstance(event, ReasoningDelta):
+                            yield Reasoning(event.text)
+                        elif isinstance(event, TextDelta):
+                            answer.append(event.text)
+                            if not prompted:
+                                run.text.append(event.text)
+                                yield Text(event.text)
+                        elif isinstance(event, ToolCallEvent):
+                            if offered and not prompted:
+                                asking = any(c.name == ASK_MEMBER for c in pending)
+                                if not (asking and event.call.name == ASK_MEMBER):
+                                    pending.append(event.call)
+                        elif isinstance(event, Done):
+                            finish = event.finish_reason
+                            thinking = event.thinking
+                            _log_transformations(event.input_transformations, serving)
+                            if event.usage is not None:
+                                run.prompt += event.usage.prompt_tokens
+                                run.completion += event.usage.completion_tokens
+            except LlmError as exc:
+                if exc.code != INVALID_TOOL_CALL:
+                    raise
+                pending.clear()  # the calls of the rejected turn are not run
+                del run.text[streamed:]  # nor does its partial text join the answer
+                rejected = reject(exc)
+                if rejected is not None:
+                    yield rejected
+                    return
+                continue  # this step again, with the note
+            rejections = 0
             if not "".join(answer).strip() and not (pending and not prompted):
                 # No text and no tool call (thinking alone counts as nothing): never a silent
                 # answer. A safety stop fails with the provider's reason; anything else is

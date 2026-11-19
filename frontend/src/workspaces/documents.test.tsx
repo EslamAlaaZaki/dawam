@@ -99,6 +99,8 @@ const SAD: WorkspaceFile = {
   text_status: "no_text_found",
   index_status: "indexed",
   index_error: null,
+  embedding_error: null,
+  text_only: false,
   updated_by: ADA.id,
   updated_at: "2026-01-05T09:00:00Z",
 };
@@ -206,6 +208,41 @@ describe("a Source System's Documents folder", () => {
     const row = screen.getByRole("row", { name: /sad\.pdf/ });
     expect(row).toHaveTextContent("Indexed");
     expect(row).toHaveTextContent("self-hosted OCR engine read");
+  });
+
+  it("marks an indexed file whose passages were not embedded, with the reason", async () => {
+    renderApp(
+      backend("viewer", [
+        {
+          ...SAD,
+          embedding_error: "Embedding failed: input rejected",
+          text_only: true,
+        },
+        {
+          ...SAD,
+          id: NOTES_ID,
+          name: "partly.md",
+          embedding_error:
+            "3 of 80 passages could not be embedded: input rejected",
+        },
+      ]),
+      FOLDER,
+    );
+
+    await screen.findByRole("link", { name: "sad.pdf" });
+    const textOnly = screen.getByRole("row", { name: /sad\.pdf/ });
+    expect(textOnly).toHaveTextContent("Text only");
+    expect(textOnly).not.toHaveTextContent("Indexed");
+    expect(
+      within(textOnly).getByRole("img", {
+        name: "Embedding failed: input rejected",
+      }),
+    ).toBeInTheDocument();
+    const partly = screen.getByRole("row", { name: /partly\.md/ });
+    expect(partly).toHaveTextContent("Indexed");
+    expect(
+      within(partly).getByRole("img", { name: /3 of 80 passages/ }),
+    ).toBeInTheDocument();
   });
 
   it("lets an editor upload a document", async () => {

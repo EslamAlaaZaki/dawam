@@ -78,6 +78,7 @@ from .document_ai_api import admin_router as document_ai_admin_router
 from .document_ai_api import router as document_ai_router
 from .gateway import (
     CONTEXT_OVERFLOW,
+    INVALID_TOOL_CALL,
     REASONING_EFFORTS,
     Adapter,
     Capabilities,
@@ -106,6 +107,7 @@ from .role_service import (
     call_cost,
 )
 from .service import (
+    HNSW_MAX_DIMENSION,
     Model,
     ModelInput,
     Provider,
@@ -140,6 +142,8 @@ router.include_router(ai_jobs_router)
 __all__ = [
     "CONTEXT_OVERFLOW",
     "FEATURES",
+    "HNSW_MAX_DIMENSION",
+    "INVALID_TOOL_CALL",
     "REASONING_EFFORTS",
     "UNKNOWN_FEATURE",
     "Adapter",

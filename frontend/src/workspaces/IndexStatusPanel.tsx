@@ -8,6 +8,7 @@ import {
 } from "../api/files";
 import { allows, type Workspace } from "../api/workspaces";
 import { PageHeader } from "../components/PageHeader";
+import { WarningMark } from "../components/WarningMark";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { toast } from "../components/ui/sonner";
@@ -33,18 +34,30 @@ const STATUS: Record<string, string> = {
   failed: "Failed",
 };
 
+/** The index badge; like the Documents folder, an indexed file whose passages were not
+ * (all) embedded shows a "!" with the reason, and reads Text only with no vector at all. */
 function StatusCell({ row }: { row: FileIndexStatus }) {
-  const variant =
-    row.index_status === "failed"
+  const indexed = row.index_status === "indexed";
+  const textOnly = indexed && row.text_only;
+  const variant = textOnly
+    ? "warning"
+    : row.index_status === "failed"
       ? "danger"
-      : row.index_status === "indexed"
+      : indexed
         ? "success"
         : "neutral";
   return (
-    <div className="flex flex-col gap-1">
-      <Badge variant={variant}>
-        {STATUS[row.index_status] ?? row.index_status}
-      </Badge>
+    <div className="flex flex-col items-start gap-1">
+      <span className="inline-flex items-center">
+        <Badge variant={variant}>
+          {textOnly
+            ? "Text only"
+            : (STATUS[row.index_status] ?? row.index_status)}
+        </Badge>
+        {indexed && row.embedding_error && (
+          <WarningMark message={row.embedding_error} />
+        )}
+      </span>
       {row.index_error && (
         <span className="text-xs text-muted-foreground">{row.index_error}</span>
       )}

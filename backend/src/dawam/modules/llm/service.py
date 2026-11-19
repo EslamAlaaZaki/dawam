@@ -52,6 +52,9 @@ MAX_TIMEOUT_SECONDS = 600
 MAX_CONTEXT_WINDOW = 100_000_000
 NON_CHAT_ROLES = ("embedding", "rerank")
 """Roles whose model is never asked to chat."""
+HNSW_MAX_DIMENSION = 2000
+"""pgvector's limit for an HNSW index on ``vector``: documents embedded by a wider model get
+no vector index and are searched by scan (the files module's ``ensure_vector_index``)."""
 AGENT_MIN_CONTEXT = 32_768
 """The smallest context window (tokens) a model may have to fill the agent role: below
 it the tool schemas alone crowd out the prompt."""
@@ -93,6 +96,17 @@ class Model:
     def limited(self) -> bool:
         """Tested and without native tool calling: shown as "limited" (spec §6.18)."""
         return self.test_ok is True and self.tool_calling is False
+
+    @property
+    def dimension_warning(self) -> str | None:
+        """For the admin, when the tested embedding dimension is above ``HNSW_MAX_DIMENSION``
+        (#638); ``None`` otherwise."""
+        if self.embedding_dimension is None or self.embedding_dimension <= HNSW_MAX_DIMENSION:
+            return None
+        return (
+            f"Above {HNSW_MAX_DIMENSION:,} dimensions, documents can't get a vector index: "
+            "search still works but scans every passage and slows as documents grow."
+        )
 
 
 @dataclass(frozen=True)
@@ -378,8 +392,9 @@ class ProviderService:
             return _provider_view(record, [])
 
     def update_provider(self, provider_id: uuid.UUID, data: ProviderInput) -> Provider:
-        """Replace the provider's settings. Changing the base URL or the key drops the
-        test results of its models (they were found out against something else)."""
+        """Replace the provider's settings. Its models keep their test results, capabilities
+        and embedding dimension until someone runs "Test connection" again, even when the
+        base URL or the key changes (resetting them silently stopped embeddings, #622)."""
         data = self._clean(data)
         with Session(self._engine) as db:
             record = self._load_provider(db, provider_id, lock=True)
@@ -395,7 +410,6 @@ class ProviderService:
                     "it was saved for.",
                     {"field": "api_key"},
                 )
-            reachability_changed = record.base_url != data.base_url or data.api_key is not None
             if data.api_key is not None:
                 record.secret_encrypted = self._seal(data.api_key)
             record.name = data.name
@@ -404,9 +418,6 @@ class ProviderService:
             record.is_internal = data.is_internal
             record.timeout_seconds = data.timeout_seconds
             record.updated_at = self._clock()
-            if reachability_changed:
-                for model in self._models_of(db, provider_id):
-                    _reset_test(model)
             self._commit(db, "provider_name_taken", "A provider with this name already exists.")
             return self._provider_view(db, record)
 

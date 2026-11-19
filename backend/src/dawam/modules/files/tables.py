@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 
@@ -15,6 +16,15 @@ from dawam.platform.db import Base
 PATH_MAX_LENGTH = 255
 MIME_MAX_LENGTH = 100
 SECTION_MAX_LENGTH = 200
+PARTLY_EMBEDDED = "{refused} of {total} passages could not be embedded: {reason}"
+"""The ``embedding_error`` of a file some of whose passages have a vector."""
+_PARTLY_EMBEDDED = re.compile(r"\d+ of \d+ passages could not be embedded: ")
+
+
+def is_text_only(embedding_error: str | None) -> bool:
+    """Whether a file with this ``embedding_error`` has no vector at all (searched by
+    full-text only), as opposed to one partly embedded (``PARTLY_EMBEDDED``)."""
+    return embedding_error is not None and not _PARTLY_EMBEDDED.match(embedding_error)
 
 
 class WorkspaceFileRecord(Base):
@@ -64,6 +74,11 @@ class WorkspaceFileRecord(Base):
     index_note: Mapped[str | None] = mapped_column(sa.Text())
     """Something worth knowing about the last indexing that did not fail it (e.g. the
     self-hosted OCR engine read the scans instead of the vision model); ``None`` otherwise."""
+    embedding_error: Mapped[str | None] = mapped_column(sa.Text())
+    """Why some or all of an ``indexed`` file's passages have no vector (the provider
+    refused or failed, the embedding model failed its test, or a cancelled re-embed never
+    reached the file); search still finds them by full-text. ``None`` when every passage
+    is embedded or embedding was skipped on purpose (settings). A successful embed clears it."""
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -199,4 +214,7 @@ class EmbeddingRebuildRecord(Base):
     )
     rebuild_id: Mapped[uuid.UUID]
     """The rebuild that switches; a newer change or re-index replaces it."""
+    extract: Mapped[bool] = mapped_column(server_default=sa.false())
+    """The rebuild runs the whole ``index_document`` pipeline on every file (Documents were
+    just shared). A newer rebuild that supersedes it before it switched keeps this (#573)."""
     started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

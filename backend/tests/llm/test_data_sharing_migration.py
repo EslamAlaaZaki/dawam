@@ -75,6 +75,62 @@ def test_each_level_becomes_the_kinds_it_included(monkeypatch, fresh_database_ur
         engine.dispose()
 
 
+def test_a_workspace_sharing_documents_with_files_gets_one_extract_reindex_job(
+    monkeypatch, fresh_database_url
+):
+    monkeypatch.setenv("DAWAM_DATABASE_URL", fresh_database_url)
+    command.upgrade(alembic_config(), BEFORE)
+    user = uuid.uuid4()
+    engine = sa.create_engine(fresh_database_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                sa.text(
+                    "INSERT INTO users (id, email, display_name, password_hash, system_role, "
+                    "created_at) VALUES (:id, 'u@example.com', 'U', 'x', 'user', now())"
+                ),
+                {"id": user},
+            )
+            with_file = _workspace(conn, user, "with file")
+            without_file = _workspace(conn, user, "without file")
+            not_sharing = _workspace(conn, user, "not sharing")
+            for workspace, level in (
+                (with_file, "documents"),
+                (without_file, "samples"),
+                (not_sharing, "profiles"),
+            ):
+                conn.execute(
+                    sa.text(
+                        "INSERT INTO llm_workspace_settings (workspace_id, internal_only, "
+                        "data_sharing_level, auto_retrieve, updated_at) "
+                        "VALUES (:id, false, :level, false, now())"
+                    ),
+                    {"id": workspace, "level": level},
+                )
+            for workspace in (with_file, not_sharing):
+                conn.execute(
+                    sa.text(
+                        "INSERT INTO workspace_files (id, workspace_id, owner_kind, owner_id, "
+                        "path, kind, mime, storage_key, size, text_status, index_status, "
+                        "updated_at) VALUES (gen_random_uuid(), :w, 'source_system', "
+                        "gen_random_uuid(), 'sad.md', 'uploaded', 'text/markdown', 'k', 1, "
+                        "'extracted', 'indexed', now())"
+                    ),
+                    {"w": workspace},
+                )
+
+        command.upgrade(alembic_config(), AFTER)
+
+        with engine.connect() as conn:
+            jobs = conn.execute(
+                sa.text("SELECT workspace_id, type, params, status FROM jobs")
+            ).all()
+        assert [(w, t, s) for w, t, _, s in jobs] == [(with_file, "reindex_documents", "queued")]
+        assert jobs[0][2] == {"workspace_id": str(with_file), "extract": True}
+    finally:
+        engine.dispose()
+
+
 def _workspace(conn, user: uuid.UUID, name: str) -> uuid.UUID:
     workspace = uuid.uuid4()
     conn.execute(

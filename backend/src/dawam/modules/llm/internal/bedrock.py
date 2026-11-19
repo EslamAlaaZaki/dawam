@@ -33,6 +33,7 @@ from ..gateway import (
     AUTH,
     BAD_REQUEST,
     INVALID_RESPONSE,
+    INVALID_TOOL_CALL,
     RATE_LIMIT,
     UNAVAILABLE,
     ChatEvent,
@@ -62,6 +63,7 @@ from .wire import (
     SentCallIds,
     detail,
     error_for,
+    is_tool_call_failure,
     json_body,
     received_call_id,
 )
@@ -673,6 +675,8 @@ def _frames(response: HttpResponse) -> Iterator[tuple[dict[str, str], bytes]]:
 def _stream_error(kind: str, payload: Any, redact: Callable[[str], str]) -> LlmError:
     message = detail(payload, redact)
     suffix = f" ({message})" if message else ""
+    if is_tool_call_failure(message):
+        return LlmError(INVALID_TOOL_CALL, message)
     lowered = kind.lower()
     if "throttl" in lowered:
         return LlmError(RATE_LIMIT, "The provider is rate limiting requests." + suffix)

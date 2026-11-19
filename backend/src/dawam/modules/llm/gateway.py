@@ -26,6 +26,7 @@ CONTEXT_OVERFLOW = "context_overflow"
 UNAVAILABLE = "unavailable"
 BAD_REQUEST = "bad_request"
 INVALID_RESPONSE = "invalid_response"
+INVALID_TOOL_CALL = "invalid_tool_call"
 
 RETRYABLE_CODES = frozenset({RATE_LIMIT, UNAVAILABLE})
 MAX_RETRIES = 3
@@ -38,8 +39,9 @@ IMAGE_TOKENS = 1000
 
 class LlmError(Exception):
     """A provider failure in the common vocabulary: ``code`` is one of ``auth``,
-    ``rate_limit``, ``context_overflow``, ``unavailable``, ``bad_request`` or
-    ``invalid_response``. The message never contains an API key."""
+    ``rate_limit``, ``context_overflow``, ``unavailable``, ``bad_request``,
+    ``invalid_response`` or ``invalid_tool_call`` (the model's tool call broke the tool's
+    schema). The message never contains an API key."""
 
     def __init__(self, code: str, message: str, *, retry_after: float | None = None) -> None:
         super().__init__(message)

@@ -40,7 +40,6 @@ from dawam.platform.errors import ApiError
 from .platforms import TARGET_PLATFORMS, TargetPlatform, is_reserved_word, max_identifier_length
 from .propagation import same_type
 from .propagation_handlers import ColumnMappingHandler
-from .service import NamingRules
 from .sql_transpile import FragmentKind, Transpiled, transpile
 from .staging_naming import TYPE_FLAGS, NameInput, table_names
 from .staging_types import translate_type
@@ -183,14 +182,16 @@ def plan_system_code_change(
                 depends_on=(CODE_KEY,),
             )
         )
-    audit_name = NamingRules(**warehouse.naming_rules).source_system_column
+    constant_was = "'" + system.code.replace("'", "''") + "'"
     audit_columns = db.execute(
         sa.select(DwColumnRecord, DwTableRecord)
         .join(DwTableRecord, DwTableRecord.id == DwColumnRecord.table_id)
+        .join(ColumnMappingRecord, ColumnMappingRecord.dw_column_id == DwColumnRecord.id)
         .where(
             DwColumnRecord.table_id.in_([t.id for t in staged]),
             DwColumnRecord.role == "audit",
-            DwColumnRecord.name == audit_name,
+            ColumnMappingRecord.branch_id.is_(None),
+            ColumnMappingRecord.sql_expression == constant_was,
         )
     )
     constant = "'" + code.replace("'", "''") + "'"

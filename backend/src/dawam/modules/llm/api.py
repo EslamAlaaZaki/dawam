@@ -110,6 +110,10 @@ class LlmModel(BaseModel):
     streaming: bool | None
     json_schema: bool | None = Field(description="Supports JSON-schema output.")
     embedding_dimension: int | None
+    dimension_warning: str | None = Field(
+        description="Set when the tested embedding dimension is too wide for a vector index "
+        "(pgvector's HNSW limit): document search still works but scans every passage."
+    )
     limited: bool = Field(
         description="Tested and without native tool calling: DAWAM works around it, with "
         "less reliable tool use."
@@ -252,6 +256,7 @@ def _model_out(view: ModelView) -> LlmModel:
         streaming=view.streaming,
         json_schema=view.json_schema,
         embedding_dimension=view.embedding_dimension,
+        dimension_warning=view.dimension_warning,
         limited=view.limited,
         test_ok=view.test_ok,
         test_error_code=view.test_error_code,

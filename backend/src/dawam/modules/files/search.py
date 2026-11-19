@@ -45,6 +45,7 @@ from dawam.modules.jobs import (
     JobService,
 )
 from dawam.modules.llm import (
+    HNSW_MAX_DIMENSION,
     DocumentAiConfig,
     LlmError,
     MeteredGateway,
@@ -77,7 +78,13 @@ from .internal.parents import chunk_with_parents
 from .internal.parsing import DocumentParser
 from .internal.query_rewrite import query_variants
 from .internal.rerank import NoRerankModels, RerankModels
-from .tables import DocumentChunkRecord, EmbeddingRebuildRecord, WorkspaceFileRecord
+from .tables import (
+    PARTLY_EMBEDDED,
+    DocumentChunkRecord,
+    EmbeddingRebuildRecord,
+    WorkspaceFileRecord,
+    is_text_only,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +94,19 @@ INDEX_ERROR_MAX_LENGTH = 1000
 MAX_POOL_GROWTH = 8  # how far the pool may grow to find ``limit`` distinct parents
 RERANK_DOC_CHARS = 4000
 _DEFAULTS = DocumentAiConfig()
+REFUSAL_CODES = frozenset({"bad_request", "context_overflow"})
+"""Provider errors that refuse the input (HTTP 4xx, e.g. content screening): a refused
+batch is retried one passage at a time. Any other error is an outage and stops at once."""
+EMBEDDING_FAILED = "Embedding failed: {reason}"
+MODEL_TEST_FAILED = "The embedding model failed its connection test: {reason}"
+NOT_REACHED = (
+    "Not embedded: the re-index was cancelled before reaching this document. Re-index to embed it."
+)
+NOT_REACHED_LOST = (
+    "Not embedded: the re-index stopped before reaching this document ({reason}). "
+    "Re-index to embed it."
+)
+SUPERSEDED = "Superseded by a newer re-index, which covers every document."
 
 
 @dataclass(frozen=True)
@@ -134,6 +154,8 @@ class FileIndexStatus:
     index_status: str
     index_error: str | None
     index_note: str | None
+    embedding_error: str | None
+    text_only: bool
     chunk_count: int
     embedded_count: int
     stale_count: int
@@ -180,12 +202,29 @@ class EmbeddingModel:
     """Metered: the token budgets are checked before every embedding call."""
 
 
+@dataclass(frozen=True)
+class EmbeddingModelFailed:
+    """The Workspace's embedding model failed its connection test."""
+
+    error: str
+    """The provider's message, as the test recorded it."""
+
+
 class EmbeddingModels(Protocol):
     def current(
         self, workspace_id: uuid.UUID, user_id: uuid.UUID | None = None
     ) -> EmbeddingModel | None:
         """The Workspace's embedding model (calls are attributed to the Workspace and, when a
         user is behind them, the user), or ``None`` if none is usable."""
+        ...
+
+    def for_indexing(
+        self, workspace_id: uuid.UUID, *, internal_only: bool
+    ) -> EmbeddingModel | EmbeddingModelFailed | None:
+        """The model to embed the Workspace's documents with, for an indexing job: a chosen
+        model never tested is tested first (the result recorded on it); one that failed its
+        test is ``EmbeddingModelFailed``. ``None``: no model is chosen, or ``internal_only``
+        and its provider is external."""
         ...
 
 
@@ -218,6 +257,33 @@ class RegisteredEmbeddingModels:
         gateway = self._roles.metered_gateway(
             model.id, "embedding", workspace_id=workspace_id, user_id=user_id
         )
+        return EmbeddingModel(model.id, provider.is_internal, gateway)
+
+    def for_indexing(
+        self, workspace_id: uuid.UUID, *, internal_only: bool
+    ) -> EmbeddingModel | EmbeddingModelFailed | None:
+        """An untested model (``test_ok`` null) gets the same probe as "Test connection",
+        recorded on the model so admins see it too. A model that failed already is not
+        tested again: the admin fixes it and tests it."""
+        if self._engine is None:
+            return None
+        chosen = workspace_embedding_model_id(self._engine, workspace_id)
+        found = [
+            (provider, model)
+            for provider in self._providers.list_providers()
+            for model in provider.models
+            if model.id == chosen and "embedding" in model.roles
+        ]
+        if not found:
+            return None
+        provider, model = found[0]
+        if internal_only and not provider.is_internal:
+            return None
+        if model.test_ok is None:
+            model = self._providers.test_model(model.id)
+        if not model.test_ok:
+            return EmbeddingModelFailed(model.test_error or "the test failed")
+        gateway = self._roles.metered_gateway(model.id, "embedding", workspace_id=workspace_id)
         return EmbeddingModel(model.id, provider.is_internal, gateway)
 
 
@@ -446,10 +512,6 @@ def _tags(path: str) -> list[str]:
     return list(dict.fromkeys(p.casefold() for p in path.split("/")[:-1] if p))
 
 
-HNSW_MAX_DIMENSION = 2000
-"""pgvector's limit for an HNSW index on ``vector``; wider embeddings are searched by scan."""
-
-
 def ensure_vector_index(engine: sa.Engine, model_id: uuid.UUID, dimension: int) -> bool:
     """Create the partial HNSW index of one embedding model (and dimension) if it is missing;
     whether the model has one. The column has no fixed dimension, so the index is on a cast
@@ -476,6 +538,38 @@ def _embed_all(gateway: Any, texts: list[str], batch: int) -> list[list[float]]:
     for start in range(0, len(texts), batch):
         vectors.extend(gateway.embed(texts[start : start + batch]))
     return vectors
+
+
+def _embed_passages(
+    gateway: Any, texts: list[str], batch: int
+) -> tuple[list[list[float] | None], str | None]:
+    """Vectors of a document's passages, ``batch`` at a time, and the provider's message if
+    it refused any. A refused batch (``REFUSAL_CODES``) is retried one passage at a time:
+    accepted passages keep their vectors, refused ones get ``None`` (full-text only). Any
+    other provider error is an outage: it is raised at once, with no retry."""
+    vectors: list[list[float] | None] = []
+    reason: str | None = None
+    for start in range(0, len(texts), batch):
+        part = texts[start : start + batch]
+        try:
+            vectors.extend(gateway.embed(part))
+            continue
+        except LlmError as exc:
+            if exc.code not in REFUSAL_CODES:
+                raise
+            reason = exc.message
+            if len(part) == 1:
+                vectors.append(None)
+                continue
+        for text in part:
+            try:
+                vectors.extend(gateway.embed([text]))
+            except LlmError as exc:
+                if exc.code not in REFUSAL_CODES:
+                    raise
+                reason = exc.message
+                vectors.append(None)
+    return vectors, reason
 
 
 def _chunks(
@@ -579,6 +673,28 @@ class DocumentSearchService:
         if model is None or (settings.internal_only and not model.is_internal):
             return None
         return model
+
+    def _indexing_embedder(
+        self, workspace_id: uuid.UUID
+    ) -> tuple[EmbeddingModel | None, str | None]:
+        """The model to embed a document with, else why not as the file's
+        ``embedding_error``. A setting that keeps documents from a model (``_embedder``'s
+        reasons) is a deliberate skip: no model and no error, only a debug log line."""
+        settings = self._ai.document_settings(workspace_id)
+        if not settings.includes_documents:
+            logger.debug(
+                "not embedding: Workspace %s does not share documents with the AI", workspace_id
+            )
+            return None, None
+        found = self._embeddings.for_indexing(workspace_id, internal_only=settings.internal_only)
+        if found is None:
+            logger.debug(
+                "not embedding: Workspace %s has no embedding model it may use", workspace_id
+            )
+            return None, None
+        if isinstance(found, EmbeddingModelFailed):
+            return None, MODEL_TEST_FAILED.format(reason=found.error)
+        return found, None
 
     def _vision_model(self, workspace_id: uuid.UUID) -> VisionModel | None:
         """The Workspace's vision model if it may be sent a document's image, else ``None``:
@@ -848,8 +964,10 @@ class DocumentSearchService:
         before_embedding: Callable[[], None] | None = None,
     ) -> int:
         """(Re)build the passages of one file; the number of passages. Full-text always,
-        embeddings only when ``_embedder`` allows. A provider failure leaves the file
-        full-text only (a re-index retries). ``on_stage`` hears ``chunking`` and, when
+        embeddings only when ``_indexing_embedder`` gives a model. Passages the provider
+        refuses, or all of them after an outage or a failed model test, stay full-text only
+        and the file's ``embedding_error`` says why (a re-index retries; a full embed clears
+        it). ``on_stage`` hears ``chunking`` and, when
         the passages are embedded, ``embedding``. With ``key``, the passages are stored only
         while the file still holds the bytes at that key (else ``_Superseded``)."""
         stage = on_stage or (lambda _: None)
@@ -860,7 +978,9 @@ class DocumentSearchService:
             folders = _tags(record.path) if record else []
             name = record.path if record else ""
         stage("chunking")
-        model = self._embedder(workspace_id) if text and text.strip() else None
+        model, embedding_error = (
+            self._indexing_embedder(workspace_id) if text and text.strip() else (None, None)
+        )
         # Passage size is measured in the embedding model's own tokens, counted locally
         # (never a provider call); without a local tokenizer the estimate is used.
         counter = model.gateway.local_token_counter() if model else None
@@ -874,28 +994,39 @@ class DocumentSearchService:
             logger.warning("semantic chunking failed, using recursive: %s", exc)
             chunks = _chunks(text or "", counter, "recursive", None, config)
         if not chunks:
-            model = None
+            model, embedding_error = None, None
         headers = self._headers(workspace_id, name, text or "", [c.chunk for c in chunks], config)
         indexed = [
             f"{h}\n{c.chunk.text}" if h else c.chunk.text
             for h, c in zip(headers, chunks, strict=True)
         ]
 
-        vectors: list[list[float]] | None = None
+        vectors: list[list[float] | None] | None = None
         if before_embedding is not None:
             before_embedding()
         if model is not None:
             stage("embedding")
             try:
-                vectors = _embed_all(model.gateway, indexed, batch)
+                vectors, refused = _embed_passages(model.gateway, indexed, batch)
             except (LlmError, ApiError) as exc:
                 _unless_other_api_error(exc)
                 logger.warning("embedding failed, indexing full-text only: %s", exc)
                 vectors = None
+                embedding_error = EMBEDDING_FAILED.format(reason=getattr(exc, "message", exc))
+            else:
+                missed = sum(v is None for v in vectors)
+                if refused is not None and missed == len(vectors):
+                    embedding_error = EMBEDDING_FAILED.format(reason=refused)
+                elif refused is not None:
+                    logger.warning("%d passages refused, kept full-text only", missed)
+                    embedding_error = PARTLY_EMBEDDED.format(
+                        refused=missed, total=len(vectors), reason=refused
+                    )
+        first = next((v for v in vectors or () if v is not None), None)
 
-        if model is not None and vectors:
+        if model is not None and first is not None:
             try:
-                ensure_vector_index(self._engine, model.id, len(vectors[0]))
+                ensure_vector_index(self._engine, model.id, len(first))
             except sa.exc.SQLAlchemyError:  # search still works, by scan
                 logger.warning("creating the vector index failed", exc_info=True)
 
@@ -907,6 +1038,11 @@ class DocumentSearchService:
             ):
                 raise _Superseded
             db.execute(sa.delete(DocumentChunkRecord).where(DocumentChunkRecord.file_id == file_id))
+            db.execute(
+                sa.update(WorkspaceFileRecord)
+                .where(WorkspaceFileRecord.id == file_id)
+                .values(embedding_error=embedding_error)
+            )
             for ordinal, piece in enumerate(chunks):
                 row = DocumentChunkRecord(
                     id=uuid.uuid4(),
@@ -926,7 +1062,8 @@ class DocumentSearchService:
                     tags=folders,
                 )
                 db.add(row)
-                if model is not None and vectors is not None and ordinal < len(vectors):
+                vector = vectors[ordinal] if vectors and ordinal < len(vectors) else None
+                if model is not None and vector is not None:
                     db.flush()
                     db.execute(
                         sa.text(
@@ -934,9 +1071,9 @@ class DocumentSearchService:
                             "embedding_model_id = :m, embedding_dimension = :d WHERE id = :id"
                         ),
                         {
-                            "v": _vector_literal(vectors[ordinal]),
+                            "v": _vector_literal(vector),
                             "m": model.id,
-                            "d": len(vectors[ordinal]),
+                            "d": len(vector),
                             "id": row.id,
                         },
                     )
@@ -945,7 +1082,9 @@ class DocumentSearchService:
     def start_reindex(self, user: User, workspace_id: uuid.UUID) -> Job:
         """Queue a ``reindex_documents`` job: every document of the Workspace is indexed
         again with the current embedding model and policy (owners and editors). Run it
-        after the embedding model or its dimension changes. A re-embed left unfinished
+        after the embedding model or its dimension changes. While the Workspace has a
+        ``reindex_documents`` job queued or running, that job is returned instead (it
+        covers every document): two never run side by side. A re-embed left unfinished
         (its job lost) is taken over: this job switches to the new vectors instead."""
         self._workspaces.authorize(user, Action.UPLOAD_FILE, workspace_id)
         return self._submit_reindex(user, workspace_id)
@@ -964,9 +1103,19 @@ class DocumentSearchService:
 
     def _submit_reindex(self, user: User, workspace_id: uuid.UUID) -> Job:
         with Session(self._engine) as db, db.begin():
-            params = {"workspace_id": str(workspace_id)}
+            db.execute(  # two Re-index all at once must not both submit
+                sa.text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+                {"k": f"reindex_documents:{workspace_id}"},
+            )
+            running = self._jobs.latest(workspace_id, REINDEX_JOB, {}, db=db, active=True)
+            if running is not None:
+                return running
+            params: dict[str, Any] = {"workspace_id": str(workspace_id)}
             if db.get(EmbeddingRebuildRecord, workspace_id, with_for_update=True) is not None:
-                params["rebuild_id"] = str(self._mark_rebuild(db, workspace_id))
+                rebuild_id, extract = self._mark_rebuild(db, workspace_id)
+                params["rebuild_id"] = str(rebuild_id)
+                if extract:
+                    params["extract"] = True
             return self._jobs.submit(
                 workspace_id,
                 REINDEX_JOB,
@@ -1039,6 +1188,8 @@ class DocumentSearchService:
                     index_status=record.index_status,
                     index_error=record.index_error,
                     index_note=record.index_note,
+                    embedding_error=record.embedding_error,
+                    text_only=is_text_only(record.embedding_error),
                     chunk_count=total or 0,
                     embedded_count=embedded or 0,
                     stale_count=stale or 0,
@@ -1072,9 +1223,10 @@ class DocumentSearchService:
         ``reindex_documents`` job builds the new vectors, then switches to them at once. A
         rebuild already running is superseded: only the newest one switches. With
         ``extract`` (Documents were just shared) the job runs the whole ``index_document``
-        pipeline on every file, so scans are read and images described too."""
-        rebuild_id = self._mark_rebuild(db, workspace_id)
-        params = {"workspace_id": str(workspace_id), "rebuild_id": str(rebuild_id)}
+        pipeline on every file, so scans are read and images described too; a rebuild that
+        supersedes one whose extract pass had not finished keeps ``extract`` (#573)."""
+        rebuild_id, extract = self._mark_rebuild(db, workspace_id, extract=extract)
+        params: dict[str, Any] = {"workspace_id": str(workspace_id), "rebuild_id": str(rebuild_id)}
         if extract:
             params["extract"] = True
         self._jobs.submit(
@@ -1087,22 +1239,35 @@ class DocumentSearchService:
             db=db,
         )
 
-    def _mark_rebuild(self, db: Session, workspace_id: uuid.UUID) -> uuid.UUID:
+    def _mark_rebuild(
+        self, db: Session, workspace_id: uuid.UUID, *, extract: bool = False
+    ) -> tuple[uuid.UUID, bool]:
+        """Start a new rebuild, superseding the Workspace's current one; its id, and whether
+        it must extract (asked now, or by the rebuild it supersedes, which has not switched
+        and so has not finished its pass)."""
         rebuild_id = uuid.uuid4()
-        db.execute(
-            insert(EmbeddingRebuildRecord)
-            .values(workspace_id=workspace_id, rebuild_id=rebuild_id, started_at=self._clock())
-            .on_conflict_do_update(
-                index_elements=[EmbeddingRebuildRecord.workspace_id],
-                set_={"rebuild_id": rebuild_id, "started_at": self._clock()},
-            )
+        stmt = insert(EmbeddingRebuildRecord).values(
+            workspace_id=workspace_id,
+            rebuild_id=rebuild_id,
+            extract=extract,
+            started_at=self._clock(),
         )
-        return rebuild_id
+        kept = db.scalar(
+            stmt.on_conflict_do_update(
+                index_elements=[EmbeddingRebuildRecord.workspace_id],
+                set_={
+                    "rebuild_id": rebuild_id,
+                    "started_at": self._clock(),
+                    "extract": EmbeddingRebuildRecord.extract | stmt.excluded.extract,
+                },
+            ).returning(EmbeddingRebuildRecord.extract)
+        )
+        return rebuild_id, bool(kept)
 
     def run_reindex(self, params: Mapping[str, Any], ctx: JobContext) -> None:
         """The ``reindex_documents`` job handler. With a ``rebuild_id`` (a re-embed), it
-        stops once a newer rebuild supersedes it, and however it ends it switches the
-        Workspace to the new vectors (``_switch``)."""
+        stops once a newer rebuild supersedes it, ending ``cancelled`` (``SUPERSEDED``), and
+        however it ends it switches the Workspace to the new vectors (``_switch``)."""
         workspace_id = uuid.UUID(params["workspace_id"])
         rebuild = uuid.UUID(params["rebuild_id"]) if "rebuild_id" in params else None
         try:
@@ -1132,9 +1297,7 @@ class DocumentSearchService:
             )
         for done, (file_id, key) in enumerate(files, start=1):
             ctx.raise_if_cancelled()
-            if rebuild is not None and not self._rebuild_current(workspace_id, rebuild):
-                ctx.log("A newer change of the embedding model took over; stopping.")
-                return
+            self._stop_if_superseded(workspace_id, rebuild, ctx)
             try:
                 self.run_index(
                     {"workspace_id": str(workspace_id), "file_id": str(file_id), "key": key}, ctx
@@ -1159,12 +1322,19 @@ class DocumentSearchService:
             )
         for done, file_id in enumerate(file_ids, start=1):
             ctx.raise_if_cancelled()
-            if rebuild is not None and not self._rebuild_current(workspace_id, rebuild):
-                ctx.log("A newer change of the embedding model took over; stopping.")
-                return
+            self._stop_if_superseded(workspace_id, rebuild, ctx)
             count = self.index_file(workspace_id, file_id)
             ctx.log(f"Indexed {count} passages of document {done} of {len(file_ids)}.")
             ctx.progress(done * 100 // len(file_ids))
+
+    def _stop_if_superseded(
+        self, workspace_id: uuid.UUID, rebuild: uuid.UUID | None, ctx: JobContext
+    ) -> None:
+        """End the job ``cancelled`` once a newer rebuild took over: it covers every
+        document, so this one must not report success for the files it never reached."""
+        if rebuild is not None and not self._rebuild_current(workspace_id, rebuild):
+            ctx.log(SUPERSEDED)
+            raise JobCancelledError(SUPERSEDED)
 
     def _rebuild_current(self, workspace_id: uuid.UUID, rebuild: uuid.UUID) -> bool:
         with Session(self._engine) as db:
@@ -1177,10 +1347,20 @@ class DocumentSearchService:
                 == rebuild
             )
 
-    def _switch(self, db: Session, workspace_id: uuid.UUID, rebuild: uuid.UUID) -> None:
+    def _switch(
+        self,
+        db: Session,
+        workspace_id: uuid.UUID,
+        rebuild: uuid.UUID,
+        *,
+        unreached: str | None = None,
+    ) -> None:
         """End the rebuild ``rebuild`` unless a newer one superseded it: in one transaction,
         drop every vector not made by the current embedding model (a document that failed
-        to embed stays text only) and let search use vectors again."""
+        to embed stays text only) and let search use vectors again. With ``unreached`` (the
+        rebuild's job ended before its last file), every indexed document left without a
+        vector of the current model gets it as its ``embedding_error``: it shows Text only
+        until a re-index; nothing is queued again."""
         ended = db.execute(
             sa.delete(EmbeddingRebuildRecord).where(
                 EmbeddingRebuildRecord.workspace_id == workspace_id,
@@ -1201,13 +1381,42 @@ class DocumentSearchService:
             )
             .values(embedding=None, embedding_model_id=None, embedding_dimension=None)
         )
+        if unreached is None or model is None:
+            return
+        chunks = DocumentChunkRecord
+        db.execute(
+            sa.update(WorkspaceFileRecord)
+            .where(
+                WorkspaceFileRecord.workspace_id == workspace_id,
+                WorkspaceFileRecord.index_status == "indexed",
+                # A partly-embedded note is about vectors just dropped: replace it too.
+                sa.or_(
+                    WorkspaceFileRecord.embedding_error.is_(None),
+                    WorkspaceFileRecord.embedding_error.like(
+                        "% of % passages could not be embedded: %"
+                    ),
+                ),
+                sa.exists().where(chunks.file_id == WorkspaceFileRecord.id),
+                ~sa.exists().where(
+                    chunks.file_id == WorkspaceFileRecord.id,
+                    chunks.embedding_model_id == model.id,
+                ),
+            )
+            .values(embedding_error=unreached)
+        )
 
     def abandon_reindex(self, db: Session, params: Mapping[str, Any], reason: str) -> None:
-        """The jobs module's hook for a ``reindex_documents`` job that ended without running
-        (cancelled while queued, or its worker lost): a re-embed still switches, so search
-        does not stay text only."""
+        """The jobs module's hook for a ``reindex_documents`` job cancelled (queued or
+        running) or whose worker was lost: a re-embed still switches, so search does not
+        stay text only, and the documents it did not reach say so (``NOT_REACHED``)."""
         if "rebuild_id" in params:
-            self._switch(db, uuid.UUID(params["workspace_id"]), uuid.UUID(params["rebuild_id"]))
+            cancelled = "cancelled" in reason
+            self._switch(
+                db,
+                uuid.UUID(params["workspace_id"]),
+                uuid.UUID(params["rebuild_id"]),
+                unreached=NOT_REACHED if cancelled else NOT_REACHED_LOST.format(reason=reason),
+            )
 
     # -- searching ---------------------------------------------------------------------
 

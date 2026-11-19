@@ -37,6 +37,7 @@ function model(
     streaming: true,
     json_schema: true,
     embedding_dimension: null,
+    dimension_warning: null,
     limited: false,
     test_ok: true,
     test_error_code: null,

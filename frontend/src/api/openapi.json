@@ -14187,7 +14187,7 @@
           "files"
         ],
         "summary": "Reindex Documents",
-        "description": "Index every document of the Workspace again (owners and editors), as a background\njob: run it after the embedding model or its dimension changes.",
+        "description": "Index every document of the Workspace again (owners and editors), as a background\njob: run it after the embedding model or its dimension changes. While a re-index is\nqueued or running, that job is returned instead of a second one.",
         "operationId": "reindexDocuments",
         "parameters": [
           {
@@ -24378,6 +24378,23 @@
             "title": "Index Note",
             "description": "Something worth knowing that did not fail it."
           },
+          "embedding_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Error",
+            "description": "Why some or all passages have no vector; null otherwise."
+          },
+          "text_only": {
+            "type": "boolean",
+            "title": "Text Only",
+            "description": "Indexed, but no passage has a vector."
+          },
           "chunk_count": {
             "type": "integer",
             "title": "Chunk Count",
@@ -24408,6 +24425,8 @@
           "index_status",
           "index_error",
           "index_note",
+          "embedding_error",
+          "text_only",
           "chunk_count",
           "embedded_count",
           "stale_count",
@@ -25321,7 +25340,7 @@
               }
             ],
             "title": "Error",
-            "description": "Why the job failed; null otherwise."
+            "description": "Why the job failed, or why it stopped itself (e.g. superseded); null otherwise."
           },
           "question": {
             "anyOf": [
@@ -27029,6 +27048,18 @@
             ],
             "title": "Embedding Dimension"
           },
+          "dimension_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension Warning",
+            "description": "Set when the tested embedding dimension is too wide for a vector index (pgvector's HNSW limit): document search still works but scans every passage."
+          },
           "limited": {
             "type": "boolean",
             "title": "Limited",
@@ -27114,6 +27145,7 @@
           "streaming",
           "json_schema",
           "embedding_dimension",
+          "dimension_warning",
           "limited",
           "test_ok",
           "test_error_code",
@@ -37382,6 +37414,24 @@
             ],
             "title": "Index Note",
             "description": "Something worth knowing about the last indexing that did not fail it, e.g. that the self-hosted OCR engine read the scanned pages instead of the Workspace's vision model; null otherwise."
+          },
+          "embedding_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Error",
+            "description": "Why some or all passages of an `indexed` file have no vector (search still finds them by full-text); null when every passage is embedded or embedding is off by the Workspace's settings."
+          },
+          "text_only": {
+            "type": "boolean",
+            "title": "Text Only",
+            "description": "Indexed, but no passage has a vector: shown as Text only. False for a partly embedded file (`embedding_error` then says how many passages missed out).",
+            "default": false
           },
           "updated_by": {
             "anyOf": [

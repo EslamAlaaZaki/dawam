@@ -923,11 +923,12 @@ def test_new_core_and_mart_tables_get_dawams_audit_columns(staged):
 
 
 def test_audit_column_names_follow_the_naming_rules(staged):
+    # The Staging audit names (source_system_column) lock once Staging Tables exist (#620),
+    # as they do here; the Core and Mart ones are still free until a Core table exists.
     current = staged.client("editor").get(dw(staged)).json()
     rules = current["naming_rules"] | {
         "created_ts_column": "etl_created",
         "updated_ts_column": "etl_updated",
-        "source_system_column": "etl_source",
     }
     response = staged.client("editor").patch(
         dw(staged), json={"version": current["version"], "naming_rules": rules}
@@ -940,7 +941,7 @@ def test_audit_column_names_follow_the_naming_rules(staged):
     assert [c["name"] for c in columns if c["role"] == "audit"] == [
         "etl_created",
         "etl_updated",
-        "etl_source",
+        current["naming_rules"]["source_system_column"],
     ]
 
 
