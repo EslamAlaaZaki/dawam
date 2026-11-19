@@ -31793,6 +31793,17 @@
             ],
             "title": "Result"
           },
+          "tool_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepResultOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stored result of a tool step."
+          },
           "error_code": {
             "anyOf": [
               {
@@ -31829,6 +31840,7 @@
           "output",
           "arguments",
           "result",
+          "tool_result",
           "error_code",
           "error_message"
         ],
@@ -34678,6 +34690,110 @@
           "table_ids"
         ],
         "title": "StartProfilingRequest"
+      },
+      "StepResultOut": {
+        "properties": {
+          "stored": {
+            "type": "boolean",
+            "title": "Stored",
+            "description": "False for a run from before results were kept."
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns",
+            "description": "Column names of a tabular result."
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {},
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows",
+            "description": "The first 50 rows of a tabular result, redacted."
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count",
+            "description": "Total rows of a tabular result."
+          },
+          "data": {
+            "title": "Data",
+            "description": "A non-tabular result as redacted JSON (the UI cuts it)."
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "A result that is not JSON, redacted."
+          },
+          "token_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Size",
+            "description": "Estimated tokens of the stored result."
+          },
+          "sent_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent Mode",
+            "description": "`full` (sent again with follow-ups) or `digest_over_cap` (digest only)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "stored",
+          "columns",
+          "rows",
+          "row_count",
+          "data",
+          "text",
+          "token_size",
+          "sent_mode"
+        ],
+        "title": "StepResultOut"
       },
       "SuggestionIds": {
         "properties": {

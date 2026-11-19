@@ -341,6 +341,9 @@ class ToolCallRecord:
     """A short digest of the result, so a later turn knows what the call found."""
     flagged: tuple[str, ...] = ()
     """What of the result looked like a prompt injection (document names or the tool)."""
+    content: str | None = None
+    """The result as the model received it (cut to the window), kept on the run so a follow-up
+    can send it again; ``None`` for a call that produced no model-visible result."""
 
 
 @dataclass(frozen=True)
@@ -498,6 +501,7 @@ def _record_json(record: ToolCallRecord) -> dict[str, Any]:
         "result": record.result,
         "digest": record.digest,
         "flagged": list(record.flagged),
+        "content": record.content,
     }
 
 
@@ -684,8 +688,12 @@ def run_agent(
     resume: Checkpoint | None = None,
     member_answer: str | None = None,
     verify: Verify | None = None,
+    history_results: Sequence[tuple[Message, Message]] = (),
 ) -> Iterator[AgentEvent]:
     """Run the conversation ``history`` (ending with the member's message) to an answer.
+
+    ``history_results`` are the full tool results in ``history`` (each with its digest form):
+    like the run's own results, the oldest become digests first when a request is too large.
 
     ``summary`` stands for turns left out earlier. With ``summarize`` (compaction on), turns
     that no longer fit the window are summarised into it (and reported as ``Compacted``)
@@ -711,6 +719,13 @@ def run_agent(
     stream = capabilities.streaming is not False
     count = _cached_counter(getattr(gateway, "count_tokens", None))
     prompted = capabilities.tool_calling is False  # limited mode: tools are described in text
+    if prompted and resume is None and any(m.role == "tool" or m.tool_calls for m in history):
+        converted = {id(m): _prompted_form(m) for m in history}  # earlier turns' tool exchanges
+        history = [converted[id(m)] for m in history]
+        history_results = [
+            (converted.get(id(full), _prompted_form(full)), _prompted_form(short))
+            for full, short in history_results
+        ]
     messages = [Message("system", system + (summary_block(summary) if summary else "")), *history]
     protect_from = len(history)  # the member's latest message
     limit_hit = False
@@ -743,7 +758,7 @@ def run_agent(
         known_tools.add(finder.name)
     if resume is not None and resume.loaded is not None:
         loaded = set(resume.loaded) & set(known_tools)
-    shortenable: list[tuple[Message, Message]] = []
+    shortenable: list[tuple[Message, Message]] = [] if resume else list(history_results)
     """The run's tool results, oldest first, each with its digest form."""
     retries = 0
     rejections = 0
@@ -807,6 +822,7 @@ def run_agent(
             if (outcome.status == "ok" or call.name == "web_fetch") and call.name != ASK_MEMBER
             else []
         )
+        sent = shorten_result(outcome.content, window)
         entry = ToolCallRecord(
             call.id,
             call.name,
@@ -816,11 +832,12 @@ def run_agent(
             outcome.saved,
             _digest(outcome),
             tuple(flagged),
+            sent,
         )
         run.calls.append(entry)
         yield ToolFinished(entry)
         tag = f"tool:{call.name if call.name in known_tools else 'unknown'}"
-        quoted = quote_data(tag, shorten_result(outcome.content, window))
+        quoted = quote_data(tag, sent)
         short = quote_data(tag, SHORTENED + entry.digest)
         if flagged:
             quoted, short = warn(quoted), warn(short)

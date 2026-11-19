@@ -226,7 +226,7 @@ a.tlink:hover { text-decoration: underline; }
 
 <script id="erd-data" type="application/json">{
  "alembic_head": [
-  "a3c8e1f5b927"
+  "b7d2f4a9c613"
  ],
  "modules": [
   {
@@ -1565,6 +1565,330 @@ a.tlink:hover { text-decoration: underline; }
    "orm_class": "RunFeedbackRecord",
    "source": "backend/src/dawam/modules/assistant/tables.py",
    "description": "A member's rating of the answer of one run: one per member and run, changeable."
+  },
+  {
+   "name": "assistant_run_tool_results",
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "id",
+     "app_default": null,
+     "description": null,
+     "pk": true,
+     "fk": []
+    },
+    {
+     "name": "run_id",
+     "type": "uuid",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "run_id",
+     "app_default": null,
+     "description": null,
+     "pk": false,
+     "fk": [
+      {
+       "table": "assistant_runs",
+       "column": "id"
+      }
+     ]
+    },
+    {
+     "name": "tool_call_id",
+     "type": "character varying(128)",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "tool_call_id",
+     "app_default": null,
+     "description": "The id the model gave the call, pairing the result with its call.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "position",
+     "type": "integer",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "position",
+     "app_default": null,
+     "description": "The order of the call within the run.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "name",
+     "type": "character varying(128)",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "name",
+     "app_default": null,
+     "description": null,
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "arguments",
+     "type": "jsonb",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "arguments",
+     "app_default": null,
+     "description": "The call's arguments as the model sent them (unredacted, like the result).",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "status",
+     "type": "character varying(16)",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "status",
+     "app_default": null,
+     "description": null,
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "content",
+     "type": "text",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "content",
+     "app_default": null,
+     "description": "The result text exactly as the model received it.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "digest",
+     "type": "text",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "digest",
+     "app_default": null,
+     "description": "The short form sent instead of ``content`` when it is not sent in full.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "flagged",
+     "type": "jsonb",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "flagged",
+     "app_default": null,
+     "description": "What of the result looked like a prompt injection.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "columns",
+     "type": "jsonb",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "columns",
+     "app_default": null,
+     "description": "For a tabular result (a query), the column names; else ``None``.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "rows",
+     "type": "jsonb",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "rows",
+     "app_default": null,
+     "description": "For a tabular result, the rows the tool returned.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "row_count",
+     "type": "integer",
+     "nullable": true,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "row_count",
+     "app_default": null,
+     "description": null,
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "token_size",
+     "type": "integer",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": null,
+     "in_orm": true,
+     "attribute": "token_size",
+     "app_default": null,
+     "description": "Estimated tokens of ``content``.",
+     "pk": false,
+     "fk": []
+    },
+    {
+     "name": "sent_mode",
+     "type": "character varying(16)",
+     "nullable": false,
+     "default": null,
+     "identity": null,
+     "generated": null,
+     "enum": {
+      "source": "CHECK ck_assistant_run_tool_results_sent_mode",
+      "values": [
+       "full",
+       "digest_over_cap"
+      ]
+     },
+     "in_orm": true,
+     "attribute": "sent_mode",
+     "app_default": null,
+     "description": "``full``: sent again with follow-ups; ``digest_over_cap``: over the size cap, so only\n``digest`` is sent.",
+     "pk": false,
+     "fk": []
+    }
+   ],
+   "primary_key": [
+    "id"
+   ],
+   "foreign_keys": [
+    {
+     "name": "fk_assistant_run_tool_results_run_id_assistant_runs",
+     "columns": [
+      "run_id"
+     ],
+     "ref_table": "assistant_runs",
+     "ref_columns": [
+      "id"
+     ],
+     "on_update": "NO ACTION",
+     "on_delete": "CASCADE"
+    }
+   ],
+   "constraints": [
+    {
+     "name": "ck_assistant_run_tool_results_sent_mode",
+     "kind": "CHECK",
+     "columns": [
+      "sent_mode"
+     ],
+     "definition": "CHECK (((sent_mode)::text = ANY ((ARRAY['full'::character varying, 'digest_over_cap'::character varying])::text[])))"
+    },
+    {
+     "name": "fk_assistant_run_tool_results_run_id_assistant_runs",
+     "kind": "FOREIGN KEY",
+     "columns": [
+      "run_id"
+     ],
+     "definition": "FOREIGN KEY (run_id) REFERENCES assistant_runs(id) ON DELETE CASCADE"
+    },
+    {
+     "name": "pk_assistant_run_tool_results",
+     "kind": "PRIMARY KEY",
+     "columns": [
+      "id"
+     ],
+     "definition": "PRIMARY KEY (id)"
+    },
+    {
+     "name": "uq_assistant_run_tool_results_run_id",
+     "kind": "UNIQUE",
+     "columns": [
+      "run_id",
+      "tool_call_id"
+     ],
+     "definition": "UNIQUE (run_id, tool_call_id)"
+    }
+   ],
+   "indexes": [
+    {
+     "name": "pk_assistant_run_tool_results",
+     "unique": true,
+     "method": "btree",
+     "columns": [
+      "id"
+     ],
+     "predicate": null,
+     "definition": "CREATE UNIQUE INDEX pk_assistant_run_tool_results ON public.assistant_run_tool_results USING btree (id)",
+     "backs_constraint": true
+    },
+    {
+     "name": "uq_assistant_run_tool_results_run_id",
+     "unique": true,
+     "method": "btree",
+     "columns": [
+      "run_id",
+      "tool_call_id"
+     ],
+     "predicate": null,
+     "definition": "CREATE UNIQUE INDEX uq_assistant_run_tool_results_run_id ON public.assistant_run_tool_results USING btree (run_id, tool_call_id)",
+     "backs_constraint": true
+    }
+   ],
+   "triggers": [],
+   "in_orm": true,
+   "module": "assistant",
+   "orm_class": "RunToolResultRecord",
+   "source": "backend/src/dawam/modules/assistant/tables.py",
+   "description": "The full result of one tool call of a run, as the model received it, so a follow-up\nquestion can send it again and the run explorer can show it (redacted). Kept as long as the\nrun: deleted with its conversation or Workspace. Plain JSON like messages; older runs have\nnone."
   },
   {
    "name": "assistant_runs",
@@ -20734,6 +21058,21 @@ a.tlink:hover { text-decoration: underline; }
     "user_id"
    ],
    "to_table": "users",
+   "to_columns": [
+    "id"
+   ],
+   "cardinality": "N:1",
+   "optional": false,
+   "on_delete": "CASCADE",
+   "on_update": "NO ACTION"
+  },
+  {
+   "name": "fk_assistant_run_tool_results_run_id_assistant_runs",
+   "from_table": "assistant_run_tool_results",
+   "from_columns": [
+    "run_id"
+   ],
+   "to_table": "assistant_runs",
    "to_columns": [
     "id"
    ],

@@ -4,6 +4,7 @@ arguments and feedback comments are shown redacted."""
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any
@@ -82,6 +83,21 @@ class RunListOut(BaseModel):
     items: list[RunSummaryOut]
 
 
+class StepResultOut(BaseModel):
+    stored: bool = Field(description="False for a run from before results were kept.")
+    columns: list[str] | None = Field(description="Column names of a tabular result.")
+    rows: list[list[Any]] | None = Field(
+        description="The first 50 rows of a tabular result, redacted."
+    )
+    row_count: int | None = Field(description="Total rows of a tabular result.")
+    data: Any = Field(description="A non-tabular result as redacted JSON (the UI cuts it).")
+    text: str | None = Field(description="A result that is not JSON, redacted.")
+    token_size: int | None = Field(description="Estimated tokens of the stored result.")
+    sent_mode: str | None = Field(
+        description="`full` (sent again with follow-ups) or `digest_over_cap` (digest only)."
+    )
+
+
 class RunStepOut(BaseModel):
     kind: str = Field(
         description="`model` (the run's model calls, summed), `tool` (one tool call) or `error`."
@@ -96,6 +112,7 @@ class RunStepOut(BaseModel):
     output: str | None = Field(description="The answer, redacted.")
     arguments: dict[str, Any] | None
     result: dict[str, Any] | None
+    tool_result: StepResultOut | None = Field(description="The stored result of a tool step.")
     error_code: str | None
     error_message: str | None
 
@@ -123,7 +140,10 @@ def _summary(s: RunSummary) -> RunSummaryOut:
 
 
 def _step(s: RunStep) -> RunStepOut:
-    return RunStepOut(**{**s.__dict__, "cost": _cost(s.cost)})
+    tool_result = None
+    if s.tool_result is not None:
+        tool_result = StepResultOut.model_validate(asdict(s.tool_result))
+    return RunStepOut(**{**s.__dict__, "cost": _cost(s.cost), "tool_result": tool_result})
 
 
 def _utc(moment: datetime | None) -> datetime | None:
