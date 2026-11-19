@@ -452,6 +452,7 @@ function Step({ step, share, last }: { step: RunStep; share: number; last: boole
           <Badge variant={statusVariant(step.status)} dot>
             {step.status}
           </Badge>
+          <SentTag mode={step.tool_result?.sent_mode ?? null} />
         </div>
         {(
           <>
@@ -484,19 +485,120 @@ function Step({ step, share, last }: { step: RunStep; share: number; last: boole
             {step.output && <Block label="Answer (redacted)" text={step.output} />}
           </Collapsible>
         )}
-        {(hasArguments || step.result) && (
+        {(hasArguments || step.result || step.tool_result) && (
           <Collapsible summary="Arguments and result">
             {hasArguments && (
               <Block label="Arguments" text={JSON.stringify(step.arguments, null, 2)} mono />
             )}
-            {step.result && (
-              <Block label="Result" text={JSON.stringify(step.result, null, 2)} mono />
+            {step.tool_result ? (
+              <StoredResult result={step.tool_result} />
+            ) : (
+              step.result && (
+                <Block label="Result" text={JSON.stringify(step.result, null, 2)} mono />
+              )
             )}
           </Collapsible>
         )}
         {step.error_message && <p className="text-sm text-danger">{step.error_message}</p>}
       </div>
     </li>
+  );
+}
+
+const JSON_CUT = 1200;
+
+/** Whether the model got this result in full on the next follow-ups, or only a digest. */
+function SentTag({ mode }: { mode: string | null }) {
+  if (mode === "full") {
+    return (
+      <Badge variant="accent" title="Sent back in full with the next 2 questions">
+        Sent in full
+      </Badge>
+    );
+  }
+  if (mode === "digest_over_cap") {
+    return <Badge>Sent as digest · over 4,000 tokens</Badge>;
+  }
+  return null;
+}
+
+type StoredResultData = NonNullable<RunStep["tool_result"]>;
+
+/** A tool step's stored result: a table when tabular, else cut JSON or text. */
+function StoredResult({ result }: { result: StoredResultData }) {
+  const [showAll, setShowAll] = useState(false);
+  if (!result.stored) {
+    return (
+      <p className="mt-2 text-xs text-subtle-foreground">
+        No result stored: this run is older than full tool results.
+      </p>
+    );
+  }
+  const size = (
+    <span className="font-mono tabular-nums">
+      {result.token_size?.toLocaleString("en-US") ?? 0} tokens
+    </span>
+  );
+  if (result.columns && result.rows) {
+    return (
+      <div className="mt-2">
+        <div className="text-xs text-subtle-foreground">Result (redacted)</div>
+        <div className="mt-1 max-h-60 overflow-auto rounded-md border border-border bg-surface">
+          <table className="w-full border-collapse font-mono text-mono">
+            <thead>
+              <tr>
+                {result.columns.map((c) => (
+                  <th key={c} className="border-b border-border px-2 py-1 text-start font-medium">
+                    {c}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {result.rows.map((row, i) => (
+                <tr key={i}>
+                  {row.map((v, j) => (
+                    <td
+                      key={j}
+                      className={`px-2 py-1 ${typeof v === "number" ? "text-end tabular-nums" : ""}`}
+                    >
+                      {v === null || v === undefined
+                        ? ""
+                        : typeof v === "object"
+                          ? JSON.stringify(v)
+                          : String(v)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-subtle-foreground">
+          <span className="tabular-nums">
+            Showing {result.rows.length.toLocaleString("en-US")} of{" "}
+            {(result.row_count ?? result.rows.length).toLocaleString("en-US")} rows
+          </span>
+          {size}
+        </p>
+      </div>
+    );
+  }
+  const full =
+    result.text ?? (result.data === null ? "" : JSON.stringify(result.data, null, 2)) ?? "";
+  const cut = !showAll && full.length > JSON_CUT;
+  return (
+    <div>
+      <Block label="Result (redacted)" text={cut ? `${full.slice(0, JSON_CUT)}…` : full} mono />
+      <p className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-subtle-foreground">
+        {full.length > JSON_CUT && (
+          <Button variant="ghost" size="sm" onClick={() => setShowAll(!showAll)}>
+            {showAll ? "Show less" : "Show all"}
+          </Button>
+        )}
+        {size}
+      </p>
+    </div>
   );
 }
 

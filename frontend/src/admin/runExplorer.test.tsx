@@ -56,6 +56,7 @@ const DETAIL: RunDetail = {
       output: "It is Net Revenue.",
       arguments: null,
       result: null,
+      tool_result: null,
       error_code: null,
       error_message: null,
     },
@@ -71,6 +72,7 @@ const DETAIL: RunDetail = {
       output: null,
       arguments: { limit: 5 },
       result: null,
+      tool_result: null,
       error_code: null,
       error_message: null,
     },
@@ -85,6 +87,8 @@ const DETAIL: RunDetail = {
   ],
 };
 
+let toolResult: NonNullable<RunDetail["timeline"][number]["tool_result"]> | null = null;
+
 function backend(me: Me, seen: ApiRequest[] = []) {
   return (r: ApiRequest) => {
     switch (`${r.method} ${r.path}`) {
@@ -94,7 +98,12 @@ function backend(me: Me, seen: ApiRequest[] = []) {
         seen.push(r);
         return json({ items: [RUN] });
       case `GET /api/v1/admin/assistant/runs/${RUN.id}`:
-        return json(DETAIL);
+        return json({
+          ...DETAIL,
+          timeline: DETAIL.timeline.map((st) =>
+            st.kind === "tool" ? { ...st, tool_result: toolResult } : st,
+          ),
+        });
       case "GET /api/v1/admin/workspaces":
       case "GET /api/v1/admin/users":
         return json({ items: [], next_cursor: null });
@@ -106,6 +115,7 @@ function backend(me: Me, seen: ApiRequest[] = []) {
 
 let clearCookie: () => void;
 beforeEach(() => {
+  toolResult = null;
   clearCookie = setCsrfCookie();
 });
 afterEach(() => clearCookie());
@@ -128,6 +138,51 @@ describe("the assistant run explorer", () => {
     expect(row).toHaveTextContent("big-model");
     expect(row).toHaveTextContent("0 up 1 down");
     expect(screen.getByRole("heading", { name: "AI runs" })).toBeInTheDocument();
+  });
+
+  async function openToolStep() {
+    renderApp(backend(ADMIN), "/admin/ai-runs");
+    fireEvent.click(await screen.findByRole("row", { name: `Run ${RUN.id}` }));
+    const timeline = await screen.findByRole("region", { name: "Run timeline" });
+    return within(timeline).getByRole("listitem", { name: "Tool call list_kpis" });
+  }
+  const base = { stored: true, columns: null, rows: null, row_count: null, data: null, text: null };
+
+  it("shows a tabular stored result with its row count and the full sent tag", async () => {
+    toolResult = {
+      ...base,
+      columns: ["region", "revenue"],
+      rows: [["North", 10]],
+      row_count: 1240,
+      token_size: 321,
+      sent_mode: "full",
+    };
+    const step = await openToolStep();
+    expect(step).toHaveTextContent("Sent in full");
+    expect(within(step).getByRole("columnheader", { name: "revenue" })).toBeInTheDocument();
+    expect(within(step).getByRole("cell", { name: "North" })).toBeInTheDocument();
+    expect(step).toHaveTextContent("Showing 1 of 1,240 rows");
+    expect(step).toHaveTextContent("321 tokens");
+  });
+
+  it("cuts long JSON until Show all, and tags a digest", async () => {
+    toolResult = {
+      ...base,
+      data: { note: "x".repeat(2000), tail: "THE-END" },
+      token_size: 5000,
+      sent_mode: "digest_over_cap",
+    };
+    const step = await openToolStep();
+    expect(step).toHaveTextContent("Sent as digest · over 4,000 tokens");
+    expect(step).not.toHaveTextContent("THE-END");
+    fireEvent.click(within(step).getByRole("button", { name: "Show all" }));
+    expect(step).toHaveTextContent("THE-END");
+  });
+
+  it("says no result is stored for an older run", async () => {
+    toolResult = { ...base, stored: false, sent_mode: null, token_size: null };
+    const step = await openToolStep();
+    expect(step).toHaveTextContent("No result stored: this run is older than full tool results.");
   });
 
   it("shows a run's timeline, prompt version and feedback", async () => {
