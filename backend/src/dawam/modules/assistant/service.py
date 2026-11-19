@@ -29,6 +29,7 @@ from dawam.modules.llm import (
     Message,
     RoleService,
     TextDelta,
+    ToolCall,
     WorkspaceAiService,
     in_ai_call_context,
 )
@@ -52,7 +53,7 @@ from .internal.agent import (
     Verify,
     run_agent,
 )
-from .internal.context import CHARS_PER_TOKEN, PROMPT_SHARE
+from .internal.context import CHARS_PER_TOKEN, PROMPT_SHARE, estimate_tokens
 from .internal.injection import (
     Inspector,
     flagged_parts,
@@ -81,6 +82,7 @@ from .tables import (
     MessageRecord,
     RunFeedbackRecord,
     RunRecord,
+    RunToolResultRecord,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,6 +97,11 @@ AUTO_RETRIEVE_PASSAGES = 3
 COMPACTION_HISTORY_MESSAGES = 200
 """With compaction on, the turns after the summary that are loaded: the window, not this
 count, decides how many of them are sent and how many are summarised."""
+FULL_RESULT_TURNS = 2
+"""The last turns whose tool results a follow-up sends in full; older turns send digests."""
+FULL_RESULT_TOKEN_CAP = 4000
+"""A result over this many tokens is never sent in full again: only its digest is."""
+RESENT_DIGEST = "[too large to send again; digest] "
 MAX_DIGEST_CALLS = 8
 """Tool calls of one earlier answer listed in the history."""
 MAX_TOOL_NOTE = 1500
@@ -585,11 +592,19 @@ class AssistantService:
     ) -> None:
         """Delete a conversation, by the member who started it: it is kept, marked deleted,
         and nobody reaches it any more. 403 ``not_your_conversation`` for a shared one
-        somebody else started, 409 ``workspace_archived``."""
+        somebody else started, 409 ``workspace_archived``. The runs' stored tool results (row
+        values) are removed for good."""
         self._workspaces.authorize(user, Action.ASK_ASSISTANT, workspace_id)
         with Session(self._engine) as db, db.begin():
             record = self._load(db, user, workspace_id, conversation_id, access="starter")
             record.deleted_at = self._clock()
+            db.execute(
+                sa.delete(RunToolResultRecord).where(
+                    RunToolResultRecord.run_id.in_(
+                        sa.select(RunRecord.id).where(RunRecord.conversation_id == conversation_id)
+                    )
+                )
+            )
 
     # -- asking ----------------------------------------------------------------------
 
@@ -1110,6 +1125,7 @@ class AssistantService:
                     tools,
                     system=_system_prompt(context),
                     history=messages,
+                    history_results=history.results,
                     core_tools=tools.core_names(context.type, context.id)
                     if context
                     else tools.core_names(None),
@@ -1256,6 +1272,15 @@ class AssistantService:
                 }
                 for c in finished.tool_calls
             ]
+            seen_ids: set[str] = set()
+            for i, c in enumerate(finished.tool_calls):
+                if c.content is None:
+                    continue
+                record = _stored_result(i, c, run.id)
+                if record.tool_call_id in seen_ids:  # a provider may reuse an id across rounds
+                    record.tool_call_id = f"{record.tool_call_id}#{i}"
+                seen_ids.add(record.tool_call_id)
+                db.add(record)
             run.input_tokens = finished.prompt_tokens
             run.output_tokens = finished.completion_tokens
             run.duration_ms = duration_ms
@@ -1386,27 +1411,47 @@ class AssistantService:
         recent = list(
             reversed(list(db.scalars(query.order_by(MessageRecord.position.desc()).limit(limit))))
         )
-        notes: dict[uuid.UUID, str] = {}
-        if compaction:
-            runs = db.scalars(
-                sa.select(RunRecord).where(
-                    RunRecord.answer_message_id.in_([m.id for m in recent if m.role != "user"])
-                )
+        answers = [m for m in recent if m.role != "user"]
+        runs = list(
+            db.scalars(
+                sa.select(RunRecord).where(RunRecord.answer_message_id.in_([m.id for m in answers]))
             )
-            notes = {
-                r.answer_message_id: _tool_note(r.tool_calls) for r in runs if r.answer_message_id
-            }
-        return _History(
-            [
-                Message(
-                    "user" if m.role == "user" else "assistant",
-                    strip_cards(m.content) + notes.get(m.id, ""),
-                )
-                for m in recent
-            ],
-            [m.position for m in recent],
-            summary,
         )
+        by_answer = {r.answer_message_id: r for r in runs}
+        full_turns = {m.id for m in answers[-FULL_RESULT_TURNS:]}
+        stored: dict[uuid.UUID, list[RunToolResultRecord]] = {}
+        if runs:
+            for row in db.scalars(
+                sa.select(RunToolResultRecord)
+                .where(RunToolResultRecord.run_id.in_([r.id for r in runs]))
+                .order_by(RunToolResultRecord.position)
+            ):
+                stored.setdefault(row.run_id, []).append(row)
+        messages: list[Message] = []
+        positions: list[int] = []
+        results: list[tuple[Message, Message]] = []
+        for m in recent:
+            run = by_answer.get(m.id)
+            if m.role == "user" or run is None:
+                role = "user" if m.role == "user" else "assistant"
+                messages.append(Message(role, strip_cards(m.content)))
+                positions.append(m.position)
+                continue
+            rows = stored.get(run.id, []) if m.id in full_turns else []
+            if rows:
+                # The calls and their results precede the turn's answer, each call paired with
+                # its result; older turns, and runs without stored results, keep digests.
+                exchange, shortenable = _exchange(rows)
+                messages.extend(exchange)
+                results.extend(shortenable)
+                positions.extend([m.position] * len(exchange))
+                messages.append(Message("assistant", strip_cards(m.content)))
+            else:
+                messages.append(
+                    Message("assistant", strip_cards(m.content) + _tool_note(run.tool_calls))
+                )
+            positions.append(m.position)
+        return _History(messages, positions, summary, results)
 
     def _save_summary(self, conversation_id: uuid.UUID, summary: str, through: int) -> None:
         with Session(self._engine) as db, db.begin():
@@ -1456,6 +1501,68 @@ class _History:
     positions: list[int]
     """The position of each message, to say how far a new summary reaches."""
     summary: str | None
+    results: list[tuple[Message, Message]] = field(default_factory=list)
+    """The tool results sent in full, each with its digest form."""
+
+
+def _exchange(
+    rows: Sequence[RunToolResultRecord],
+) -> tuple[list[Message], list[tuple[Message, Message]]]:
+    """One earlier turn's tool calls as the model first saw them: an assistant message with the
+    calls, then each call's result. A result goes through the same quoting and injection
+    handling as the first time; one over the size cap is sent as its digest. Also the full
+    results with their digest forms, for a request that turns out too large."""
+    calls = tuple(ToolCall(r.tool_call_id, r.name, r.arguments) for r in rows)
+    messages = [Message("assistant", None, calls)]
+    shortenable: list[tuple[Message, Message]] = []
+    for r in rows:
+        tag = f"tool:{r.name}"
+        flagged = list(r.flagged) or flagged_parts(r.name, r.content, rule_based_inspector)
+        digest = quote_data(tag, RESENT_DIGEST + (r.digest or ""))
+        full = quote_data(tag, r.content) if r.sent_mode == "full" else digest
+        if flagged:
+            full, digest = warn(full), warn(digest)
+        result = Message("tool", full, tool_call_id=r.tool_call_id)
+        messages.append(result)
+        if r.sent_mode == "full":
+            shortenable.append((result, Message("tool", digest, tool_call_id=r.tool_call_id)))
+    return messages, shortenable
+
+
+def _stored_result(position: int, call: ToolCallRecord, run_id: uuid.UUID) -> RunToolResultRecord:
+    """The record of one finished call's result, with its table when the result has one."""
+    content = call.content or ""
+    columns = rows = row_count = None
+    try:
+        data = json.loads(content)
+    except ValueError:
+        data = None
+    if (
+        isinstance(data, dict)
+        and isinstance(data.get("columns"), list)
+        and isinstance(data.get("rows"), list)
+    ):
+        columns, rows = data["columns"], data["rows"]
+        count = data.get("row_count")
+        row_count = count if isinstance(count, int) else len(rows)
+    size = estimate_tokens(content)
+    return RunToolResultRecord(
+        id=uuid.uuid4(),
+        run_id=run_id,
+        tool_call_id=call.id,
+        position=position,
+        name=call.name,
+        arguments=call.arguments,
+        status=call.status,
+        content=content,
+        digest=call.digest,
+        flagged=list(call.flagged),
+        columns=columns,
+        rows=rows,
+        row_count=row_count,
+        token_size=size,
+        sent_mode="digest_over_cap" if size > FULL_RESULT_TOKEN_CAP else "full",
+    )
 
 
 def _tool_note(calls: Sequence[Mapping[str, Any]]) -> str:

@@ -91,10 +91,17 @@ def run_queries(
     return list(zip(statuses, seen, strict=True))
 
 
-def app_database_text(app: FastAPI) -> str:
+TOOL_RESULTS_TABLE = (
+    "assistant_run_tool_results"  # full results, kept with the conversation (ADR 0011)
+)
+
+
+def app_database_text(app: FastAPI, *, only: str | None = None, skip: str | None = None) -> str:
     rows: list[str] = []
     with app.state.engine.connect() as conn:
         for table in sa.inspect(conn).get_table_names():
+            if (only and table != only) or table == skip:
+                continue
             result = conn.execute(sa.text(f'SELECT row_to_json(t)::text FROM "{table}" t'))
             rows.extend(row[0] for row in result)
     return "\n".join(rows)
@@ -370,10 +377,12 @@ def test_no_value_is_stored_logged_or_audited(
             "SELECT COUNT(*) AS n FROM public.people WHERE who <> 'Nobody Here'",
         )
 
-    stored = app_database_text(app) + caplog.text
+    # Row values live only in the run's stored tool results (ADR 0011), never anywhere else.
+    stored = app_database_text(app, skip=TOOL_RESULTS_TABLE) + caplog.text
     for value in [*SECRETS, *NAMES]:
         assert value not in stored, value
     assert "Nobody Here" in stored  # the model's own SQL is kept (redacted of PII only)
+    assert NAMES[0] in app_database_text(app, only=TOOL_RESULTS_TABLE)
 
 
 def test_saved_tool_results_keep_only_query_columns_row_count_and_duration(

@@ -121,6 +121,48 @@ class RunRecord(Base):
     finished_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
 
+class RunToolResultRecord(Base):
+    """The full result of one tool call of a run, as the model received it, so a follow-up
+    question can send it again and the run explorer can show it (redacted). Kept as long as the
+    run: deleted with its conversation or Workspace. Plain JSON like messages; older runs have
+    none."""
+
+    __tablename__ = "assistant_run_tool_results"
+    __table_args__ = (
+        sa.CheckConstraint("sent_mode IN ('full', 'digest_over_cap')", name="sent_mode"),
+        sa.UniqueConstraint("run_id", "tool_call_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("assistant_runs.id", ondelete="CASCADE")
+    )
+    tool_call_id: Mapped[str] = mapped_column(sa.String(128))
+    """The id the model gave the call, pairing the result with its call."""
+    position: Mapped[int]
+    """The order of the call within the run."""
+    name: Mapped[str] = mapped_column(sa.String(128))
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    """The call's arguments as the model sent them (unredacted, like the result)."""
+    status: Mapped[str] = mapped_column(sa.String(16))
+    content: Mapped[str] = mapped_column(sa.Text)
+    """The result text exactly as the model received it."""
+    digest: Mapped[str | None] = mapped_column(sa.Text)
+    """The short form sent instead of ``content`` when it is not sent in full."""
+    flagged: Mapped[list[str]] = mapped_column(JSONB)
+    """What of the result looked like a prompt injection."""
+    columns: Mapped[list[str] | None] = mapped_column(JSONB)
+    """For a tabular result (a query), the column names; else ``None``."""
+    rows: Mapped[list[list[Any]] | None] = mapped_column(JSONB)
+    """For a tabular result, the rows the tool returned."""
+    row_count: Mapped[int | None]
+    token_size: Mapped[int]
+    """Estimated tokens of ``content``."""
+    sent_mode: Mapped[str] = mapped_column(sa.String(16))
+    """``full``: sent again with follow-ups; ``digest_over_cap``: over the size cap, so only
+    ``digest`` is sent."""
+
+
 class RunFeedbackRecord(Base):
     """A member's rating of the answer of one run: one per member and run, changeable."""
 

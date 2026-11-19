@@ -130,6 +130,9 @@ def test_past_tool_calls_come_back_as_digests(roles, model, admin_client, fake_l
         Reply(text="It is Net Revenue."),
     )
     ask(owner, roles, cid, "which KPIs exist")
+    for text in ("two", "three"):  # the last 2 turns send their results in full (#636)
+        fake_llm.script(Reply(text=text))
+        ask(owner, roles, cid, text)
     fake_llm.calls.clear()
     fake_llm.script(Reply(text="None."))
 

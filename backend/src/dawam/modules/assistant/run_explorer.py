@@ -8,6 +8,7 @@ the answering model's price (unknown, not zero, when the model has none).
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -24,7 +25,13 @@ from dawam.modules.workspaces import INSTALLATION, Action, WorkspaceService, can
 from dawam.platform.errors import ApiError
 from dawam.platform.pii_validators import redact_json, redact_text
 
-from .tables import ConversationRecord, MessageRecord, RunFeedbackRecord, RunRecord
+from .tables import (
+    ConversationRecord,
+    MessageRecord,
+    RunFeedbackRecord,
+    RunRecord,
+    RunToolResultRecord,
+)
 
 RUN_LIST_LIMIT = 100
 RUN_STATUSES = ("running", "completed", "tool_limit", "cancelled", "failed")
@@ -57,6 +64,44 @@ class RunSummary:
     started_at: datetime
 
 
+RESULT_ROW_LIMIT = 50
+"""The most rows of a tabular tool result the explorer returns."""
+
+
+@dataclass(frozen=True)
+class StepResult:
+    """What a tool call returned, redacted. ``stored`` is false for a run from before results
+    were kept (every other field is then empty). A tabular result has ``columns``, the first
+    ``RESULT_ROW_LIMIT`` ``rows`` and the total ``row_count``; any other has ``data`` (the JSON; or
+    ``text`` when it is not JSON). ``sent_mode``: ``full`` or ``digest_over_cap``."""
+
+    stored: bool
+    columns: list[str] | None = None
+    rows: list[list[Any]] | None = None
+    row_count: int | None = None
+    data: Any = None
+    text: str | None = None
+    token_size: int | None = None
+    sent_mode: str | None = None
+
+
+def _step_result(row: RunToolResultRecord | None) -> StepResult:
+    if row is None:
+        return StepResult(stored=False)
+    base = {"stored": True, "token_size": row.token_size, "sent_mode": row.sent_mode}
+    if row.columns is not None and row.rows is not None:
+        return StepResult(
+            columns=redact_json(row.columns),
+            rows=redact_json(row.rows[:RESULT_ROW_LIMIT]),
+            row_count=row.row_count,
+            **base,
+        )
+    try:
+        return StepResult(data=redact_json(json.loads(row.content)), **base)
+    except ValueError:
+        return StepResult(text=redact_text(row.content), **base)
+
+
 @dataclass(frozen=True)
 class RunStep:
     """``kind`` is ``model`` (the run's model calls, summed), ``tool`` or ``error``."""
@@ -72,6 +117,7 @@ class RunStep:
     output: str | None = None
     arguments: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
+    tool_result: StepResult | None = None
     error_code: str | None = None
     error_message: str | None = None
 
@@ -169,6 +215,12 @@ class RunExplorer:
             if row is None:
                 raise ApiError(404, "not_found", "That run does not exist.")
             run, workspace_id, sender, prompt, answer_text = row
+            stored = {
+                r.position: r
+                for r in db.scalars(
+                    sa.select(RunToolResultRecord).where(RunToolResultRecord.run_id == run_id)
+                )
+            }
             votes = _votes(db, [run.id])
             answers = _answer_models(db, [run.id])
             ratings = list(
@@ -200,8 +252,11 @@ class RunExplorer:
                 duration_ms=c.get("duration_ms"),
                 arguments=redact_json(c.get("arguments") or {}),
                 result=redact_json(c["result"]) if c.get("result") else None,
+                # A missing row on a run that stored others is a call with no content (a
+                # verify or auto-retrieve step): fall back to ``result`` rather than "older run".
+                tool_result=_step_result(stored.get(i)) if not stored or i in stored else None,
             )
-            for c in run.tool_calls
+            for i, c in enumerate(run.tool_calls)
         ]
         if run.error_code or run.error_message:
             timeline.append(

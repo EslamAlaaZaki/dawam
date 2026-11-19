@@ -300,7 +300,7 @@ Skipped: Brave (no free tier since February 2026), Tavily (small one-time free c
 
 | Today | Enhancement |
 |---|---|
-| Last 30 messages; past tool calls not replayed | Include compact summaries of past tool results so follow-ups don't repeat calls. **Done** ([#354](https://github.com/EslamAlaaZaki/dawam/issues/354)) |
+| Last 30 messages; past tool calls not replayed | Include compact summaries of past tool results so follow-ups don't repeat calls. **Done** ([#354](https://github.com/EslamAlaaZaki/dawam/issues/354)). Follow-up **done** ([#636](https://github.com/EslamAlaaZaki/dawam/issues/636), [ADR 0011](adr/0011-store-full-tool-results-on-runs.md)): full tool results are stored per call and the last 2 turns' results are sent in full with a follow-up (a result over about 4,000 tokens, and older turns, send digests) |
 | Oldest turns dropped when over budget | **Summarise** dropped turns with the light model (compaction) instead of losing them. **Done** ([#354](https://github.com/EslamAlaaZaki/dawam/issues/354)) |
 | Token estimate = chars / 4 | Real token counts (provider count-tokens endpoints, or `tiktoken` / HF tokenizers per model). **Done** ([#352](https://github.com/EslamAlaaZaki/dawam/issues/352)) |
 | No prompt caching | **Prompt caching**: Anthropic `cache_control` on the system prompt and tool list, automatic caching on OpenAI/Gemini/DeepSeek; vLLM/SGLang prefix caching for self-hosted. Large cost and latency savings on 25-call runs. **Done** ([#353](https://github.com/EslamAlaaZaki/dawam/issues/353)) |

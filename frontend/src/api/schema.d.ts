@@ -10860,6 +10860,8 @@ export interface components {
             result: {
                 [key: string]: unknown;
             } | null;
+            /** @description The stored result of a tool step. */
+            tool_result: components["schemas"]["StepResultOut"] | null;
             /** Error Code */
             error_code: string | null;
             /** Error Message */
@@ -12144,6 +12146,49 @@ export interface components {
              * @default false
              */
             keep_top_values: boolean;
+        };
+        /** StepResultOut */
+        StepResultOut: {
+            /**
+             * Stored
+             * @description False for a run from before results were kept.
+             */
+            stored: boolean;
+            /**
+             * Columns
+             * @description Column names of a tabular result.
+             */
+            columns: string[] | null;
+            /**
+             * Rows
+             * @description The first 50 rows of a tabular result, redacted.
+             */
+            rows: unknown[][] | null;
+            /**
+             * Row Count
+             * @description Total rows of a tabular result.
+             */
+            row_count: number | null;
+            /**
+             * Data
+             * @description A non-tabular result as redacted JSON (the UI cuts it).
+             */
+            data: unknown;
+            /**
+             * Text
+             * @description A result that is not JSON, redacted.
+             */
+            text: string | null;
+            /**
+             * Token Size
+             * @description Estimated tokens of the stored result.
+             */
+            token_size: number | null;
+            /**
+             * Sent Mode
+             * @description `full` (sent again with follow-ups) or `digest_over_cap` (digest only).
+             */
+            sent_mode: string | null;
         };
         /** SuggestionIds */
         SuggestionIds: {
