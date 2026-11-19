@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from tests.assistant import test_chat
 from tests.assistant.test_chat import add_system, tool_names
-from tests.assistant.test_run_source_query import app_database_text
+from tests.assistant.test_run_source_query import TOOL_RESULTS_TABLE, app_database_text
 from tests.assistant.test_source_tools import level, payload, use
 
 model = test_chat.model
@@ -111,11 +111,14 @@ def test_a_file_of_another_workspace_is_not_found(roles, model, fake_llm):
     assert status == "error" and "not_found" in seen
 
 
-def test_no_row_value_is_kept_on_the_run(roles, model, fake_llm, sales, app: FastAPI):
+def test_row_values_are_kept_only_in_the_stored_tool_results(
+    roles, model, fake_llm, sales, app: FastAPI
+):
     level(roles, "documents")
     sql = "SELECT 'computed-' || region AS tag FROM data"
 
     status, seen = use(roles, fake_llm, "query_file", file_id=sales, sql=sql)
 
     assert status == "ok" and "computed-north" in seen
-    assert "computed-north" not in app_database_text(app)
+    assert "computed-north" not in app_database_text(app, skip=TOOL_RESULTS_TABLE)
+    assert "computed-north" in app_database_text(app, only=TOOL_RESULTS_TABLE)
