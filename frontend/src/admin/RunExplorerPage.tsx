@@ -490,13 +490,10 @@ function Step({ step, share, last }: { step: RunStep; share: number; last: boole
             {hasArguments && (
               <Block label="Arguments" text={JSON.stringify(step.arguments, null, 2)} mono />
             )}
-            {step.tool_result ? (
-              <StoredResult result={step.tool_result} />
-            ) : (
-              step.result && (
-                <Block label="Result" text={JSON.stringify(step.result, null, 2)} mono />
-              )
+            {!step.tool_result?.stored && step.result && (
+              <Block label="Result" text={JSON.stringify(step.result, null, 2)} mono />
             )}
+            {step.tool_result && <StoredResult result={step.tool_result} />}
           </Collapsible>
         )}
         {step.error_message && <p className="text-sm text-danger">{step.error_message}</p>}

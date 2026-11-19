@@ -1272,11 +1272,15 @@ class AssistantService:
                 }
                 for c in finished.tool_calls
             ]
-            db.add_all(
-                _stored_result(i, c, run.id)
-                for i, c in enumerate(finished.tool_calls)
-                if c.content is not None
-            )
+            seen_ids: set[str] = set()
+            for i, c in enumerate(finished.tool_calls):
+                if c.content is None:
+                    continue
+                record = _stored_result(i, c, run.id)
+                if record.tool_call_id in seen_ids:  # a provider may reuse an id across rounds
+                    record.tool_call_id = f"{record.tool_call_id}#{i}"
+                seen_ids.add(record.tool_call_id)
+                db.add(record)
             run.input_tokens = finished.prompt_tokens
             run.output_tokens = finished.completion_tokens
             run.duration_ms = duration_ms

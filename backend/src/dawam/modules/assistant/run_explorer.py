@@ -252,7 +252,9 @@ class RunExplorer:
                 duration_ms=c.get("duration_ms"),
                 arguments=redact_json(c.get("arguments") or {}),
                 result=redact_json(c["result"]) if c.get("result") else None,
-                tool_result=_step_result(stored.get(i)),
+                # A missing row on a run that stored others is a call with no content (a
+                # verify or auto-retrieve step): fall back to ``result`` rather than "older run".
+                tool_result=_step_result(stored.get(i)) if not stored or i in stored else None,
             )
             for i, c in enumerate(run.tool_calls)
         ]
