@@ -38,6 +38,7 @@ import {
 } from "../components/ui/table";
 import { StarPanel } from "../diagrams/StarPanel";
 import { Loading } from "../shell/Loading";
+import { StagingModelPanel } from "./StagingModelPanel";
 import { MappingsGrid } from "./MappingsGrid";
 import {
   Actions,
@@ -134,6 +135,25 @@ export function ModelPanel({
   const label = LAYER_LABELS[layer];
   const editable = layer !== "staging" && allows(workspace, "dw_schema.edit");
 
+  if (layer === "staging") {
+    return (
+      <StagingModelPanel
+        workspace={workspace}
+        renderDetails={(tableId, onClose) => (
+          <TableDetails
+            // Another table starts with fresh forms.
+            key={tableId}
+            workspace={workspace}
+            tableId={tableId}
+            references={[]}
+            editable={false}
+            onClose={onClose}
+          />
+        )}
+      />
+    );
+  }
+
   if (tables.isPending) {
     return <Loading />;
   }
@@ -163,11 +183,7 @@ export function ModelPanel({
       >
         <div className="flex min-w-0 flex-col gap-4">
           {tables.data.length === 0 ? (
-            <EmptyState>
-              No tables in the {label} Layer yet.
-              {layer === "staging" &&
-                " Staging Tables are created from the Source Schema."}
-            </EmptyState>
+            <EmptyState>No tables in the {label} Layer yet.</EmptyState>
           ) : (
             <TableCard
               footer={
@@ -230,9 +246,7 @@ export function ModelPanel({
               </Table>
             </TableCard>
           )}
-          {layer !== "staging" && (
-            <StarPanel workspaceId={workspace.id} layer={layer} />
-          )}
+          <StarPanel workspaceId={workspace.id} layer={layer} />
         </div>
         {openId && (
           <TableDetails
@@ -253,9 +267,7 @@ export function ModelPanel({
           onAdded={(t) => setOpenId(t.id)}
         />
       ) : (
-        layer !== "staging" && (
-          <Hint>Only owners and editors can edit the model.</Hint>
-        )
+        <Hint>Only owners and editors can edit the model.</Hint>
       )}
     </section>
   );
@@ -517,7 +529,11 @@ function TableDetails({
                     ) : column.role === "fk" ? (
                       <Badge variant="fk">{ROLE_LABELS[column.role]}</Badge>
                     ) : (
-                      ROLE_LABELS[column.role]
+                      <Badge
+                        variant={column.role === "audit" ? "info" : "neutral"}
+                      >
+                        {ROLE_LABELS[column.role]}
+                      </Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">

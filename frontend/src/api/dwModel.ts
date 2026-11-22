@@ -8,6 +8,7 @@ import type { components } from "./schema";
 export type DwTable = components["schemas"]["DwTable"];
 export type DwTableSummary = components["schemas"]["DwTableSummary"];
 export type DwColumn = components["schemas"]["DwColumn"];
+export type StagingResult = components["schemas"]["StagingResult"];
 export type DwLayer = DwTable["layer"];
 export type CreateDwTableRequest = components["schemas"]["CreateDwTableRequest"];
 export type UpdateDwTableRequest = components["schemas"]["UpdateDwTableRequest"];
@@ -115,6 +116,25 @@ export function useCreateDwTable(workspaceId: string) {
       const { data, error, response } = await client.POST(
         "/api/v1/workspaces/{workspace_id}/data-warehouse/tables",
         { params: { path: { workspace_id: workspaceId } }, body },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSuccess: refresh,
+  });
+}
+
+/** Generate the Staging Layer from the Source Schema; running it again adds only what is new. */
+export function useGenerateStaging(workspaceId: string) {
+  const client = useApiClient();
+  const refresh = useRefreshModel(workspaceId);
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error, response } = await client.POST(
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/generate",
+        { params: { path: { workspace_id: workspaceId } } },
       );
       if (error) {
         throw new ApiError(response.status, error.error);
