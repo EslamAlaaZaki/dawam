@@ -163,7 +163,21 @@ export function StagingOverviewPanel({
     );
   }
 
-  const { groups, other } = groupTables(tableData, systems.data ?? []);
+  if (systems.isPending) {
+    return <Loading />;
+  }
+  if (systems.isError) {
+    return (
+      <section aria-labelledby="folder-title" className="flex flex-col gap-5">
+        {header()}
+        <ErrorText>
+          Could not load the Source Systems: {systems.error.message}
+        </ErrorText>
+      </section>
+    );
+  }
+
+  const { groups, other } = groupTables(tableData, systems.data);
   const columns = tableData.reduce((sum, t) => sum + t.column_count, 0);
   const withIssues = tableData.filter(
     (t) => t.naming_violation_count > 0,
