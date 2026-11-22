@@ -7,7 +7,9 @@ import type { components } from "./schema";
 
 export type FailedCheck = components["schemas"]["FailedCheck"];
 
-export function useFailedChecks(workspaceId: string) {
+export type Score = components["schemas"]["Score"];
+
+function useScoreQuery<T>(workspaceId: string, select: (score: Score) => T) {
   const client = useApiClient();
   return useQuery({
     queryKey: ["workspace", workspaceId, "score"],
@@ -19,7 +21,20 @@ export function useFailedChecks(workspaceId: string) {
       if (error) {
         throw new ApiError(response.status, error.error);
       }
-      return data.failed_checks;
+      return data;
     },
+    select,
   });
+}
+
+const failedChecksOf = (score: Score) => score.failed_checks;
+const wholeScore = (score: Score) => score;
+
+export function useFailedChecks(workspaceId: string) {
+  return useScoreQuery(workspaceId, failedChecksOf);
+}
+
+/** The latest Data Warehouse score: overall, per Layer (staging is scored apart), per table. */
+export function useScore(workspaceId: string) {
+  return useScoreQuery(workspaceId, wholeScore);
 }

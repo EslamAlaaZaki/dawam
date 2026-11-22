@@ -48,6 +48,7 @@ import { SourceErDiagram } from "./SourceErDiagram";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
 import { PiiPanel } from "./PiiPanel";
 import { ProfilingPanel } from "./ProfilingPanel";
+import { StagingOverviewPanel } from "./StagingOverviewPanel";
 import { SourceSummaryPanel } from "./SourceSummaryPanel";
 import { MembersPanel } from "./MembersPanel";
 import { ModelPanel } from "./ModelPanel";
@@ -373,6 +374,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               key={folder.id}
               workspace={workspace.data}
               layer={modelLayer}
+            />
+          ) : folder.id === "dw/staging" ? (
+            <StagingOverviewPanel
+              workspace={workspace.data}
+              onOpen={(child) => select(`dw/staging/${child}`)}
             />
           ) : folder.id === "dw/score" ? (
             <FailedChecksPanel workspace={workspace.data} onAsk={ask} />
