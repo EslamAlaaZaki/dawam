@@ -203,7 +203,7 @@ const nodeClasses =
   "flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md pe-2 text-start text-sm transition-colors hover:bg-muted [&_svg]:size-4 [&_svg]:shrink-0";
 
 /** A folder of the tree: it opens and closes, and counts what it holds. */
-function TreeGroup({
+export function TreeGroup({
   label,
   icon,
   count,
@@ -281,7 +281,7 @@ function TreeGroup({
 }
 
 /** A table, view or routine of the tree: it opens the object's page. */
-function TreeLeaf({
+export function TreeLeaf({
   name,
   title,
   icon,
