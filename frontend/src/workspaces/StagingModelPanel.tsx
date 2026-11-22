@@ -19,13 +19,13 @@ import { Loading } from "../shell/Loading";
 import { TreeGroup, TreeLeaf } from "./SchemaBrowser";
 import { EmptyState, ErrorText, h3Classes, monoClasses } from "./parts";
 
-type Group = {
+export type Group = {
   system: SourceSystem;
   schemas: { name: string; tables: DwTableSummary[] }[];
 };
 
 /** A Staging Table is named `stg_<system code>_<database schema>_<table>`; the codes are the Workspace's. */
-function groupTables(
+export function groupTables(
   tables: DwTableSummary[],
   systems: SourceSystem[],
 ): { groups: Group[]; other: DwTableSummary[] } {

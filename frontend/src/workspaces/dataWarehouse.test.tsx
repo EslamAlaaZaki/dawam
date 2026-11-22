@@ -357,7 +357,7 @@ describe("a link into the Data Warehouse folder", () => {
     open("owner", SET_UP, "dw/staging");
 
     expect(
-      await screen.findByRole("heading", { name: "Staging" }),
+      await screen.findByRole("heading", { name: /Staging Layer/ }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Details" }),
