@@ -35,20 +35,27 @@ function groupTables(
   const other: DwTableSummary[] = [];
   for (const table of tables) {
     const name = table.name.toLowerCase();
-    const system = known.find((s) =>
-      name.startsWith(`stg_${s.code.toLowerCase()}_`),
-    );
-    const rest = system
-      ? name.slice(`stg_${system.code.toLowerCase()}_`.length)
-      : "";
-    const cut = rest.indexOf("_");
-    if (!system || cut < 1 || cut === rest.length - 1) {
+    // The longest matching code first; the next one if it leaves no schema and table.
+    let placed: { system: SourceSystem; schema: string } | null = null;
+    for (const system of known) {
+      const prefix = `stg_${system.code.toLowerCase()}_`;
+      if (!name.startsWith(prefix)) {
+        continue;
+      }
+      const rest = name.slice(prefix.length);
+      const cut = rest.indexOf("_");
+      if (cut >= 1 && cut < rest.length - 1) {
+        placed = { system, schema: rest.slice(0, cut) };
+        break;
+      }
+    }
+    if (!placed) {
       other.push(table);
       continue;
     }
+    const { system, schema } = placed;
     const schemas =
       bySystem.get(system.code) ?? new Map<string, DwTableSummary[]>();
-    const schema = rest.slice(0, cut);
     schemas.set(schema, [...(schemas.get(schema) ?? []), table]);
     bySystem.set(system.code, schemas);
   }
@@ -75,9 +82,13 @@ function ResultStrip({ result }: { result: StagingResult }) {
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="success">Generated</Badge>
         <span>
-          {result.tables_created} Staging Tables and {result.columns_created}{" "}
-          columns created. {result.tables_existing} source tables already had
-          one and were left as they are.
+          {result.tables_created}{" "}
+          {result.tables_created === 1 ? "Staging Table" : "Staging Tables"} and{" "}
+          {result.columns_created}{" "}
+          {result.columns_created === 1 ? "column" : "columns"} created.{" "}
+          {result.tables_existing}{" "}
+          {result.tables_existing === 1 ? "source table" : "source tables"}{" "}
+          already had one and were left as they are.
         </span>
         {result.flags.length > 0 && (
           <Badge variant="warning">{result.flags.length} to review</Badge>
@@ -126,22 +137,28 @@ export function StagingModelPanel({
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const canGenerate = allows(workspace, "dw_schema.edit");
 
-  if (tables.isPending || systems.isPending) {
+  if (tables.isPending) {
     return <Loading />;
   }
-  if (tables.isError || systems.isError) {
-    const error = tables.error ?? systems.error;
-    return <ErrorText>Could not load the model: {error?.message}</ErrorText>;
+  if (tables.isError && !tables.data) {
+    return (
+      <ErrorText>Could not load the model: {tables.error.message}</ErrorText>
+    );
   }
+  const tableData = tables.data ?? [];
+  // Without the Source Systems every table is listed under "Other".
+  const systemList = systems.data ?? [];
 
   const button = (
     <Button
       type="button"
       variant="primary"
       disabled={generate.isPending}
-      onClick={() =>
-        generate.mutate(undefined, { onSuccess: (data) => setResult(data) })
-      }
+      onClick={() => {
+        setResult(null);
+        generate.reset();
+        generate.mutate(undefined, { onSuccess: (data) => setResult(data) });
+      }}
     >
       <Database aria-hidden />
       Generate Staging Layer
@@ -149,10 +166,10 @@ export function StagingModelPanel({
   );
 
   const query = search.trim().toLowerCase();
-  const shown = tables.data.filter((t) => t.name.toLowerCase().includes(query));
-  const { groups, other } = groupTables(shown, systems.data);
-  const systemCount = groupTables(tables.data, systems.data).groups.length;
-  const columns = tables.data.reduce((sum, t) => sum + t.column_count, 0);
+  const shown = tableData.filter((t) => t.name.toLowerCase().includes(query));
+  const { groups, other } = groupTables(shown, systemList);
+  const systemCount = groupTables(tableData, systemList).groups.length;
+  const columns = tableData.reduce((sum, t) => sum + t.column_count, 0);
   const isOpen = (key: string) => query !== "" || !closed.has(key);
   const toggle = (key: string) =>
     setClosed((current) => {
@@ -198,8 +215,8 @@ export function StagingModelPanel({
             Staging model
           </h3>
           <p className="text-sm text-muted-foreground tabular-nums">
-            {tables.data.length} {tables.data.length === 1 ? "table" : "tables"}{" "}
-            · {columns} {columns === 1 ? "column" : "columns"} · {systemCount}{" "}
+            {tableData.length} {tableData.length === 1 ? "table" : "tables"} ·{" "}
+            {columns} {columns === 1 ? "column" : "columns"} · {systemCount}{" "}
             {systemCount === 1 ? "Source System" : "Source Systems"}
           </p>
         </div>
@@ -217,12 +234,17 @@ export function StagingModelPanel({
               className={cn(tables.isFetching && "motion-safe:animate-spin")}
             />
           </Button>
-          {canGenerate && tables.data.length > 0 && button}
+          {canGenerate && tableData.length > 0 && button}
         </div>
       </header>
+      {tables.isError && (
+        <ErrorText>
+          Could not refresh the model: {tables.error.message}
+        </ErrorText>
+      )}
       {generate.isError && <ErrorText>{generate.error.message}</ErrorText>}
       {result && <ResultStrip result={result} />}
-      {tables.data.length === 0 ? (
+      {tableData.length === 0 ? (
         <EmptyState title="No Staging Tables yet">
           Staging Tables are created from the Source Schema: one per source
           table, named stg_&lt;system code&gt;_&lt;schema&gt;_&lt;table&gt;,
@@ -246,7 +268,7 @@ export function StagingModelPanel({
                   id="staging-search"
                   type="search"
                   value={search}
-                  placeholder="A Staging Table or column"
+                  placeholder="A Staging Table"
                   onChange={(event) => setSearch(event.target.value)}
                   className="ps-8"
                 />

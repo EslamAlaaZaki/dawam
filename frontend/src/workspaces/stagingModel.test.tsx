@@ -123,6 +123,7 @@ function backend(
   role: WorkspaceRole,
   tables: DwTableSummary[],
   handle: (r: ApiRequest) => Response | undefined = () => undefined,
+  systems: SourceSystem[] = SYSTEMS,
 ) {
   return (r: ApiRequest) => {
     switch (`${r.method} ${r.path}`) {
@@ -141,7 +142,7 @@ function backend(
       case `GET ${API}/data-warehouse`:
         return json({ set_up: true, version: 1 });
       case `GET ${API}/systems`:
-        return json({ items: SYSTEMS, next_cursor: null });
+        return json({ items: systems, next_cursor: null });
       case `GET ${API}/data-warehouse/tables`:
         return json({ items: r.query.layer === "staging" ? tables : [] });
     }
@@ -231,6 +232,45 @@ describe("the Staging model", () => {
     expect(
       await screen.findByRole("button", { name: "stg_crm_crm_contacts" }),
     ).toBeInTheDocument();
+  });
+
+  it("tries the next System Code when the longest leaves no schema and table", async () => {
+    const eu = stagingTable(5, "stg_cbs_eu_orders");
+    renderApp(
+      backend("viewer", [eu], undefined, [...SYSTEMS, system("cbs_eu", "EU")]),
+      PATH,
+    );
+
+    const tree = await screen.findByRole("list", { name: "Source Systems" });
+    expect(
+      within(tree).getByRole("list", { name: "Tables of cbs eu" }),
+    ).toBeInTheDocument();
+  });
+
+  it("uses the singular in the result strip", async () => {
+    renderApp(
+      backend("editor", [ACCOUNTS], (r) =>
+        r.method === "POST" && r.path === GENERATE
+          ? json({
+              tables_created: 1,
+              columns_created: 1,
+              tables_existing: 1,
+              flags: [],
+            })
+          : undefined,
+      ),
+      PATH,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Generate Staging Layer" }),
+    );
+
+    expect(
+      await screen.findByRole("status", { name: "Generation result" }),
+    ).toHaveTextContent(
+      "1 Staging Table and 1 column created. 1 source table already had one",
+    );
   });
 
   it("hides the button from a viewer", async () => {
