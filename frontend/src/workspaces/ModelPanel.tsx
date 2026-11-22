@@ -529,7 +529,11 @@ function TableDetails({
                     ) : column.role === "fk" ? (
                       <Badge variant="fk">{ROLE_LABELS[column.role]}</Badge>
                     ) : (
-                      ROLE_LABELS[column.role]
+                      <Badge
+                        variant={column.role === "audit" ? "info" : "neutral"}
+                      >
+                        {ROLE_LABELS[column.role]}
+                      </Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
