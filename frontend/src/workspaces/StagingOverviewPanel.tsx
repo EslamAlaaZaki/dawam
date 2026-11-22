@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Database, RefreshCw } from "lucide-react";
+import { ArrowRight, Database } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { PLATFORM_LABELS, useDataWarehouse } from "../api/dataWarehouse";
@@ -76,19 +76,6 @@ export function StagingOverviewPanel({
 
   const status = progress.data?.dw_modeling.find((l) => l.layer === "staging")
     ?.status;
-  const refetching =
-    tables.isFetching ||
-    systems.isFetching ||
-    warehouse.isFetching ||
-    progress.isFetching ||
-    score.isFetching;
-  const refresh = () => {
-    void tables.refetch();
-    void systems.refetch();
-    void warehouse.refetch();
-    void progress.refetch();
-    void score.refetch();
-  };
 
   const header = (summary?: string) => (
     <header className="flex flex-col gap-2 border-b border-border pb-5 sm:flex-row sm:items-start">
@@ -114,19 +101,6 @@ export function StagingOverviewPanel({
           </p>
         )}
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        aria-label="Refresh"
-        title="Refresh the Staging Layer"
-        onClick={refresh}
-      >
-        <RefreshCw
-          aria-hidden
-          className={cn(refetching && "motion-safe:animate-spin")}
-        />
-      </Button>
     </header>
   );
 
