@@ -992,6 +992,13 @@ ROWS: list[Row] = [
         workspace(admin=False, owner=True, editor=True, viewer=False),
         setup=ensure_data_warehouse,
     ),
+    Row(
+        "GET",
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/mappings",
+        "Open Workspace content (the Staging Layer's mappings)",
+        workspace(admin=False, owner=True, editor=True, viewer=True),
+        setup=ensure_data_warehouse,
+    ),
     # Hashing an accepted PII column in its staging mapping (story 138).
     Row(
         "GET",
