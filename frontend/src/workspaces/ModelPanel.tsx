@@ -22,6 +22,7 @@ import {
   type DwTable,
   type DwTableSummary,
 } from "../api/dwModel";
+import { typeText } from "../lib/typeText";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -88,16 +89,6 @@ const ROLE_LABELS: Record<DwColumn["role"], string> = {
 const LENGTH_TYPES = ["char", "string", "binary"];
 
 type Reference = Pick<DwTableSummary, "id" | "name" | "layer">;
-
-export function typeText(type: DwColumn["data_type"]): string {
-  if (type.length != null) {
-    return `${type.type}(${type.length})`;
-  }
-  if (type.precision != null) {
-    return `${type.type}(${type.precision}${type.scale != null ? `,${type.scale}` : ""})`;
-  }
-  return type.type;
-}
 
 function tableDetail(
   table: Pick<DwTableSummary, "kind" | "grain" | "scd_type" | "is_conformed">,

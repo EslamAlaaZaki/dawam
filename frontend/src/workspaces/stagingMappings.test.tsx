@@ -150,7 +150,7 @@ describe("the Staging Mappings page", () => {
     renderApp(backend(MAPPINGS), PATH);
 
     const group = await screen.findByRole("button", {
-      name: "stg_cbs_customers, 4 columns",
+      name: /^stg_cbs_customers/,
     });
     expect(within(group).getByText("1 hashed")).toBeInTheDocument();
     expect(within(group).getByText("1 to review")).toBeInTheDocument();

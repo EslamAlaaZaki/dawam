@@ -19,9 +19,9 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
+import { typeText } from "../lib/typeText";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
-import { typeText } from "./ModelPanel";
 import { EmptyState, ErrorText, h3Classes, monoClasses } from "./parts";
 
 const FLAG_LABELS: Record<string, string> = {
@@ -249,7 +249,10 @@ export function StagingMappingsPanel({
                 size="sm"
                 variant={filter === id ? "secondary" : "ghost"}
                 aria-pressed={filter === id}
-                onClick={() => setFilter(id)}
+                onClick={() => {
+                  setFilter(id);
+                  setToggled({});
+                }}
               >
                 {label}
                 <span className="text-subtle-foreground tabular-nums">
@@ -263,7 +266,10 @@ export function StagingMappingsPanel({
             aria-label="Filter by table or column"
             placeholder="Filter by table or column"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              setToggled({});
+            }}
             className="max-w-xs"
           />
         </div>
@@ -273,9 +279,8 @@ export function StagingMappingsPanel({
           </p>
         )}
         {visible.map(({ table, columns }, index) => {
-          const open = filtering
-            ? true
-            : (toggled[table.table_id] ?? index < OPEN_AT_FIRST);
+          const open =
+            toggled[table.table_id] ?? (filtering || index < OPEN_AT_FIRST);
           return (
             <TableGroup
               key={table.table_id}
@@ -299,7 +304,7 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
     <div
       role="group"
       aria-label={label}
-      className="flex min-w-0 flex-col gap-2 rounded-pill border border-border bg-surface-raised p-4"
+      className="flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-surface-raised p-4"
     >
       <span className="text-sm font-medium text-muted-foreground">{label}</span>
       {children}
@@ -331,11 +336,10 @@ function TableGroup({
     : null;
   const systemId = table.system_id;
   return (
-    <div className="overflow-hidden rounded-pill border border-border">
+    <div className="overflow-hidden rounded-lg border border-border">
       <button
         type="button"
         aria-expanded={open}
-        aria-label={`${table.table_name}, ${table.columns.length} columns`}
         onClick={onToggle}
         className="flex w-full flex-wrap items-center gap-2 bg-surface px-3 py-2 text-start"
       >
