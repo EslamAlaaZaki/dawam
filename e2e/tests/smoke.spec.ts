@@ -171,10 +171,10 @@ test("the main path: sign in to lineage", async ({ page }) => {
     await page.getByRole("list", { name: "Core tables" }).getByRole("button", { name: /dim_customer/ }).click();
     await page.getByRole("button", { name: "Edit mapping of name", exact: true }).click();
     const form = page.getByRole("form", { name: "Mapping of name", exact: true });
-    await form.getByLabel("Mapping type").selectOption("direct");
+    await form.getByRole("radio", { name: "Direct", exact: true }).click();
     await form.getByLabel("SQL expression").fill(`${STAGING_CUSTOMERS}.name`);
     await form.getByRole("button", { name: "Save mapping", exact: true }).click();
-    // The row closes and shows the saved SQL.
+    // The dialog closes and the row shows the saved SQL.
     await expect(form).toBeHidden();
     await expect(
       page.getByRole("list", { name: "Column mappings" }).getByText(`${STAGING_CUSTOMERS}.name`),

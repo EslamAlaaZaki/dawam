@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarDays, Folder, Pencil, Table2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { ApiError } from "../api/client";
 import { useDwTable, useDwTables, type DwTableSummary } from "../api/dwModel";
@@ -23,7 +23,13 @@ import {
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "../components/ui/dialog";
+import { Textarea } from "../components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { typeText } from "../lib/typeText";
 import { cn } from "../lib/utils";
@@ -38,7 +44,6 @@ import { TreeGroup, TreeLeaf } from "./SchemaBrowser";
 import {
   EmptyState,
   ErrorText,
-  NativeSelect,
   h3Classes,
   monoClasses,
 } from "./parts";
@@ -470,7 +475,12 @@ function TableMappingView({
           </div>
         </>
       ) : (
-        <MappedTable workspace={workspace} tableId={table.id} header={header} />
+        <MappedTable
+          workspace={workspace}
+          tableId={table.id}
+          tableName={table.name}
+          header={header}
+        />
       )}
     </section>
   );
@@ -479,10 +489,12 @@ function TableMappingView({
 function MappedTable({
   workspace,
   tableId,
+  tableName,
   header,
 }: {
   workspace: Workspace;
   tableId: string;
+  tableName: string;
   header: (extra?: ReactNode) => ReactNode;
 }) {
   const mapping = useTableMapping(workspace.id, tableId);
@@ -563,6 +575,12 @@ function MappedTable({
                 editable: editable && column.mapping_type !== "system",
                 open: openKey === column.column_id,
                 branched: branch !== null,
+                tableName,
+                scope: branch
+                  ? /branch$/i.test(branch.name)
+                    ? branch.name
+                    : `${branch.name} branch`
+                  : "Table mapping",
                 onToggle: () =>
                   setOpenKey((k) =>
                     k === column.column_id ? null : column.column_id,
@@ -654,6 +672,28 @@ function BranchSql({ branch }: { branch: MappingBranch }) {
 const rowGrid =
   "grid grid-cols-[minmax(0,1fr)_6.5rem_minmax(0,1.6fr)_1rem] gap-3";
 
+/** The mapping type chip's dot in the editor. */
+const KIND_DOT: Record<MappingType, string> = {
+  direct: "bg-muted-foreground",
+  derived: "bg-primary",
+  constant: "bg-subtle-foreground",
+  lookup: "bg-info",
+  not_in_branch: "bg-border-strong",
+  unmapped: "bg-warning",
+  system: "bg-border-strong",
+};
+
+/** One line under the type chips saying what the chosen type does. */
+const KIND_HINTS: Record<MappingType, string> = {
+  direct: "Copy one input column as it is.",
+  derived: "Compute the value with a SQL expression over one or more inputs.",
+  constant: "Use the same fixed value for every row.",
+  lookup: "Find the dimension's key from the natural key in the SQL.",
+  not_in_branch: "This branch has no value for the column, so it loads NULL.",
+  unmapped: "Not mapped yet. The column counts as not covered.",
+  system: "DAWAM generates this column.",
+};
+
 /** The mapping type pill's tint per type. */
 const KIND_BADGE: Partial<Record<MappingType, string>> = {
   derived: "bg-primary-subtle text-primary",
@@ -672,6 +712,9 @@ interface RowProps {
   editable: boolean;
   open: boolean;
   branched: boolean;
+  /** The table's name, and which mapping is edited: a branch's or the table's. */
+  tableName: string;
+  scope: string;
   onToggle: () => void;
   onClose: () => void;
   onConflict: () => void;
@@ -730,11 +773,14 @@ function ColumnRow({
   editable,
   open,
   branched,
+  tableName,
+  scope,
   onToggle,
   onClose,
   onConflict,
   save,
 }: RowProps & { save: Save }) {
+  const fieldId = useId();
   const [type, setType] = useState<MappingType>(column.mapping_type);
   const [rule, setRule] = useState(column.rule_text);
   const [sql, setSql] = useState(column.sql_expression);
@@ -764,6 +810,11 @@ function ColumnRow({
     (i) => `${i.table_name}.${i.column_name}`,
   );
   const plainFrom = unmapped || kind === "system";
+  const sqlNote = noSql
+    ? "not used for this type"
+    : type === "lookup"
+      ? "the natural key to look up"
+      : null;
 
   function submit() {
     const lookup = column.lookup;
@@ -859,7 +910,7 @@ function ColumnRow({
       {editable ? (
         <button
           type="button"
-          aria-expanded={open}
+          aria-haspopup="dialog"
           aria-label={`Edit mapping of ${name}`}
           onClick={onToggle}
           className={cn(
@@ -873,68 +924,171 @@ function ColumnRow({
       ) : (
         <div className={rowClasses}>{cells}</div>
       )}
-      {editable && open && (
-        <form
-          aria-label={`Mapping of ${name}`}
-          className="grid grid-cols-[10rem_minmax(0,1fr)] items-end gap-3 px-5 pt-1 pb-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
-            Mapping type
-            <NativeSelect
-              value={type}
-              onChange={(e) => setType(e.target.value as MappingType)}
+      {editable && (
+        <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+          <DialogContent className="w-full max-w-2xl gap-0 overflow-hidden p-0">
+            <form
+              aria-label={`Mapping of ${name}`}
+              className="flex min-h-0 flex-col"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submit();
+              }}
             >
-              {options.map((t) => (
-                <option key={t} value={t}>
-                  {MAPPING_TYPE_LABELS[t]}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
-            Rule
-            <Input
-              value={rule}
-              maxLength={4000}
-              placeholder="What this column means, in plain language"
-              onChange={(e) => setRule(e.target.value)}
-            />
-          </label>
-          <label className="col-span-full flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
-            SQL expression
-            <Input
-              className={cn(monoClasses, "text-xs")}
-              value={sql}
-              disabled={noSql}
-              placeholder={noSql ? "NULL" : "table.column"}
-              onChange={(e) => setSql(e.target.value)}
-            />
-          </label>
-          {save.error && (
-            <div className="col-span-full">
-              <ErrorText>{save.error.message}</ErrorText>
-            </div>
-          )}
-          <div className="col-span-full flex flex-wrap items-center gap-3">
-            <span className="text-xs text-subtle-foreground">
-              Inputs, read from the SQL:{" "}
-              <span className={monoClasses}>
-                {inputs.length > 0 ? inputs.join(", ") : "none yet"}
-              </span>
-            </span>
-            <span className="flex-1" />
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={save.isPending}>
-              Save mapping
-            </Button>
-          </div>
-        </form>
+              <div className="flex flex-col gap-1 border-b border-border px-5 pt-4 pb-3.5 pe-12">
+                <DialogTitle className="text-lg font-semibold">
+                  Edit mapping
+                </DialogTitle>
+                <DialogDescription className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
+                  <span
+                    className={cn(monoClasses, "font-medium text-foreground")}
+                  >
+                    {tableName}.{name}
+                  </span>
+                  {dataType && <span className={monoClasses}>{dataType}</span>}
+                  <span aria-hidden>·</span>
+                  <span>{scope}</span>
+                </DialogDescription>
+              </div>
+              <div className="flex min-h-0 flex-col gap-4.5 overflow-y-auto px-5 py-4.5">
+                <div className="flex flex-col gap-2">
+                  <span
+                    id={`${fieldId}-kind`}
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    Mapping type
+                  </span>
+                  <div
+                    role="radiogroup"
+                    aria-labelledby={`${fieldId}-kind`}
+                    className="flex flex-wrap gap-1.5"
+                  >
+                    {options.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        role="radio"
+                        aria-checked={type === t}
+                        onClick={() => setType(t)}
+                        className={cn(
+                          "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-sm font-medium ring-1 transition-colors ring-inset",
+                          type === t
+                            ? "bg-primary-subtle text-primary ring-primary"
+                            : "bg-surface-raised text-muted-foreground ring-border hover:text-foreground",
+                        )}
+                      >
+                        <span
+                          aria-hidden
+                          className={cn("size-1.5 rounded-full", KIND_DOT[t])}
+                        />
+                        {STATE_LABELS[t]}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {KIND_HINTS[type]}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="flex items-baseline gap-2 text-xs font-medium text-muted-foreground">
+                    <label htmlFor={`${fieldId}-sql`}>SQL expression</label>
+                    {sqlNote && (
+                      <span className="font-normal text-subtle-foreground">
+                        {sqlNote}
+                      </span>
+                    )}
+                  </span>
+                  <div
+                    className={cn(
+                      "grid grid-cols-[2.25rem_minmax(0,1fr)] overflow-hidden rounded-lg border",
+                      noSql
+                        ? "border-border bg-surface"
+                        : "border-control-edge bg-surface-raised focus-within:border-primary",
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        monoClasses,
+                        "border-e border-border bg-surface py-2.5 text-center text-xs text-subtle-foreground",
+                      )}
+                    >
+                      fx
+                    </span>
+                    <textarea
+                      id={`${fieldId}-sql`}
+                      rows={2}
+                      value={noSql ? "" : sql}
+                      disabled={noSql}
+                      placeholder={noSql ? "NULL" : "alias.column"}
+                      onChange={(e) => setSql(e.target.value)}
+                      className={cn(
+                        monoClasses,
+                        "min-h-10 resize-y bg-transparent px-3 py-2.5 outline-none disabled:cursor-not-allowed disabled:text-subtle-foreground",
+                      )}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>Reads</span>
+                    {!noSql && inputs.length > 0 ? (
+                      inputs.map((input) => (
+                        <span
+                          key={input}
+                          className={cn(
+                            monoClasses,
+                            "rounded-md bg-muted px-2 text-xs text-foreground",
+                          )}
+                        >
+                          {input}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-subtle-foreground">
+                        nothing yet, the inputs are read from the SQL when you
+                        save
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="flex items-baseline gap-2 text-xs font-medium text-muted-foreground">
+                    <label htmlFor={`${fieldId}-rule`}>Rule</label>
+                    <span className="font-normal text-subtle-foreground">
+                      what the column means, in plain language
+                    </span>
+                  </span>
+                  <Textarea
+                    id={`${fieldId}-rule`}
+                    rows={2}
+                    value={rule}
+                    maxLength={4000}
+                    placeholder="For example: the customer's full name, first name then last name"
+                    onChange={(e) => setRule(e.target.value)}
+                  />
+                </div>
+                {save.error && <ErrorText>{save.error.message}</ErrorText>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 border-t border-border bg-surface px-5 py-3">
+                <span className="text-xs text-muted-foreground">
+                  {branched
+                    ? "Only this column's mapping changes. The branch's joins and filters stay as they are."
+                    : "Only this column's mapping changes."}
+                </span>
+                <span className="flex-1" />
+                <Button type="button" variant="ghost" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={save.isPending}
+                >
+                  Save mapping
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       )}
     </li>
   );

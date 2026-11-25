@@ -407,12 +407,16 @@ describe("the Core and Mart Mappings page", () => {
     expect(within(rows).queryByRole("button", { name: /_loaded_at/ })).not.toBeInTheDocument();
 
     fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of full_name" }));
-    expect(screen.getByRole("form", { name: "Mapping of full_name" })).toBeInTheDocument();
-    fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of email" }));
-    expect(screen.queryByRole("form", { name: "Mapping of full_name" })).not.toBeInTheDocument();
-    expect(screen.getByRole("form", { name: "Mapping of email" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Edit mapping" });
+    expect(within(dialog).getByRole("form", { name: "Mapping of full_name" })).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("dim_customer.full_name");
+    expect(dialog).toHaveTextContent("Table mapping");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of email" }));
+    expect(screen.getByRole("form", { name: "Mapping of email" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("form")).not.toBeInTheDocument();
   });
 
@@ -425,7 +429,8 @@ describe("the Core and Mart Mappings page", () => {
 
     fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of full_name" }));
     const form = screen.getByRole("form", { name: "Mapping of full_name" });
-    fireEvent.change(within(form).getByLabelText("Mapping type"), { target: { value: "direct" } });
+    fireEvent.click(within(form).getByRole("radio", { name: "Direct" }));
+    expect(within(form).getByText("Copy one input column as it is.")).toBeInTheDocument();
     fireEvent.change(within(form).getByLabelText("SQL expression"), {
       target: { value: "stg_cbs_customers.name" },
     });
@@ -454,8 +459,8 @@ describe("the Core and Mart Mappings page", () => {
     fireEvent.click(await within(region).findByRole("button", { name: "Edit mapping of amount" }));
     const form = screen.getByRole("form", { name: "Mapping of amount" });
     // A branch can mark a column NULL.
-    expect(within(form).getByRole("option", { name: "Not in this branch (NULL)" })).toBeInTheDocument();
-    fireEvent.change(within(form).getByLabelText("Mapping type"), { target: { value: "direct" } });
+    expect(within(form).getByRole("radio", { name: "Not in branch" })).toBeInTheDocument();
+    fireEvent.click(within(form).getByRole("radio", { name: "Direct" }));
     fireEvent.change(within(form).getByLabelText("SQL expression"), {
       target: { value: "o.total" },
     });
@@ -476,11 +481,15 @@ describe("the Core and Mart Mappings page", () => {
 
     fireEvent.click(await within(region).findByRole("button", { name: "Edit mapping of amount" }));
     fireEvent.change(screen.getByLabelText("SQL expression"), { target: { value: "edited" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.mouseDown(within(region).getByRole("tab", { name: "Web Shop" }), { button: 0 });
     fireEvent.click(await within(region).findByRole("button", { name: "Edit mapping of amount" }));
 
     const form = screen.getByRole("form", { name: "Mapping of amount" });
-    expect(within(form).getByLabelText("Mapping type")).toHaveValue("unmapped");
+    expect(within(form).getByRole("radio", { name: "Unmapped" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(within(form).getByLabelText("SQL expression")).toHaveValue("");
   });
 
@@ -506,6 +515,7 @@ describe("the Core and Mart Mappings page", () => {
     const rows = await screen.findByRole("list", { name: "Column mappings" });
     fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of full_name" }));
     const form = screen.getByRole("form", { name: "Mapping of full_name" });
+    fireEvent.click(within(form).getByRole("radio", { name: "Derived" }));
     fireEvent.change(within(form).getByLabelText("SQL expression"), { target: { value: "my draft" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save mapping" }));
 
