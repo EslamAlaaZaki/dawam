@@ -293,8 +293,12 @@ describe("the Core and Mart Mappings page", () => {
     expect(within(tree).queryByRole("button", { name: "dim_customer" })).not.toBeInTheDocument();
     expect(within(tree).queryByRole("button", { name: /^Dimensions/ })).not.toBeInTheDocument();
 
+    // The chosen table is hidden by the search, so the first match shows.
+    expect(screen.getByRole("region", { name: "Mappings of fact_sales" })).toBeInTheDocument();
+
     fireEvent.change(screen.getByLabelText("Search by name"), { target: { value: "zzz" } });
-    expect(screen.getByText("No table matches.")).toBeInTheDocument();
+    expect(screen.getAllByText("No table matches.")).toHaveLength(2);
+    expect(screen.queryByRole("region", { name: /^Mappings of/ })).not.toBeInTheDocument();
   });
 
   it("selects a table and shows its columns, validation and the unmapped state", async () => {

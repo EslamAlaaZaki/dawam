@@ -261,6 +261,7 @@ export function StagingMappingsPanel({
         </div>
         <MappingsExplorer
           idPrefix="staging-mappings"
+          placeholder="A table or column"
           treeLabel="Staging tables by Source System"
           search={text}
           onSearch={setText}
@@ -321,7 +322,14 @@ export function StagingMappingsPanel({
               onOpenPii={onOpenPii}
             />
           ) : (
-            <EmptyState className="m-5" title="No column matches this filter.">
+            <EmptyState
+              className="m-5"
+              title={
+                filter === "all"
+                  ? "No table or column matches."
+                  : "No column matches this filter."
+              }
+            >
               Try another filter or search.
             </EmptyState>
           )}
@@ -376,9 +384,9 @@ function TableDetail({
       className="flex min-w-0 flex-col"
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-4">
-        <h3 className={cn(monoClasses, "text-md font-semibold")}>
+        <h5 className={cn(monoClasses, "text-md font-semibold")}>
           {table.table_name}
-        </h3>
+        </h5>
         {table.system_name && <Badge>{table.system_name}</Badge>}
         {hashed > 0 && <Badge variant="danger">{hashed} hashed</Badge>}
         {review > 0 && <Badge variant="warning">{review} to review</Badge>}

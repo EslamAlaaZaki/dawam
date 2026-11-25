@@ -165,7 +165,6 @@ export function LayerMappingsPanel({
     );
   }
   const list = tables.data;
-  const selected = list.find((t) => t.id === chosen) ?? list[0] ?? null;
   const byTable = new Map(
     layerCoverage?.tables.map((t) => [t.table_id, t.coverage]),
   );
@@ -176,6 +175,8 @@ export function LayerMappingsPanel({
   const needle = search.trim().toLowerCase();
   const searching = needle !== "";
   const shown = list.filter((t) => t.name.toLowerCase().includes(needle));
+  // The chosen table, or the first one the search leaves.
+  const selected = shown.find((t) => t.id === chosen) ?? shown[0] ?? null;
   const groups: [string, DwTableSummary[]][] = [];
   for (const table of shown) {
     const group = groups.find(([kind]) => kind === table.kind);
@@ -250,6 +251,7 @@ export function LayerMappingsPanel({
       ) : (
         <MappingsExplorer
           idPrefix={`${layer}-mappings`}
+          placeholder="A table"
           treeLabel={`${copy.name} tables`}
           search={search}
           onSearch={setSearch}
@@ -285,6 +287,9 @@ export function LayerMappingsPanel({
             </TreeGroup>
           ))}
         >
+          {!selected && (
+            <EmptyState className="m-5" title="No table matches." />
+          )}
           {selected && (
             <TableMappingView
               // Another table starts with no row open.

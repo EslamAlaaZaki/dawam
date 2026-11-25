@@ -240,6 +240,10 @@ describe("the Staging Mappings page", () => {
     });
     expect(screen.getByText("No table matches.")).toBeInTheDocument();
     expect(screen.getByText("No column matches this filter.")).toBeInTheDocument();
+
+    // With the filter back on All, only the search misses.
+    fireEvent.click(screen.getByRole("button", { name: /^All/ }));
+    expect(screen.getByText("No table or column matches.")).toBeInTheDocument();
   });
 
   it("searches by table or column name in the tree, with no separate text filter", async () => {

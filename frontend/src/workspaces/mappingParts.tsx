@@ -113,6 +113,7 @@ export function StateDot({
  */
 export function MappingsExplorer({
   idPrefix,
+  placeholder,
   treeLabel,
   search,
   onSearch,
@@ -122,6 +123,7 @@ export function MappingsExplorer({
   children,
 }: {
   idPrefix: string;
+  placeholder: string;
   treeLabel: string;
   search: string;
   onSearch: (value: string) => void;
@@ -147,7 +149,7 @@ export function MappingsExplorer({
               id={`${idPrefix}-search`}
               type="search"
               value={search}
-              placeholder="A table or column"
+              placeholder={placeholder}
               onChange={(event) => onSearch(event.target.value)}
               className="ps-8"
             />
