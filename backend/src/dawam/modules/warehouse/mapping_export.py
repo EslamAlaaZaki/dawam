@@ -136,7 +136,7 @@ class MappingExportService:
         if warehouse is None:
             raise ApiError(404, "not_found", "The Data Warehouse is not set up yet.")
         platform = warehouse.target_platform
-        origins = self._staging_origins(workspace_id)
+        origins = {} if layer == "staging" else self._staging_origins(workspace_id)
         mapping_rows: list[list[object]] = []
         branch_rows: list[list[object]] = []
         if layer == "staging":

@@ -12038,8 +12038,11 @@ export interface components {
              * @description An audit column: DAWAM's, with no source column.
              */
             is_system: boolean;
-            /** Role */
-            role: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "sk" | "nk" | "fk" | "measure" | "attribute" | "degenerate_dimension" | "audit" | "scd_valid_from" | "scd_valid_to" | "scd_current_flag" | "row_hash";
             /**
              * Status
              * @enum {string}

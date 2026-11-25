@@ -139,7 +139,7 @@ class StagingMappingsService:
                         role=column.role,
                         status=column.status,
                         review_flags=list(column.review_flags or []),
-                        mapping_type="system" if column.role == "audit" else mapping_type,
+                        mapping_type="system" if _is_audit(column) else mapping_type,
                         sql_expression=mapping.sql_expression if mapping else "",
                         source_column_name=source[0] if source else None,
                         source_data_type=source[1] if source else None,
@@ -164,6 +164,10 @@ class StagingMappingsService:
                     )
                 )
         return StagingMappings(result, _totals(result))
+
+
+def _is_audit(column: DwColumnRecord) -> bool:
+    return column.role == "audit" or column.is_system
 
 
 def _totals(tables: list[StagingMappingTable]) -> StagingMappingTotals:

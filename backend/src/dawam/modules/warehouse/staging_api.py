@@ -18,7 +18,7 @@ from dawam.modules.changesets import ChangeSetDetail, ChangeSetService, ObjectHa
 from dawam.modules.notifications import NotificationService
 from dawam.modules.workspaces import WorkspaceService
 
-from .model_api import DwDataType, ReviewFlag
+from .model_api import ColumnRole, DwDataType, ReviewFlag
 from .pii_hashing import PiiHashingService
 from .staging_mappings import StagingMappingsService
 from .staging_service import StagingService
@@ -222,7 +222,7 @@ class StagingMappingListColumn(BaseModel):
     column_name: str
     data_type: DwDataType
     is_system: bool = Field(description="An audit column: DAWAM's, with no source column.")
-    role: str
+    role: ColumnRole
     status: Literal["present", "source_removed"]
     review_flags: list[ReviewFlag]
     mapping_type: Literal["direct", "hashed", "system"] = Field(
