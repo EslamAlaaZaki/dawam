@@ -214,6 +214,15 @@ def test_an_accepted_pii_column_is_hashed_from_the_start(warehouse: RoleClients)
 
     assert rows["email"] == "hashed"
     assert rows["note"] == "direct"
+    # The hash is 64 hex characters, so the column is char(64), not the source's type.
+    columns = columns_of(warehouse, staging_tables(warehouse)["stg_crm_dbo_orders"])
+    assert columns["email"]["data_type"] == {
+        "type": "char",
+        "length": 64,
+        "precision": None,
+        "scale": None,
+    }
+    assert columns["note"]["data_type"]["type"] != "char"
     [sql] = query(
         warehouse,
         "select m.sql_expression from column_mappings m join dw_columns c"

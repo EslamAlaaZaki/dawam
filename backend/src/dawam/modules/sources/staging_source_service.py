@@ -285,6 +285,26 @@ def source_column_labels(
     }
 
 
+def source_column_type(
+    db: Session, workspace_id: uuid.UUID, column_id: uuid.UUID
+) -> tuple[str, str | None] | None:
+    """A source column's extracted data type and its Source System's engine (null without a
+    Connection), if it is a column of the Workspace; in the caller's session, no permission
+    check. Staging translates the type again from these."""
+    row = db.execute(
+        sa.select(SrcColumnRecord.current_definition, ConnectionRecord.engine)
+        .join(SrcTableRecord, SrcTableRecord.id == SrcColumnRecord.table_id)
+        .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+        .join(SourceSystemRecord, SourceSystemRecord.id == SrcDbSchemaRecord.source_system_id)
+        .outerjoin(ConnectionRecord, ConnectionRecord.source_system_id == SourceSystemRecord.id)
+        .where(SrcColumnRecord.id == column_id, SourceSystemRecord.workspace_id == workspace_id)
+    ).first()
+    if row is None:
+        return None
+    definition, engine = row
+    return str((definition or {}).get("data_type") or ""), engine
+
+
 def source_table_names(db: Session, system_id: uuid.UUID) -> dict[str, str]:
     """The present tables and views of a Source System as ``schema.table``, keyed by that
     name in lower case (to match a name ignoring case); in the caller's session, no

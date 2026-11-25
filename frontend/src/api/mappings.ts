@@ -81,6 +81,8 @@ export function useSetStagingHashing(workspaceId: string) {
           queryKey: ["workspace", workspaceId, "dw-staging-mappings"],
         }),
         queryClient.invalidateQueries({ queryKey: ["workspace", workspaceId, "pii-view"] }),
+        // The column's type follows: char(64) hashed, the source's direct.
+        queryClient.invalidateQueries({ queryKey: ["workspace", workspaceId, "dw-model"] }),
       ]),
   });
 }

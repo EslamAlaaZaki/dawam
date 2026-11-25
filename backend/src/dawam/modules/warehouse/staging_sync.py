@@ -31,7 +31,7 @@ from dawam.modules.sources import StagingSystem, StagingTable, accepted_pii_colu
 from dawam.modules.workspaces import Action
 from dawam.platform.errors import ApiError
 
-from .pii_hashing import hashed_sql
+from .pii_hashing import HASHED_TYPE, hashed_sql
 from .platforms import TargetPlatform
 from .service import NamingRules
 from .staging_naming import TYPE_FLAGS, NameInput, column_names, stable_hash
@@ -139,6 +139,18 @@ def plan_sync(
         )
     ):
         columns_of.setdefault(column.table_id, []).append(column)
+    # A hashed column keeps char(64) whatever its source type becomes.
+    hashed_columns = set(
+        db.scalars(
+            sa.select(ColumnMappingRecord.dw_column_id).where(
+                ColumnMappingRecord.dw_column_id.in_(
+                    [c.id for columns in columns_of.values() for c in columns]
+                ),
+                ColumnMappingRecord.branch_id.is_(None),
+                ColumnMappingRecord.mapping_type == "hashed",
+            )
+        )
+    )
 
     items: list[ProposedItem] = []
     new_tables: list[StagingTable] = []
@@ -179,9 +191,11 @@ def plan_sync(
                         "table_id": str(dw.id),
                         "source_column_id": str(column.id),
                         "name": name.name,
-                        "data_type": translated.data_type,
+                        "data_type": dict(HASHED_TYPE) if hashed else translated.data_type,
                         "is_nullable": column.is_nullable,
-                        "review_flags": _dicts([*name.flags, *translated.flags]),
+                        "review_flags": _dicts(
+                            [*name.flags, *(() if hashed else translated.flags)]
+                        ),
                         # Accepted PII starts hashed, as when the Staging Layer is generated.
                         "mapping_type": "hashed" if hashed else "direct",
                         "sql_expression": hashed_sql(platform, sql) if hashed else sql,
@@ -202,7 +216,7 @@ def plan_sync(
                 continue
             translated = translate_type(platform, column.data_type, engine=system.engine)
             changes: dict[str, Any] = {}
-            if translated.data_type != dwc.data_type:
+            if dwc.id not in hashed_columns and translated.data_type != dwc.data_type:
                 changes["data_type"] = translated.data_type
             if column.is_nullable != dwc.is_nullable:
                 changes["is_nullable"] = column.is_nullable

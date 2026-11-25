@@ -111,6 +111,24 @@ def test_mapping_it_direct_again_restores_the_source_column(graph, roles):
     assert not any(c["pseudonymised"] for c in pii_view(roles)["columns"])
 
 
+def test_the_column_type_follows_the_mapping(graph, roles):
+    accept_pii(roles, graph["src_amount"])
+    before = columns_of(roles, graph["stg"])["amount"]
+    assert before["data_type"]["type"] == "decimal"
+
+    hash_column(roles, graph["stg_amount"])
+
+    # A hash is 64 hex characters, whatever the source type was.
+    hashed = columns_of(roles, graph["stg"])["amount"]
+    assert hashed["data_type"] == {"type": "char", "length": 64, "precision": None, "scale": None}
+    assert hashed["version"] == before["version"] + 1
+
+    ok(set_mapping(roles, graph["stg_amount"], "direct", 2))
+
+    # Direct again: the source column's type, translated as generation does.
+    assert columns_of(roles, graph["stg"])["amount"]["data_type"] == before["data_type"]
+
+
 def test_a_stale_version_is_a_conflict(graph, roles):
     accept_pii(roles, graph["src_amount"])
     hash_column(roles, graph["stg_amount"])

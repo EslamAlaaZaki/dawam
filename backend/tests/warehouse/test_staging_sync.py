@@ -212,6 +212,19 @@ def test_a_new_accepted_pii_source_column_is_synced_hashed(warehouse: RoleClient
         " join dw_columns c on c.id = m.dw_column_id where c.name = 'email'",
     )
     assert tuple(mapping) == ("hashed", hashed_sql("postgresql", "public.customers.email"))
+    email_column = columns_of(warehouse, staging_tables(warehouse)["stg_crm_public_customers"])[
+        "email"
+    ]
+    assert (email_column["data_type"]["type"], email_column["data_type"]["length"]) == ("char", 64)
+
+    # A later change of the source type leaves the hashed column at char(64).
+    run(
+        warehouse,
+        "update src_columns set current_definition = cast(:d as json) where id = :id",
+        d='{"data_type": "varchar(200)", "is_nullable": true}',
+        id=email,
+    )
+    assert sync(warehouse, system)["change_set_id"] is None  # nothing to propose
 
 
 def test_a_user_override_is_a_conflict_not_overwritten(warehouse: RoleClients):

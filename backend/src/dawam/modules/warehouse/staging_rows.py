@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.sources import StagingSystem, StagingTable
 
-from .pii_hashing import hashed_sql
+from .pii_hashing import HASHED_TYPE, hashed_sql
 from .platforms import SAFE_IDENTIFIER, TargetPlatform
 from .staging_naming import Flag, NameInput, column_names, table_names
 from .staging_types import translate_type
@@ -237,12 +237,13 @@ def _stage_table(
     for column in table.columns:
         translated = translate_type(platform, column.data_type, engine=system.engine)
         column_name = column_named[str(column.id)]
-        all_flags = [*column_name.flags, *translated.flags]
         sql = f"{source_prefix}.{_quote(column.name)}"
         hashed = column.id in pii
+        # A hashed column holds the 64-character hash, so the source type and its flags go.
+        all_flags = [*column_name.flags, *(() if hashed else translated.flags)]
         add_column(
             column_name.name,
-            translated.data_type,
+            dict(HASHED_TYPE) if hashed else translated.data_type,
             column.is_nullable,
             role="attribute",
             source_column_id=column.id,
