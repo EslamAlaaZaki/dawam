@@ -164,7 +164,7 @@ const SALES_MAPPING = mapping(SALES, "fact_sales", {
       group_by: null,
       having: null,
       version: 1,
-      columns: [col(COL_NAME, "amount", "unmapped", 0)],
+      columns: [col(COL_NAME, "amount", "unmapped", 1)],
       errors: [],
     },
   ],
@@ -393,28 +393,56 @@ describe("the Core and Mart Mappings page", () => {
     expect(requests.find((r) => r.method === "PUT")?.body).toMatchObject({
       mapping_type: "direct",
       sql_expression: "o.total",
-      version: 0,
+      version: 1,
     });
   });
 
-  it("shows a save error in the row and refetches on a version conflict, keeping the row open", async () => {
+  it("does not carry a branch's edits over to another branch's row", async () => {
+    renderApp(backend({ role: "editor" }), core(`&table=${SALES}`));
+    const region = await screen.findByRole("region", { name: "Mappings of fact_sales" });
+
+    fireEvent.click(await within(region).findByRole("button", { name: "Edit mapping of amount" }));
+    fireEvent.change(screen.getByLabelText("SQL expression"), { target: { value: "edited" } });
+    fireEvent.mouseDown(within(region).getByRole("tab", { name: "Web Shop" }), { button: 0 });
+    fireEvent.click(await within(region).findByRole("button", { name: "Edit mapping of amount" }));
+
+    const form = screen.getByRole("form", { name: "Mapping of amount" });
+    expect(within(form).getByLabelText("Mapping type")).toHaveValue("unmapped");
+    expect(within(form).getByLabelText("SQL expression")).toHaveValue("");
+  });
+
+  it("shows a save error in the row; on a version conflict it refetches and keeps the draft", async () => {
+    let reads = 0;
     const requests = renderApp(
       backend({
         role: "editor",
         saveTable: () => apiError(409, "version_conflict", "Someone else changed this."),
+        tableMapping: () => {
+          reads += 1;
+          return json({
+            ...CUSTOMER_MAPPING,
+            columns: [
+              col(COL_NAME, "full_name", "unmapped", reads),
+              ...CUSTOMER_MAPPING.columns.slice(1),
+            ],
+          });
+        },
       }),
       core(),
     );
     const rows = await screen.findByRole("list", { name: "Column mappings" });
     fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of full_name" }));
     const form = screen.getByRole("form", { name: "Mapping of full_name" });
+    fireEvent.change(within(form).getByLabelText("SQL expression"), { target: { value: "my draft" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save mapping" }));
 
     expect(await within(form).findByText("Someone else changed this.")).toBeInTheDocument();
     const mappingGets = () =>
       requests.filter((r) => r.method === "GET" && r.path === `${DW}/tables/${CUSTOMER}/mapping`);
     await waitFor(() => expect(mappingGets().length).toBeGreaterThan(1));
-    expect(screen.getByRole("form", { name: "Mapping of full_name" })).toBeInTheDocument();
+    const after = screen.getByRole("form", { name: "Mapping of full_name" });
+    expect(within(after).getByLabelText("SQL expression")).toHaveValue("my draft");
+    expect(within(after).getByText("Someone else changed this.")).toBeInTheDocument();
   });
 
   it("offers XLSX and CSV downloads for the Layer", async () => {

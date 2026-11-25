@@ -181,7 +181,7 @@ export function LayerMappingsPanel({
               <span className="font-medium text-foreground">{list.length}</span>{" "}
               {list.length === 1 ? "table" : "tables"}
             </span>
-            <span>{fullyMapped} fully mapped</span>
+            <span>{fullyMapped ?? 0} fully mapped</span>
           </div>
         </section>
       )}
@@ -380,7 +380,7 @@ function MappedTable({
           };
           return branch ? (
             <BranchColumnRow
-              key={`${column.column_id}:${column.version}`}
+              key={`${branch.id}:${column.column_id}`}
               workspaceId={workspace.id}
               tableId={tableId}
               branchId={branch.id}
@@ -388,7 +388,7 @@ function MappedTable({
             />
           ) : (
             <TableColumnRow
-              key={`${column.column_id}:${column.version}`}
+              key={`table:${column.column_id}`}
               workspaceId={workspace.id}
               tableId={tableId}
               {...common}
@@ -523,6 +523,17 @@ function ColumnRow({
   const [type, setType] = useState<MappingType>(column.mapping_type);
   const [rule, setRule] = useState(column.rule_text);
   const [sql, setSql] = useState(column.sql_expression);
+  // The draft is seeded from the saved mapping each time the row opens, and survives a
+  // refetch (a version conflict) while it stays open.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (open) {
+      setType(column.mapping_type);
+      setRule(column.rule_text);
+      setSql(column.sql_expression);
+    }
+  }
   const name = column.column_name;
   const unmapped = column.mapping_type === "unmapped";
   const noSql = type === "unmapped" || type === "not_in_branch";
