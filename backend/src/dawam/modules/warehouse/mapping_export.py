@@ -22,12 +22,16 @@ from dawam.platform.errors import ApiError
 from .ddl import translate_type
 from .mapping_service import ColumnMappingView, MappingService, TableMappingView
 from .model_service import ModelService
+from .platforms import TargetPlatform
 from .service import DataWarehouseService
+from .staging_mappings import StagingMappingsService
 from .tables import DwTableRecord
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 CSV_MIME = "text/csv"
 MAPPING_LAYERS = ("core", "mart")
+EXPORT_LAYERS = (*MAPPING_LAYERS, "staging")
+"""``layer`` may also ask for Staging; omitting it exports Core and Mart only."""
 ExportFormat = Literal["xlsx", "csv"]
 
 MAPPING_HEADER = [
@@ -104,12 +108,14 @@ class MappingExportService:
         model: ModelService,
         mappings: MappingService,
         sources: StagingSourceService | None = None,
+        staging: StagingMappingsService | None = None,
     ) -> None:
         self._engine = engine
         self._warehouses = warehouses
         self._model = model
         self._mappings = mappings
         self._sources = sources or StagingSourceService(engine)
+        self._staging = staging
 
     def export(
         self,
@@ -120,9 +126,12 @@ class MappingExportService:
         layer: str | None = None,
     ) -> MappingSheet:
         """The sheet of one Layer, or of Core and Mart when ``layer`` is ``None``. CSV holds
-        the column sheet only. 404 ``not_found`` before set up, 422 ``invalid_layer``."""
-        if layer is not None and layer not in MAPPING_LAYERS:
-            raise ApiError(422, "invalid_layer", "The Layer is core or mart.")
+        the column sheet only. ``staging`` has one row per staging column and no branches.
+        404 ``not_found`` before set up, 422 ``invalid_layer``."""
+        if layer is not None and layer not in EXPORT_LAYERS:
+            raise ApiError(422, "invalid_layer", "The Layer is staging, core or mart.")
+        if layer == "staging" and self._staging is None:
+            raise ApiError(422, "invalid_layer", "The Staging Layer cannot be exported here.")
         warehouse = self._warehouses.get(user, workspace_id)
         if warehouse is None:
             raise ApiError(404, "not_found", "The Data Warehouse is not set up yet.")
@@ -130,7 +139,12 @@ class MappingExportService:
         origins = self._staging_origins(workspace_id)
         mapping_rows: list[list[object]] = []
         branch_rows: list[list[object]] = []
-        for summary in self._model.list_tables(user, workspace_id, layer=layer):
+        if layer == "staging":
+            mapping_rows = self._staging_rows(user, workspace_id, platform)
+        summaries = (
+            [] if layer == "staging" else self._model.list_tables(user, workspace_id, layer=layer)
+        )
+        for summary in summaries:
             if summary.layer not in MAPPING_LAYERS:
                 continue
             table = self._model.get_table(user, workspace_id, summary.id)
@@ -144,6 +158,40 @@ class MappingExportService:
         return MappingSheet(f"{stem}.xlsx", XLSX_MIME, self._xlsx(mapping_rows, branch_rows))
 
     # --- rows ------------------------------------------------------------------------
+
+    def _staging_rows(
+        self, user: User, workspace_id: uuid.UUID, platform: TargetPlatform
+    ) -> list[list[object]]:
+        """One row per staging column; its input is the source ``schema.table.column``."""
+        assert self._staging is not None
+        rows: list[list[object]] = []
+        for table in self._staging.read(user, workspace_id).tables:
+            for c in table.columns:
+                source = (
+                    f"{table.source_db_schema}.{table.source_table_name}.{c.source_column_name}"
+                    if c.source_column_name
+                    else ""
+                )
+                rows.append(
+                    [
+                        "staging",
+                        table.table_name,
+                        "",
+                        c.column_name,
+                        translate_type(platform, c.data_type),
+                        "source" if source else "",
+                        table.system_code or "",
+                        table.source_db_schema or "",
+                        table.source_table_name or "",
+                        source,
+                        "",
+                        c.sql_expression,
+                        c.mapping_type,
+                        "",
+                        "",
+                    ]
+                )
+        return rows
 
     def _staging_origins(self, workspace_id: uuid.UUID) -> dict[uuid.UUID, tuple[str, str]]:
         """Each Source Table's ``(system code, database schema)``, by id."""

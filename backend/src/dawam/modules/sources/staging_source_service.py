@@ -58,6 +58,7 @@ class StagingSystem:
     engine: str | None
     """The Connection's engine; ``None`` for a system fed only by Schema Imports."""
     tables: list[StagingTable]
+    name: str = ""
 
 
 class StagingSourceService:
@@ -79,7 +80,12 @@ class StagingSourceService:
         them to flag their Staging Tables)."""
         with Session(self._engine) as db:
             systems = db.execute(
-                sa.select(SourceSystemRecord.id, SourceSystemRecord.code, ConnectionRecord.engine)
+                sa.select(
+                    SourceSystemRecord.id,
+                    SourceSystemRecord.code,
+                    ConnectionRecord.engine,
+                    SourceSystemRecord.name,
+                )
                 .outerjoin(
                     ConnectionRecord, ConnectionRecord.source_system_id == SourceSystemRecord.id
                 )
@@ -91,9 +97,9 @@ class StagingSourceService:
                 .order_by(SourceSystemRecord.code)
             ).all()
             result: list[StagingSystem] = []
-            for system_id, code, engine in systems:
+            for system_id, code, engine, name in systems:
                 tables = self._tables(db, system_id, include_removed)
-                result.append(StagingSystem(system_id, code, engine, tables))
+                result.append(StagingSystem(system_id, code, engine, tables, name))
             return result
 
     def _tables(

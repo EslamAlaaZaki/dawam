@@ -196,9 +196,7 @@ def test_an_editor_saves_the_sheet_to_the_file_area(warehouse, model):
 
 def test_the_sheet_needs_a_set_up_warehouse_and_a_known_layer(roles: RoleClients, warehouse):
     assert (
-        warehouse.client("viewer")
-        .get(sheet_url(warehouse), params={"layer": "staging"})
-        .status_code
+        warehouse.client("viewer").get(sheet_url(warehouse), params={"layer": "bogus"}).status_code
         == 422
     )
 
