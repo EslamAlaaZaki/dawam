@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Database, Table2 } from "lucide-react";
+import { ArrowRight, ChevronRight, Database, Table2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -226,38 +226,51 @@ export function StagingMappingsPanel({
         </Stat>
         <Stat label="Copied direct">
           <Big>{totals.direct}</Big>
+          <Note>
+            across {totals.tables}{" "}
+            {totals.tables === 1 ? "Staging Table" : "Staging Tables"}
+          </Note>
         </Stat>
         <Stat label="Hashed (PII)">
-          <Big>{totals.hashed}</Big>
+          <Big className="text-danger-strong">{totals.hashed}</Big>
+          <Note>salted SHA-256 of the source</Note>
         </Stat>
         <Stat label="To review">
-          <Big>{totals.to_review}</Big>
+          <Big className="text-warning-strong">{totals.to_review}</Big>
+          <Note>renamed, retyped or removed</Note>
         </Stat>
       </div>
 
       <section aria-labelledby="mappings-title" className="flex flex-col gap-3">
-        <h4
-          id="mappings-title"
-          className="text-xs font-medium tracking-wide text-subtle-foreground uppercase"
-        >
-          Column mappings
-        </h4>
-        <div role="group" aria-label="Show" className="flex flex-wrap gap-1">
-          {FILTERS.map(([id, label]) => (
-            <Button
-              key={id}
-              type="button"
-              size="sm"
-              variant={filter === id ? "secondary" : "ghost"}
-              aria-pressed={filter === id}
-              onClick={() => setFilter(id)}
-            >
-              {label}
-              <span className="text-subtle-foreground tabular-nums">
-                {counts[id]}
-              </span>
-            </Button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h4 id="mappings-title" className="text-xl font-semibold">
+            Column mappings
+          </h4>
+          <div
+            role="group"
+            aria-label="Show"
+            className="flex gap-0.5 rounded-lg bg-muted p-0.5"
+          >
+            {FILTERS.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={filter === id}
+                onClick={() => setFilter(id)}
+                className={cn(
+                  "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors",
+                  filter === id
+                    ? "bg-surface-raised text-foreground ring-1 ring-border"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {label}
+                <span className="text-subtle-foreground tabular-nums">
+                  {counts[id]}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
         <MappingsExplorer
           idPrefix="staging-mappings"
@@ -352,11 +365,33 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Big({ children }: { children: ReactNode }) {
+function Big({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <span className="text-3xl font-semibold tabular-nums">{children}</span>
+    <span className={cn("text-3xl font-semibold tabular-nums", className)}>
+      {children}
+    </span>
   );
 }
+
+function Note({ children }: { children: ReactNode }) {
+  return <span className="text-sm text-subtle-foreground">{children}</span>;
+}
+
+/** The column grid: source column, arrow, staging column, mapping, review. */
+const gridCols =
+  "grid grid-cols-[minmax(0,1.25fr)_1.75rem_minmax(0,1.25fr)_6rem_minmax(0,1fr)] gap-3";
+
+const ARROW: Record<StagingMappingColumn["mapping_type"], string> = {
+  direct: "text-success",
+  hashed: "text-danger",
+  system: "text-border-strong",
+};
 
 /** The chosen table: its header, then the columns that pass the filter and search. */
 function TableDetail({
@@ -384,7 +419,7 @@ function TableDetail({
       className="flex min-w-0 flex-col"
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-4">
-        <h5 className={cn(monoClasses, "text-md font-semibold")}>
+        <h5 className={cn(monoClasses, "text-xl font-medium")}>
           {table.table_name}
         </h5>
         {table.system_name && <Badge>{table.system_name}</Badge>}
@@ -399,67 +434,121 @@ function TableDetail({
           {table.columns.length} columns
         </span>
       </div>
-      <ul className="divide-y divide-border">
-        {columns.map((column) => (
-          <li
-            key={column.column_id}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2 text-sm"
+      <div className="overflow-x-auto">
+        <div
+          role="table"
+          aria-label={`Columns of ${table.table_name}`}
+          className="min-w-180"
+        >
+          <div
+            role="row"
+            className={cn(
+              gridCols,
+              "border-b border-border px-5 py-2.5 text-xs font-medium text-muted-foreground",
+            )}
           >
-            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              {column.source_column_name ? (
-                <>
-                  <span className={monoClasses}>
-                    {column.source_column_name}
-                  </span>
-                  <span className={cn(monoClasses, "text-muted-foreground")}>
-                    {column.source_data_type}
-                  </span>
-                </>
-              ) : (
-                <span className="text-muted-foreground">none</span>
-              )}
-              <ArrowRight
-                aria-hidden
-                className="size-3.5 text-subtle-foreground"
-              />
-              <span className={monoClasses}>{column.column_name}</span>
-              <span className={cn(monoClasses, "text-muted-foreground")}>
-                {typeText(column.data_type)}
-              </span>
+            <span role="columnheader">Source column</span>
+            <span role="columnheader">
+              <span className="sr-only">Copied to</span>
             </span>
-            <span className="flex flex-wrap items-center gap-2">
-              {column.mapping_type === "direct" && <Badge>Direct</Badge>}
-              {column.mapping_type === "hashed" && (
-                <>
-                  <Badge variant="danger">Hashed</Badge>
-                  {systemId && (
-                    <a
-                      href={`?${new URLSearchParams({ folder: `systems/${systemId}/pii` })}`}
-                      className="text-xs font-medium text-primary hover:underline"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        onOpenPii(systemId);
-                      }}
+            <span role="columnheader">Staging column</span>
+            <span role="columnheader">Mapping</span>
+            <span role="columnheader">Review</span>
+          </div>
+          {columns.map((column) => (
+            <div
+              role="row"
+              key={column.column_id}
+              className={cn(
+                gridCols,
+                "min-h-10 items-center border-b border-muted px-5 py-1 text-sm last:border-b-0",
+              )}
+            >
+              <span
+                role="cell"
+                className="flex min-w-0 flex-wrap items-baseline gap-x-2"
+              >
+                {column.source_column_name ? (
+                  <>
+                    <span className={cn(monoClasses, "break-all")}>
+                      {column.source_column_name}
+                    </span>
+                    <span
+                      className={cn(
+                        monoClasses,
+                        "text-xs text-muted-foreground",
+                      )}
                     >
-                      Change in PII
-                    </a>
-                  )}
-                </>
-              )}
-              {column.mapping_type === "system" && (
-                <Badge className="border border-border bg-transparent">
-                  Audit
-                </Badge>
-              )}
-              {reviewLabels(column).map((label) => (
-                <Badge key={label} variant="warning">
-                  {label}
-                </Badge>
-              ))}
-            </span>
-          </li>
-        ))}
-      </ul>
+                      {column.source_data_type}
+                    </span>
+                  </>
+                ) : (
+                  <span
+                    className={cn(monoClasses, "text-subtle-foreground italic")}
+                  >
+                    none
+                  </span>
+                )}
+              </span>
+              <span role="cell" className="flex">
+                <ArrowRight
+                  aria-hidden
+                  className={cn("size-4", ARROW[column.mapping_type])}
+                />
+              </span>
+              <span
+                role="cell"
+                className="flex min-w-0 flex-wrap items-baseline gap-x-2"
+              >
+                <span className={cn(monoClasses, "font-medium break-all")}>
+                  {column.column_name}
+                </span>
+                <span
+                  className={cn(monoClasses, "text-xs text-muted-foreground")}
+                >
+                  {typeText(column.data_type)}
+                </span>
+              </span>
+              <span role="cell" className="flex">
+                {column.mapping_type === "direct" && <Badge>Direct</Badge>}
+                {column.mapping_type === "hashed" && (
+                  <Badge variant="danger">Hashed</Badge>
+                )}
+                {column.mapping_type === "system" && (
+                  <Badge className="bg-transparent text-muted-foreground ring-1 ring-border-strong ring-inset">
+                    Audit
+                  </Badge>
+                )}
+              </span>
+              <span role="cell" className="flex flex-wrap items-center gap-2">
+                {reviewLabels(column).map((label) => (
+                  <Badge key={label} variant="warning">
+                    {label}
+                  </Badge>
+                ))}
+                {column.mapping_type === "hashed" && systemId && (
+                  <a
+                    href={`?${new URLSearchParams({ folder: `systems/${systemId}/pii` })}`}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onOpenPii(systemId);
+                    }}
+                  >
+                    Change in PII
+                    <ChevronRight aria-hidden className="size-3" />
+                  </a>
+                )}
+                {column.mapping_type === "system" && (
+                  <span className="text-xs text-muted-foreground">
+                    Set at load
+                  </span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

@@ -258,7 +258,7 @@ describe("the Core and Mart Mappings page", () => {
     expect(screen.getByText("In progress")).toBeInTheDocument();
     const coverage = screen.getByRole("region", { name: "Coverage" });
     expect(within(coverage).getByText("83%")).toBeInTheDocument();
-    expect(within(coverage).getByText("5 of 6 columns mapped")).toBeInTheDocument();
+    expect(within(coverage).getByText("5 of 6 columns")).toBeInTheDocument();
     expect(within(coverage).getByText("1 fully mapped")).toBeInTheDocument();
 
     const tree = screen.getByRole("list", { name: "Core tables" });
@@ -334,12 +334,15 @@ describe("the Core and Mart Mappings page", () => {
     const region = await screen.findByRole("region", { name: "Mappings of fact_sales" });
     expect(await within(region).findByText("Prefer the Core Banking value")).toBeInTheDocument();
     expect(within(region).getByText("customer_nk")).toBeInTheDocument();
-    expect(within(region).getByText("stg_cbs_sales s")).toBeInTheDocument();
-    expect(within(region).getByText("s.deleted = 0")).toBeInTheDocument();
+    const sql = within(region).getByLabelText("Branch SQL");
+    expect(sql).toHaveTextContent("FROM stg_cbs_sales s");
+    expect(sql).toHaveTextContent("WHERE s.deleted = 0");
     expect(within(region).getByText("s.amount")).toBeInTheDocument();
 
     fireEvent.mouseDown(within(region).getByRole("tab", { name: "Web Shop" }), { button: 0 });
-    expect(await within(region).findByText("stg_web_orders o")).toBeInTheDocument();
+    expect(await within(region).findByLabelText("Branch SQL")).toHaveTextContent(
+      "FROM stg_web_orders o",
+    );
     expect(within(region).getByText("Not mapped yet")).toBeInTheDocument();
   });
 

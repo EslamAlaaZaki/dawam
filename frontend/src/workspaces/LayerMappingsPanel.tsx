@@ -1,7 +1,7 @@
 "use client";
 
-import { ChevronDown, Folder, Table2 } from "lucide-react";
-import { useState } from "react";
+import { CalendarDays, Folder, Pencil, Table2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { ApiError } from "../api/client";
 import { useDwTable, useDwTables, type DwTableSummary } from "../api/dwModel";
@@ -37,10 +37,8 @@ import { TreeGroup, TreeLeaf } from "./SchemaBrowser";
 import {
   EmptyState,
   ErrorText,
-  Hint,
   NativeSelect,
   h3Classes,
-  h5Classes,
   monoClasses,
 } from "./parts";
 
@@ -95,9 +93,6 @@ const STATE_LABELS: Record<MappingType, string> = {
   system: "System",
   not_in_branch: "Not in branch",
 };
-
-const sectionLabel =
-  "text-xs font-medium tracking-wide text-subtle-foreground uppercase";
 
 /**
  * The Core or Mart Layer's Mappings page: the Layer's coverage, its tables, and each
@@ -203,43 +198,52 @@ export function LayerMappingsPanel({
       {total && (
         <section
           aria-label="Coverage"
-          className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-surface-raised p-4 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:gap-6"
+          className="grid grid-cols-1 items-center gap-6 rounded-lg border border-border bg-surface-raised p-5 sm:grid-cols-[minmax(16rem,1.4fr)_minmax(9rem,1fr)]"
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-2.5">
+            <span className="text-xs font-medium text-subtle-foreground">
+              Layer coverage
+            </span>
             <span className="text-3xl font-semibold tabular-nums">
-              {Math.round(total.percent)}%
+              {Math.round(total.percent)}%{" "}
+              <span className="text-base font-normal text-muted-foreground">
+                {total.covered} of {total.total} columns
+              </span>
             </span>
-            <span className="text-sm text-muted-foreground tabular-nums">
-              {total.covered} of {total.total} columns mapped
-            </span>
-          </div>
-          <div className="flex flex-col gap-1.5">
             <span
               aria-hidden
-              className="flex h-1.5 overflow-hidden rounded-full bg-muted"
+              className="flex h-2 gap-0.5 overflow-hidden rounded-sm"
             >
               <span
                 className="bg-success"
-                style={{ width: `${total.percent}%` }}
+                style={{ flexGrow: total.covered }}
+              />
+              <span
+                className="bg-warning"
+                style={{ flexGrow: total.total - total.covered }}
               />
             </span>
-            <ul className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
+            <ul className="flex flex-wrap gap-4 text-xs text-muted-foreground tabular-nums">
               <li className="flex items-center gap-1.5">
-                <span aria-hidden className="size-2 rounded-full bg-success" />
-                Mapped
+                <span aria-hidden className="size-2 rounded-xs bg-success" />
+                {total.covered} mapped
               </li>
               <li className="flex items-center gap-1.5">
-                <span aria-hidden className="size-2 rounded-full bg-muted" />
-                Unmapped
+                <span aria-hidden className="size-2 rounded-xs bg-warning" />
+                {total.total - total.covered} unmapped
               </li>
             </ul>
           </div>
-          <div className="flex flex-col text-sm text-muted-foreground tabular-nums">
-            <span>
-              <span className="font-medium text-foreground">{list.length}</span>{" "}
-              {list.length === 1 ? "table" : "tables"}
+          <div className="flex flex-col gap-1 sm:border-s sm:border-border sm:ps-6">
+            <span className="text-xs font-medium text-subtle-foreground">
+              {copy.name} tables
             </span>
-            <span>{fullyMapped ?? 0} fully mapped</span>
+            <span className="text-2xl font-semibold tabular-nums">
+              {list.length}
+            </span>
+            <span className="text-sm text-subtle-foreground tabular-nums">
+              {fullyMapped ?? 0} fully mapped
+            </span>
           </div>
         </section>
       )}
@@ -358,31 +362,45 @@ function TableMappingView({
   covered: Counts | undefined;
 }) {
   const generated = table.kind === "generated";
-  const heading = (
-    <div className="flex flex-wrap items-center gap-2">
-      <h4 className={cn(monoClasses, "text-md font-semibold")}>{table.name}</h4>
-      <Badge variant="accent">{KIND_LABELS[table.kind] ?? table.kind}</Badge>
-      {table.scd_type != null && <Badge>SCD {table.scd_type}</Badge>}
-      {table.is_conformed && <Badge>Conformed</Badge>}
-      {!generated && covered && (
-        <span className="ms-auto text-sm text-muted-foreground tabular-nums">
-          {covered.covered} of {covered.total} columns covered
-        </span>
-      )}
+  const header = (extra?: ReactNode) => (
+    <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <h4 className={cn(monoClasses, "text-xl font-medium")}>{table.name}</h4>
+        <Badge>{KIND_LABELS[table.kind] ?? table.kind}</Badge>
+        {table.scd_type != null && <Badge>SCD {table.scd_type}</Badge>}
+        {table.is_conformed && <Badge>Conformed</Badge>}
+        {!generated && covered && (
+          <span className="ms-auto text-sm text-muted-foreground tabular-nums">
+            {covered.covered} of {covered.total} columns covered
+          </span>
+        )}
+      </div>
+      {extra}
     </div>
   );
   return (
     <section
       aria-label={`Mappings of ${table.name}`}
-      className="flex min-w-0 flex-col gap-4 p-5"
+      className="flex min-w-0 flex-col"
     >
-      {heading}
       {generated ? (
-        <EmptyState title="Generated table, no mapping needed">
-          DAWAM generates this table, so its columns have no source to map.
-        </EmptyState>
+        <>
+          {header()}
+          <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
+            <CalendarDays
+              aria-hidden
+              className="size-5 text-muted-foreground"
+            />
+            <p className="text-md font-medium">
+              Generated table, no mapping needed
+            </p>
+            <p className="max-w-md text-sm text-muted-foreground">
+              DAWAM generates this table, so its columns have no source to map.
+            </p>
+          </div>
+        </>
       ) : (
-        <MappedTable workspace={workspace} tableId={table.id} />
+        <MappedTable workspace={workspace} tableId={table.id} header={header} />
       )}
     </section>
   );
@@ -391,9 +409,11 @@ function TableMappingView({
 function MappedTable({
   workspace,
   tableId,
+  header,
 }: {
   workspace: Workspace;
   tableId: string;
+  header: (extra?: ReactNode) => ReactNode;
 }) {
   const mapping = useTableMapping(workspace.id, tableId);
   const columns = useDwTable(workspace.id, tableId);
@@ -402,13 +422,23 @@ function MappedTable({
   const [branchId, setBranchId] = useState<string | null>(null);
 
   if (mapping.isPending) {
-    return <Loading label="Loading mappings…" />;
+    return (
+      <>
+        {header()}
+        <Loading label="Loading mappings…" />
+      </>
+    );
   }
   if (mapping.isError) {
     return (
-      <ErrorText>
-        Could not load the mappings: {mapping.error.message}
-      </ErrorText>
+      <>
+        {header()}
+        <div className="p-5">
+          <ErrorText>
+            Could not load the mappings: {mapping.error.message}
+          </ErrorText>
+        </div>
+      </>
     );
   }
   const m = mapping.data;
@@ -418,7 +448,7 @@ function MappedTable({
 
   return (
     <>
-      <Integration mapping={m} />
+      {header(<Integration mapping={m} />)}
       {branch && (
         <>
           <Tabs
@@ -428,7 +458,7 @@ function MappedTable({
               setOpenKey(null);
             }}
           >
-            <TabsList aria-label="Branches" className="px-0">
+            <TabsList aria-label="Branches" className="flex-wrap gap-5 px-5">
               {m.branches.map((b) => (
                 <TabsTrigger key={b.id} value={b.id} className="text-sm">
                   {b.name}
@@ -439,103 +469,131 @@ function MappedTable({
           <BranchSql branch={branch} />
         </>
       )}
-      <ul
-        aria-label="Column mappings"
-        className="divide-y divide-border overflow-hidden rounded-lg border border-border"
-      >
-        {(branch ? branch.columns : m.columns).map((column) => {
-          const detail = details.get(column.column_id);
-          const common = {
-            column,
-            dataType: detail ? typeText(detail.data_type) : null,
-            pii: Boolean(detail?.pii_note),
-            editable: editable && column.mapping_type !== "system",
-            open: openKey === column.column_id,
-            branched: branch !== null,
-            onToggle: () =>
-              setOpenKey((k) =>
-                k === column.column_id ? null : column.column_id,
-              ),
-            onClose: () => setOpenKey(null),
-            onConflict: () => void mapping.refetch(),
-          };
-          return branch ? (
-            <BranchColumnRow
-              key={`${branch.id}:${column.column_id}`}
-              workspaceId={workspace.id}
-              tableId={tableId}
-              branchId={branch.id}
-              {...common}
-            />
-          ) : (
-            <TableColumnRow
-              key={`table:${column.column_id}`}
-              workspaceId={workspace.id}
-              tableId={tableId}
-              {...common}
-            />
-          );
-        })}
-      </ul>
+      <div className="overflow-x-auto">
+        <div className="min-w-160">
+          <div
+            aria-hidden
+            className={cn(
+              rowGrid,
+              "border-b border-border px-5 py-2.5 text-xs font-medium text-muted-foreground",
+            )}
+          >
+            <span>Column</span>
+            <span>Mapping</span>
+            <span>From</span>
+            <span />
+          </div>
+          <ul aria-label="Column mappings">
+            {(branch ? branch.columns : m.columns).map((column) => {
+              const detail = details.get(column.column_id);
+              const common = {
+                column,
+                dataType: detail ? typeText(detail.data_type) : null,
+                pii: Boolean(detail?.pii_note),
+                editable: editable && column.mapping_type !== "system",
+                open: openKey === column.column_id,
+                branched: branch !== null,
+                onToggle: () =>
+                  setOpenKey((k) =>
+                    k === column.column_id ? null : column.column_id,
+                  ),
+                onClose: () => setOpenKey(null),
+                onConflict: () => void mapping.refetch(),
+              };
+              return branch ? (
+                <BranchColumnRow
+                  key={`${branch.id}:${column.column_id}`}
+                  workspaceId={workspace.id}
+                  tableId={tableId}
+                  branchId={branch.id}
+                  {...common}
+                />
+              ) : (
+                <TableColumnRow
+                  key={`table:${column.column_id}`}
+                  workspaceId={workspace.id}
+                  tableId={tableId}
+                  {...common}
+                />
+              );
+            })}
+          </ul>
+        </div>
+      </div>
     </>
   );
 }
 
+/** The integration rule and match keys of a table fed by several branches (read-only). */
 function Integration({ mapping }: { mapping: TableMapping }) {
   if (!mapping.integration_rule && mapping.match_keys.length === 0) {
     return null;
   }
   return (
-    <div className="flex flex-col gap-1 text-sm">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
       {mapping.integration_rule && (
-        <p>
-          <span className="font-medium">Integration rule</span>{" "}
-          <span className="text-muted-foreground">
-            {mapping.integration_rule}
+        <p className="flex min-w-0 flex-1 basis-80 gap-6">
+          <span className="shrink-0 text-subtle-foreground">
+            Integration rule
           </span>
+          <span>{mapping.integration_rule}</span>
         </p>
       )}
       {mapping.match_keys.length > 0 && (
-        <p>
-          <span className="font-medium">Match keys</span>{" "}
-          <span className={cn(monoClasses, "text-muted-foreground")}>
-            {mapping.match_keys.join(", ")}
+        <p className="flex flex-wrap items-center gap-1.5">
+          <span className="text-subtle-foreground">
+            {mapping.match_keys.length === 1 ? "Match key" : "Match keys"}
           </span>
+          {mapping.match_keys.map((key) => (
+            <Badge key={key} variant="accent" className={monoClasses}>
+              {key}
+            </Badge>
+          ))}
         </p>
       )}
     </div>
   );
 }
 
+/** The branch's query around the column expressions: FROM, joins, WHERE, GROUP BY, HAVING. */
 function BranchSql({ branch }: { branch: MappingBranch }) {
-  const parts: [string, string | null][] = [
-    ["Driving table", branch.driving_input],
-    ["Joins", branch.joins],
-    ["Filters", branch.filters],
-    ["Group by", branch.group_by],
-    ["Having", branch.having],
-  ];
-  const shown = parts.filter(([, value]) => value);
-  if (shown.length === 0) {
+  const lines = [
+    branch.driving_input && `FROM ${branch.driving_input}`,
+    branch.joins,
+    branch.filters && `WHERE ${branch.filters}`,
+    branch.group_by && `GROUP BY ${branch.group_by}`,
+    branch.having && `HAVING ${branch.having}`,
+  ].filter(Boolean);
+  if (lines.length === 0) {
     return null;
   }
   return (
-    <dl className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
-      {shown.map(([label, value]) => (
-        <div key={label} className="flex flex-col gap-0.5">
-          <dt className={sectionLabel}>{label}</dt>
-          <dd>
-            <code
-              className={cn(monoClasses, "break-words whitespace-pre-wrap")}
-            >
-              {value}
-            </code>
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <pre
+      aria-label="Branch SQL"
+      className={cn(
+        monoClasses,
+        "border-b border-border bg-surface px-5 py-3 text-xs break-words whitespace-pre-wrap text-muted-foreground",
+      )}
+    >
+      {lines.join("\n")}
+    </pre>
   );
 }
+
+/** The column grid: column, mapping type, from, the edit mark. */
+const rowGrid =
+  "grid grid-cols-[minmax(0,1fr)_6.5rem_minmax(0,1.6fr)_1rem] gap-3";
+
+/** The mapping type pill's tint per type. */
+const KIND_BADGE: Partial<Record<MappingType, string>> = {
+  derived: "bg-primary-subtle text-primary",
+  lookup: "bg-info-subtle text-info-strong",
+  unmapped: "bg-warning-subtle text-warning-strong",
+  system:
+    "bg-transparent text-muted-foreground ring-1 ring-border-strong ring-inset",
+  not_in_branch:
+    "bg-transparent text-muted-foreground ring-1 ring-border ring-inset",
+};
 
 interface RowProps {
   column: ColumnMapping;
@@ -590,7 +648,7 @@ function fromText(column: ColumnMapping): string {
     return "Generated by DAWAM";
   }
   if (column.mapping_type === "lookup" && column.lookup) {
-    return `Lookup ${column.lookup.dimension_name} on ${column.lookup.nk_inputs.join(", ")}`;
+    return `${column.lookup.dimension_name} on ${column.lookup.nk_inputs.join(", ")}`;
   }
   return column.sql_expression || "Not mapped yet";
 }
@@ -622,18 +680,20 @@ function ColumnRow({
     }
   }
   const name = column.column_name;
-  const unmapped = column.mapping_type === "unmapped";
+  const kind = column.mapping_type;
+  const unmapped = kind === "unmapped";
   const noSql = type === "unmapped" || type === "not_in_branch";
   const options: MappingType[] = [
     ...TABLE_LEVEL_MAPPING_TYPES,
     ...(branched ? (["not_in_branch"] as const) : []),
   ];
-  if (!options.includes(column.mapping_type)) {
-    options.push(column.mapping_type);
+  if (!options.includes(kind)) {
+    options.push(kind);
   }
   const inputs = [...column.inputs, ...column.uses].map(
     (i) => `${i.table_name}.${i.column_name}`,
   );
+  const plainFrom = unmapped || kind === "system";
 
   function submit() {
     const lookup = column.lookup;
@@ -665,74 +725,94 @@ function ColumnRow({
     );
   }
 
-  const summary = (
+  const cells = (
     <>
-      <span className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className={cn(monoClasses, "font-medium")}>{name}</span>
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+        <span className={cn(monoClasses, "font-medium break-all")}>{name}</span>
         {dataType && (
-          <span className={cn(monoClasses, "text-muted-foreground")}>
+          <span className={cn(monoClasses, "text-xs text-muted-foreground")}>
             {dataType}
           </span>
         )}
-        {pii && <Badge variant="danger">PII</Badge>}
+        {pii && (
+          <Badge variant="danger" className="self-center">
+            PII
+          </Badge>
+        )}
       </span>
-      <Badge variant={unmapped ? "warning" : "success"} dot>
-        {STATE_LABELS[column.mapping_type]}
-      </Badge>
-      <span className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
+      <span className="flex">
+        <Badge className={KIND_BADGE[kind]}>{STATE_LABELS[kind]}</Badge>
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5">
         <span
           className={cn(
-            "block break-words whitespace-pre-wrap",
-            column.sql_expression || column.lookup
-              ? monoClasses
-              : "text-sm text-muted-foreground",
+            "break-words whitespace-pre-wrap",
+            plainFrom ? "text-sm" : cn(monoClasses, "text-xs"),
+            unmapped
+              ? "text-warning-strong"
+              : kind === "system" || kind === "not_in_branch"
+                ? "text-muted-foreground"
+                : "text-foreground",
           )}
         >
           {fromText(column)}
         </span>
         {column.validation.errors.map((e) => (
-          <span key={e.code} className="block text-sm text-danger-strong">
+          <span key={e.code} className="text-xs text-warning-strong">
             {e.message}
           </span>
         ))}
       </span>
+      {editable ? (
+        <Pencil
+          aria-hidden
+          className={cn(
+            "size-3.5",
+            open ? "text-primary" : "text-subtle-foreground",
+          )}
+        />
+      ) : (
+        <span />
+      )}
     </>
   );
-  const rowClasses =
-    "flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm";
+  const rowClasses = cn(rowGrid, "min-h-10 items-center px-5 py-1.5 text-sm");
 
   return (
-    <li className={cn(unmapped && "bg-warning-subtle")}>
+    <li
+      className={cn(
+        "border-s-2 border-b border-b-muted",
+        open ? "border-s-primary bg-primary-subtle" : "border-s-transparent",
+        !open && unmapped && "bg-warning-subtle",
+      )}
+    >
       {editable ? (
         <button
           type="button"
           aria-expanded={open}
           aria-label={`Edit mapping of ${name}`}
           onClick={onToggle}
-          className={cn(rowClasses, "w-full text-start hover:bg-muted")}
+          className={cn(
+            rowClasses,
+            "w-full cursor-pointer text-start",
+            !open && "hover:bg-muted",
+          )}
         >
-          {summary}
-          <ChevronDown
-            aria-hidden
-            className={cn(
-              "size-4 text-subtle-foreground",
-              !open && "-rotate-90",
-            )}
-          />
+          {cells}
         </button>
       ) : (
-        <div className={rowClasses}>{summary}</div>
+        <div className={rowClasses}>{cells}</div>
       )}
       {editable && open && (
         <form
           aria-label={`Mapping of ${name}`}
-          className="flex flex-col gap-3 border-t border-border bg-surface px-3 py-3"
+          className="grid grid-cols-[10rem_minmax(0,1fr)] items-end gap-3 px-5 pt-1 pb-4"
           onSubmit={(e) => {
             e.preventDefault();
             submit();
           }}
         >
-          <label className="flex max-w-xs flex-col gap-1 text-sm font-medium">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
             Mapping type
             <NativeSelect
               value={type}
@@ -745,40 +825,43 @@ function ColumnRow({
               ))}
             </NativeSelect>
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
             Rule
             <Input
               value={rule}
               maxLength={4000}
+              placeholder="What this column means, in plain language"
               onChange={(e) => setRule(e.target.value)}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <label className="col-span-full flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
             SQL expression
             <Input
-              className={monoClasses}
+              className={cn(monoClasses, "text-xs")}
               value={sql}
               disabled={noSql}
+              placeholder={noSql ? "NULL" : "table.column"}
               onChange={(e) => setSql(e.target.value)}
             />
           </label>
-          <div className="flex flex-col gap-1">
-            <h5 className={h5Classes}>Inputs read from the SQL</h5>
-            {inputs.length > 0 ? (
-              <p className={cn(monoClasses, "text-muted-foreground")}>
-                {inputs.join(", ")}
-              </p>
-            ) : (
-              <Hint>None yet. They are read from the SQL when you save.</Hint>
-            )}
-          </div>
-          {save.error && <ErrorText>{save.error.message}</ErrorText>}
-          <div className="flex gap-2">
-            <Button type="submit" disabled={save.isPending}>
-              Save mapping
-            </Button>
+          {save.error && (
+            <div className="col-span-full">
+              <ErrorText>{save.error.message}</ErrorText>
+            </div>
+          )}
+          <div className="col-span-full flex flex-wrap items-center gap-3">
+            <span className="text-xs text-subtle-foreground">
+              Inputs, read from the SQL:{" "}
+              <span className={monoClasses}>
+                {inputs.length > 0 ? inputs.join(", ") : "none yet"}
+              </span>
+            </span>
+            <span className="flex-1" />
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={save.isPending}>
+              Save mapping
             </Button>
           </div>
         </form>
