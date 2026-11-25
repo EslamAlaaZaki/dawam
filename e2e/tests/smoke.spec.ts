@@ -168,7 +168,7 @@ test("the main path: sign in to lineage", async ({ page }) => {
 
   await test.step("map a core column to staging", async () => {
     await page.goto(`/workspaces/${workspaceId}?folder=dw/core/mappings`);
-    await page.getByRole("navigation", { name: "Core tables" }).getByRole("button", { name: /dim_customer/ }).click();
+    await page.getByRole("list", { name: "Core tables" }).getByRole("button", { name: /dim_customer/ }).click();
     await page.getByRole("button", { name: "Edit mapping of name", exact: true }).click();
     const form = page.getByRole("form", { name: "Mapping of name", exact: true });
     await form.getByLabel("Mapping type").selectOption("direct");

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, ChevronDown } from "lucide-react";
+import { ArrowRight, Database, Table2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -12,12 +12,17 @@ import {
 import type { Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { typeText } from "../lib/typeText";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
-import { ExportSheetMenu, LayerStrip } from "./mappingParts";
+import {
+  ExportSheetMenu,
+  LayerStrip,
+  MappingsExplorer,
+  StateDot,
+} from "./mappingParts";
 import { EmptyState, ErrorText, h3Classes, monoClasses } from "./parts";
+import { TreeGroup, TreeLeaf } from "./SchemaBrowser";
 
 const FLAG_LABELS: Record<string, string> = {
   placeholder: "Placeholder name",
@@ -36,8 +41,11 @@ const FILTERS: [Filter, string][] = [
   ["audit", "Audit"],
 ];
 
-/** The first groups start open; the rest start closed. */
-const OPEN_AT_FIRST = 3;
+const DOTS = {
+  review: { label: "To review", className: "bg-warning" },
+  hashed: { label: "Has hashed", className: "bg-danger" },
+  direct: { label: "Copied direct", className: "bg-success" },
+};
 
 const reviewLabels = (column: StagingMappingColumn): string[] => [
   ...column.review_flags.map((f) => FLAG_LABELS[f.code] ?? f.code),
@@ -49,6 +57,17 @@ const matches = (column: StagingMappingColumn, filter: Filter) =>
   (filter === "hashed" && column.mapping_type === "hashed") ||
   (filter === "audit" && column.mapping_type === "system") ||
   (filter === "review" && reviewLabels(column).length > 0);
+
+/** The state a table's dot shows: to review wins over hashed, which wins over direct. */
+function tableState(table: StagingMappingTable) {
+  if (table.columns.some((c) => reviewLabels(c).length > 0)) {
+    return DOTS.review;
+  }
+  if (table.columns.some((c) => c.mapping_type === "hashed")) {
+    return DOTS.hashed;
+  }
+  return DOTS.direct;
+}
 
 /**
  * The Staging Layer's Mappings page: how each Staging column is copied from its source
@@ -67,14 +86,18 @@ export function StagingMappingsPanel({
   const mappings = useStagingMappings(workspace.id);
   const [filter, setFilter] = useState<Filter>("all");
   const [text, setText] = useState("");
-  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [closed, setClosed] = useState<Set<string>>(new Set());
 
   const head = (full: boolean, extra?: ReactNode) => (
     <header className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-start">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <h3
           id="folder-title"
-          className={cn(h3Classes, "flex flex-wrap items-center gap-x-2 gap-y-1")}
+          className={cn(
+            h3Classes,
+            "flex flex-wrap items-center gap-x-2 gap-y-1",
+          )}
         >
           Staging mappings
           {full && (
@@ -128,7 +151,9 @@ export function StagingMappingsPanel({
   }
 
   const exportMenu = (
-    <ExportSheetMenu url={(format) => stagingMappingSheetUrl(workspace.id, format)} />
+    <ExportSheetMenu
+      url={(format) => stagingMappingSheetUrl(workspace.id, format)}
+    />
   );
 
   const all = tables.flatMap((t) => t.columns);
@@ -146,11 +171,28 @@ export function StagingMappingsPanel({
       const columns = table.columns.filter(
         (c) =>
           matches(c, filter) &&
-          (tableHit || c.column_name.toLowerCase().includes(needle)),
+          (tableHit ||
+            c.column_name.toLowerCase().includes(needle) ||
+            (c.source_column_name ?? "").toLowerCase().includes(needle)),
       );
       return { table, columns };
     })
     .filter(({ columns }) => !filtering || columns.length > 0);
+  // The clicked table, or the first visible one when it is filtered out.
+  const selected =
+    visible.find(({ table }) => table.table_id === chosen) ??
+    visible[0] ??
+    null;
+  const groups: [string, typeof visible][] = [];
+  for (const entry of visible) {
+    const name = entry.table.system_name ?? "No Source System";
+    const group = groups.find(([key]) => key === name);
+    if (group) {
+      group[1].push(entry);
+    } else {
+      groups.push([name, [entry]]);
+    }
+  }
 
   const share = (n: number) =>
     totals.columns > 0 ? `${(n / totals.columns) * 100}%` : "0%";
@@ -168,8 +210,14 @@ export function StagingMappingsPanel({
             aria-hidden
             className="flex h-1.5 overflow-hidden rounded-full bg-muted"
           >
-            <span className="bg-success" style={{ width: share(totals.direct) }} />
-            <span className="bg-danger" style={{ width: share(totals.hashed) }} />
+            <span
+              className="bg-success"
+              style={{ width: share(totals.direct) }}
+            />
+            <span
+              className="bg-danger"
+              style={{ width: share(totals.hashed) }}
+            />
             <span
               className="bg-subtle-foreground"
               style={{ width: share(totals.audit) }}
@@ -194,60 +242,90 @@ export function StagingMappingsPanel({
         >
           Column mappings
         </h4>
-        <div className="flex flex-wrap items-center gap-3">
-          <div role="group" aria-label="Show" className="flex gap-1">
-            {FILTERS.map(([id, label]) => (
-              <Button
-                key={id}
-                type="button"
-                size="sm"
-                variant={filter === id ? "secondary" : "ghost"}
-                aria-pressed={filter === id}
-                onClick={() => {
-                  setFilter(id);
-                  setToggled({});
-                }}
-              >
-                {label}
-                <span className="text-subtle-foreground tabular-nums">
-                  {counts[id]}
-                </span>
-              </Button>
-            ))}
-          </div>
-          <Input
-            type="search"
-            aria-label="Filter by table or column"
-            placeholder="Filter by table or column"
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              setToggled({});
-            }}
-            className="max-w-xs"
-          />
+        <div role="group" aria-label="Show" className="flex flex-wrap gap-1">
+          {FILTERS.map(([id, label]) => (
+            <Button
+              key={id}
+              type="button"
+              size="sm"
+              variant={filter === id ? "secondary" : "ghost"}
+              aria-pressed={filter === id}
+              onClick={() => setFilter(id)}
+            >
+              {label}
+              <span className="text-subtle-foreground tabular-nums">
+                {counts[id]}
+              </span>
+            </Button>
+          ))}
         </div>
-        {visible.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No columns match the filter.
-          </p>
-        )}
-        {visible.map(({ table, columns }, index) => {
-          const open =
-            toggled[table.table_id] ?? (filtering || index < OPEN_AT_FIRST);
-          return (
-            <TableGroup
-              key={table.table_id}
-              table={table}
-              columns={columns}
-              open={open}
+        <MappingsExplorer
+          idPrefix="staging-mappings"
+          treeLabel="Staging tables by Source System"
+          search={text}
+          onSearch={setText}
+          empty={visible.length === 0}
+          legend={[DOTS.direct, DOTS.hashed, DOTS.review]}
+          tree={groups.map(([name, entries]) => (
+            <TreeGroup
+              key={name}
+              label={name}
+              icon={<Database />}
+              count={entries.length}
+              level={0}
+              open={filtering || !closed.has(name)}
               onToggle={() =>
-                setToggled((t) => ({ ...t, [table.table_id]: !open }))
+                setClosed((c) => {
+                  const next = new Set(c);
+                  if (!next.delete(name)) {
+                    next.add(name);
+                  }
+                  return next;
+                })
               }
+            >
+              {entries.map(({ table, columns }) => {
+                const state = tableState(table);
+                return (
+                  <TreeLeaf
+                    key={table.table_id}
+                    name={table.table_name}
+                    title={table.table_name}
+                    icon={<Table2 />}
+                    level={1}
+                    selected={table.table_id === selected?.table.table_id}
+                    onOpen={() => setChosen(table.table_id)}
+                    after={
+                      <>
+                        {filter !== "all" && (
+                          <span className="text-xs text-subtle-foreground tabular-nums">
+                            {columns.length}
+                          </span>
+                        )}
+                        <StateDot
+                          label={state.label}
+                          className={state.className}
+                        />
+                      </>
+                    }
+                  />
+                );
+              })}
+            </TreeGroup>
+          ))}
+        >
+          {selected ? (
+            <TableDetail
+              table={selected.table}
+              columns={selected.columns}
               onOpenPii={onOpenPii}
             />
-          );
-        })}
+          ) : (
+            <EmptyState className="m-5" title="No column matches this filter.">
+              Try another filter or search.
+            </EmptyState>
+          )}
+        </MappingsExplorer>
       </section>
     </section>
   );
@@ -267,111 +345,113 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function Big({ children }: { children: ReactNode }) {
-  return <span className="text-3xl font-semibold tabular-nums">{children}</span>;
+  return (
+    <span className="text-3xl font-semibold tabular-nums">{children}</span>
+  );
 }
 
-function TableGroup({
+/** The chosen table: its header, then the columns that pass the filter and search. */
+function TableDetail({
   table,
   columns,
-  open,
-  onToggle,
   onOpenPii,
 }: {
   table: StagingMappingTable;
   columns: StagingMappingColumn[];
-  open: boolean;
-  onToggle: () => void;
   onOpenPii: (systemId: string) => void;
 }) {
-  const hashed = table.columns.filter((c) => c.mapping_type === "hashed").length;
+  const hashed = table.columns.filter(
+    (c) => c.mapping_type === "hashed",
+  ).length;
   const review = table.columns.filter((c) => reviewLabels(c).length > 0).length;
   const source = table.source_table_name
-    ? [table.source_db_schema, table.source_table_name].filter(Boolean).join(".")
+    ? [table.source_db_schema, table.source_table_name]
+        .filter(Boolean)
+        .join(".")
     : null;
   const systemId = table.system_id;
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={onToggle}
-        className="flex w-full flex-wrap items-center gap-2 bg-surface px-3 py-2 text-start"
-      >
-        <ChevronDown
-          aria-hidden
-          className={cn("size-4 text-subtle-foreground", !open && "-rotate-90")}
-        />
-        <span className={cn(monoClasses, "font-medium")}>{table.table_name}</span>
-        {source && (
-          <span className="text-sm text-muted-foreground">
-            from <span className={monoClasses}>{source}</span>
-          </span>
-        )}
+    <section
+      aria-label={`Mappings of ${table.table_name}`}
+      className="flex min-w-0 flex-col"
+    >
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-4">
+        <h3 className={cn(monoClasses, "text-md font-semibold")}>
+          {table.table_name}
+        </h3>
         {table.system_name && <Badge>{table.system_name}</Badge>}
         {hashed > 0 && <Badge variant="danger">{hashed} hashed</Badge>}
         {review > 0 && <Badge variant="warning">{review} to review</Badge>}
         <span className="ms-auto text-sm text-muted-foreground tabular-nums">
+          {source && (
+            <>
+              from <span className={monoClasses}>{source}</span> ·{" "}
+            </>
+          )}
           {table.columns.length} columns
         </span>
-      </button>
-      {open && (
-        <ul className="divide-y divide-border border-t border-border">
-          {columns.map((column) => (
-            <li
-              key={column.column_id}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm"
-            >
-              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                {column.source_column_name ? (
-                  <>
-                    <span className={monoClasses}>{column.source_column_name}</span>
-                    <span className={cn(monoClasses, "text-muted-foreground")}>
-                      {column.source_data_type}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">none</span>
-                )}
-                <ArrowRight aria-hidden className="size-3.5 text-subtle-foreground" />
-                <span className={monoClasses}>{column.column_name}</span>
-                <span className={cn(monoClasses, "text-muted-foreground")}>
-                  {typeText(column.data_type)}
-                </span>
+      </div>
+      <ul className="divide-y divide-border">
+        {columns.map((column) => (
+          <li
+            key={column.column_id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2 text-sm"
+          >
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              {column.source_column_name ? (
+                <>
+                  <span className={monoClasses}>
+                    {column.source_column_name}
+                  </span>
+                  <span className={cn(monoClasses, "text-muted-foreground")}>
+                    {column.source_data_type}
+                  </span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">none</span>
+              )}
+              <ArrowRight
+                aria-hidden
+                className="size-3.5 text-subtle-foreground"
+              />
+              <span className={monoClasses}>{column.column_name}</span>
+              <span className={cn(monoClasses, "text-muted-foreground")}>
+                {typeText(column.data_type)}
               </span>
-              <span className="flex flex-wrap items-center gap-2">
-                {column.mapping_type === "direct" && <Badge>Direct</Badge>}
-                {column.mapping_type === "hashed" && (
-                  <>
-                    <Badge variant="danger">Hashed</Badge>
-                    {systemId && (
-                      <a
-                        href={`?${new URLSearchParams({ folder: `systems/${systemId}/pii` })}`}
-                        className="text-xs font-medium text-primary hover:underline"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          onOpenPii(systemId);
-                        }}
-                      >
-                        Change in PII
-                      </a>
-                    )}
-                  </>
-                )}
-                {column.mapping_type === "system" && (
-                  <Badge className="border border-border bg-transparent">
-                    Audit
-                  </Badge>
-                )}
-                {reviewLabels(column).map((label) => (
-                  <Badge key={label} variant="warning">
-                    {label}
-                  </Badge>
-                ))}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+            </span>
+            <span className="flex flex-wrap items-center gap-2">
+              {column.mapping_type === "direct" && <Badge>Direct</Badge>}
+              {column.mapping_type === "hashed" && (
+                <>
+                  <Badge variant="danger">Hashed</Badge>
+                  {systemId && (
+                    <a
+                      href={`?${new URLSearchParams({ folder: `systems/${systemId}/pii` })}`}
+                      className="text-xs font-medium text-primary hover:underline"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        onOpenPii(systemId);
+                      }}
+                    >
+                      Change in PII
+                    </a>
+                  )}
+                </>
+              )}
+              {column.mapping_type === "system" && (
+                <Badge className="border border-border bg-transparent">
+                  Audit
+                </Badge>
+              )}
+              {reviewLabels(column).map((label) => (
+                <Badge key={label} variant="warning">
+                  {label}
+                </Badge>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

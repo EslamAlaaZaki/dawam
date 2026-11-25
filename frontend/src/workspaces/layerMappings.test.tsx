@@ -261,14 +261,40 @@ describe("the Core and Mart Mappings page", () => {
     expect(within(coverage).getByText("5 of 6 columns mapped")).toBeInTheDocument();
     expect(within(coverage).getByText("1 fully mapped")).toBeInTheDocument();
 
-    const list = screen.getByRole("navigation", { name: "Core tables" });
-    const customer = within(list).getByRole("button", { name: /dim_customer/ });
-    expect(customer).toHaveTextContent("50%");
-    expect(customer).toHaveAttribute("aria-current", "true");
-    expect(within(list).getByRole("button", { name: /fact_sales/ })).toHaveTextContent("100%");
-    expect(within(list).getByRole("button", { name: /dim_date/ })).toHaveTextContent(
-      "no mapping needed",
+    const tree = screen.getByRole("list", { name: "Core tables" });
+    expect(within(tree).getByRole("button", { name: /^Dimensions/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
     );
+    expect(within(tree).getByRole("button", { name: /^Facts/ })).toBeInTheDocument();
+    const customer = within(tree).getByRole("button", { name: "dim_customer" });
+    expect(customer).toHaveAttribute("aria-current", "true");
+    const row = (name: string) => within(tree).getByRole("button", { name }).closest("li")!;
+    expect(row("dim_customer")).toHaveTextContent("50%");
+    expect(within(row("dim_customer")).getByRole("img", { name: "Partly mapped" })).toBeInTheDocument();
+    expect(row("fact_sales")).toHaveTextContent("100%");
+    expect(within(row("fact_sales")).getByRole("img", { name: "Fully mapped" })).toBeInTheDocument();
+    expect(row("dim_date")).not.toHaveTextContent("%");
+    expect(within(row("dim_date")).getByRole("img", { name: "Generated" })).toBeInTheDocument();
+    const legend = screen.getByRole("list", { name: "Legend" });
+    expect(within(legend).getByText("Generated")).toBeInTheDocument();
+  });
+
+  it("collapses a group, and searches the tree by table name", async () => {
+    renderApp(backend(), core());
+
+    const tree = await screen.findByRole("list", { name: "Core tables" });
+    fireEvent.click(within(tree).getByRole("button", { name: /^Facts/ }));
+    expect(within(tree).queryByRole("button", { name: "fact_sales" })).not.toBeInTheDocument();
+
+    // A search forces matching groups open and hides the others.
+    fireEvent.change(screen.getByLabelText("Search by name"), { target: { value: "sales" } });
+    expect(within(tree).getByRole("button", { name: "fact_sales" })).toBeInTheDocument();
+    expect(within(tree).queryByRole("button", { name: "dim_customer" })).not.toBeInTheDocument();
+    expect(within(tree).queryByRole("button", { name: /^Dimensions/ })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search by name"), { target: { value: "zzz" } });
+    expect(screen.getByText("No table matches.")).toBeInTheDocument();
   });
 
   it("selects a table and shows its columns, validation and the unmapped state", async () => {
@@ -284,7 +310,7 @@ describe("the Core and Mart Mappings page", () => {
     // The type and the PII badge come from the table's column.
     expect(await within(rows).findByText("PII")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /fact_sales/ }));
+    fireEvent.click(screen.getByRole("button", { name: "fact_sales" }));
     expect(
       await screen.findByRole("region", { name: "Mappings of fact_sales" }),
     ).toBeInTheDocument();

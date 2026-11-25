@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Folder, Table2 } from "lucide-react";
 import { useState } from "react";
 
 import { ApiError } from "../api/client";
@@ -27,7 +27,13 @@ import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { typeText } from "../lib/typeText";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
-import { ExportSheetMenu, LayerStrip } from "./mappingParts";
+import {
+  ExportSheetMenu,
+  LayerStrip,
+  MappingsExplorer,
+  StateDot,
+} from "./mappingParts";
+import { TreeGroup, TreeLeaf } from "./SchemaBrowser";
 import {
   EmptyState,
   ErrorText,
@@ -57,6 +63,21 @@ const COPY: Record<Layer, { name: string; title: string; text: string }> = {
     title: "Mart mappings",
     text: "How every Mart column is built from the Core Layer: aggregates, groupings and snapshots. Mart tables point at Core conformed dimensions directly, so no dimension is copied here.",
   },
+};
+
+const KIND_PLURALS: Record<string, string> = {
+  fact: "Facts",
+  dimension: "Dimensions",
+  bridge: "Bridges",
+  aggregate: "Aggregates",
+  generated: "Generated",
+  other: "Other",
+};
+
+const DOTS = {
+  full: { label: "Fully mapped", className: "bg-success" },
+  partial: { label: "Partly mapped", className: "bg-warning" },
+  generated: { label: "Generated", className: "bg-border-strong" },
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -95,18 +116,24 @@ export function LayerMappingsPanel({
   const tables = useDwTables(workspace.id, layer);
   const coverage = useCoverage(workspace.id);
   const [chosen, setChosen] = useState<string | null>(initialTableId ?? null);
+  const [search, setSearch] = useState("");
+  const [closed, setClosed] = useState<Set<string>>(new Set());
   const copy = COPY[layer];
 
   const layerCoverage = coverage.data?.layers.find((l) => l.layer === layer);
   const total = layerCoverage?.coverage;
-  const full = total !== undefined && total.total > 0 && total.covered === total.total;
+  const full =
+    total !== undefined && total.total > 0 && total.covered === total.total;
 
   const head = (
     <header className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-start">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <h3
           id="folder-title"
-          className={cn(h3Classes, "flex flex-wrap items-center gap-x-2 gap-y-1")}
+          className={cn(
+            h3Classes,
+            "flex flex-wrap items-center gap-x-2 gap-y-1",
+          )}
         >
           {copy.title}
           {total && (
@@ -120,7 +147,9 @@ export function LayerMappingsPanel({
           url={(format) => layerMappingSheetUrl(workspace.id, layer, format)}
         />
       </div>
-      <LayerStrip active={layer === "core" ? ["Staging", "Core"] : ["Core", "Mart"]} />
+      <LayerStrip
+        active={layer === "core" ? ["Staging", "Core"] : ["Core", "Mart"]}
+      />
     </header>
   );
 
@@ -137,16 +166,38 @@ export function LayerMappingsPanel({
   }
   const list = tables.data;
   const selected = list.find((t) => t.id === chosen) ?? list[0] ?? null;
-  const byTable = new Map(layerCoverage?.tables.map((t) => [t.table_id, t.coverage]));
+  const byTable = new Map(
+    layerCoverage?.tables.map((t) => [t.table_id, t.coverage]),
+  );
   const fullyMapped = layerCoverage?.tables.filter(
     (t) => t.coverage.total > 0 && t.coverage.covered === t.coverage.total,
   ).length;
+
+  const needle = search.trim().toLowerCase();
+  const searching = needle !== "";
+  const shown = list.filter((t) => t.name.toLowerCase().includes(needle));
+  const groups: [string, DwTableSummary[]][] = [];
+  for (const table of shown) {
+    const group = groups.find(([kind]) => kind === table.kind);
+    if (group) {
+      group[1].push(table);
+    } else {
+      groups.push([table.kind, [table]]);
+    }
+  }
+  const legend = [
+    DOTS.full,
+    DOTS.partial,
+    ...(list.some((t) => t.kind === "generated") ? [DOTS.generated] : []),
+  ];
 
   return (
     <section aria-labelledby="folder-title" className="flex flex-col gap-6">
       {head}
       {coverage.isError && (
-        <ErrorText>Could not load the coverage: {coverage.error.message}</ErrorText>
+        <ErrorText>
+          Could not load the coverage: {coverage.error.message}
+        </ErrorText>
       )}
       {total && (
         <section
@@ -162,8 +213,14 @@ export function LayerMappingsPanel({
             </span>
           </div>
           <div className="flex flex-col gap-1.5">
-            <span aria-hidden className="flex h-1.5 overflow-hidden rounded-full bg-muted">
-              <span className="bg-success" style={{ width: `${total.percent}%` }} />
+            <span
+              aria-hidden
+              className="flex h-1.5 overflow-hidden rounded-full bg-muted"
+            >
+              <span
+                className="bg-success"
+                style={{ width: `${total.percent}%` }}
+              />
             </span>
             <ul className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
               <li className="flex items-center gap-1.5">
@@ -191,21 +248,43 @@ export function LayerMappingsPanel({
           tables exist.
         </EmptyState>
       ) : (
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <nav aria-label={`${copy.name} tables`}>
-            <ul className="flex flex-col gap-1">
-              {list.map((table) => (
-                <li key={table.id}>
-                  <TableItem
-                    table={table}
-                    coverage={byTable.get(table.id)}
-                    active={table.id === selected?.id}
-                    onSelect={() => setChosen(table.id)}
-                  />
-                </li>
+        <MappingsExplorer
+          idPrefix={`${layer}-mappings`}
+          treeLabel={`${copy.name} tables`}
+          search={search}
+          onSearch={setSearch}
+          empty={shown.length === 0}
+          legend={legend}
+          tree={groups.map(([kind, items]) => (
+            <TreeGroup
+              key={kind}
+              label={KIND_PLURALS[kind] ?? `${kind}s`}
+              icon={<Folder />}
+              count={items.length}
+              level={0}
+              open={searching || !closed.has(kind)}
+              onToggle={() =>
+                setClosed((c) => {
+                  const next = new Set(c);
+                  if (!next.delete(kind)) {
+                    next.add(kind);
+                  }
+                  return next;
+                })
+              }
+            >
+              {items.map((table) => (
+                <TableLeaf
+                  key={table.id}
+                  table={table}
+                  coverage={byTable.get(table.id)}
+                  active={table.id === selected?.id}
+                  onSelect={() => setChosen(table.id)}
+                />
               ))}
-            </ul>
-          </nav>
+            </TreeGroup>
+          ))}
+        >
           {selected && (
             <TableMappingView
               // Another table starts with no row open.
@@ -215,13 +294,13 @@ export function LayerMappingsPanel({
               covered={byTable.get(selected.id)}
             />
           )}
-        </div>
+        </MappingsExplorer>
       )}
     </section>
   );
 }
 
-function TableItem({
+function TableLeaf({
   table,
   coverage,
   active,
@@ -233,42 +312,34 @@ function TableItem({
   onSelect: () => void;
 }) {
   const generated = table.kind === "generated";
-  const complete = coverage !== undefined && coverage.percent >= 100;
+  const state = generated
+    ? DOTS.generated
+    : coverage
+      ? coverage.percent >= 100
+        ? DOTS.full
+        : DOTS.partial
+      : null;
   return (
-    <button
-      type="button"
-      aria-current={active ? "true" : undefined}
-      onClick={onSelect}
-      className={cn(
-        "flex w-full flex-col gap-1.5 rounded-lg border px-3 py-2 text-start",
-        active
-          ? "border-primary bg-primary-subtle"
-          : "border-border bg-surface hover:bg-muted",
-      )}
-    >
-      <span className="flex items-center gap-2">
-        <span className={cn(monoClasses, "min-w-0 flex-1 truncate font-medium")}>
-          {table.name}
-        </span>
-        {!generated && coverage && (
-          <span className="text-sm text-muted-foreground tabular-nums">
-            {Math.round(coverage.percent)}%
-          </span>
-        )}
-      </span>
-      <span className="text-xs text-muted-foreground">
-        {KIND_LABELS[table.kind] ?? table.kind}
-        {generated && " · no mapping needed"}
-      </span>
-      {!generated && coverage && (
-        <span aria-hidden className="flex h-1 overflow-hidden rounded-full bg-muted">
-          <span
-            className={complete ? "bg-success" : "bg-warning"}
-            style={{ width: `${coverage.percent}%` }}
-          />
-        </span>
-      )}
-    </button>
+    <TreeLeaf
+      name={table.name}
+      title={table.name}
+      icon={<Table2 />}
+      level={1}
+      selected={active}
+      onOpen={onSelect}
+      after={
+        <>
+          {!generated && coverage && (
+            <span className="text-xs text-subtle-foreground tabular-nums">
+              {Math.round(coverage.percent)}%
+            </span>
+          )}
+          {state && (
+            <StateDot label={state.label} className={state.className} />
+          )}
+        </>
+      }
+    />
   );
 }
 
@@ -298,7 +369,7 @@ function TableMappingView({
   return (
     <section
       aria-label={`Mappings of ${table.name}`}
-      className="flex min-w-0 flex-col gap-4"
+      className="flex min-w-0 flex-col gap-4 p-5"
     >
       {heading}
       {generated ? (
@@ -330,11 +401,14 @@ function MappedTable({
   }
   if (mapping.isError) {
     return (
-      <ErrorText>Could not load the mappings: {mapping.error.message}</ErrorText>
+      <ErrorText>
+        Could not load the mappings: {mapping.error.message}
+      </ErrorText>
     );
   }
   const m = mapping.data;
-  const branch = m.branches.find((b) => b.id === branchId) ?? m.branches[0] ?? null;
+  const branch =
+    m.branches.find((b) => b.id === branchId) ?? m.branches[0] ?? null;
   const details = new Map(columns.data?.columns.map((c) => [c.id, c]));
 
   return (
@@ -374,7 +448,9 @@ function MappedTable({
             open: openKey === column.column_id,
             branched: branch !== null,
             onToggle: () =>
-              setOpenKey((k) => (k === column.column_id ? null : column.column_id)),
+              setOpenKey((k) =>
+                k === column.column_id ? null : column.column_id,
+              ),
             onClose: () => setOpenKey(null),
             onConflict: () => void mapping.refetch(),
           };
@@ -409,7 +485,9 @@ function Integration({ mapping }: { mapping: TableMapping }) {
       {mapping.integration_rule && (
         <p>
           <span className="font-medium">Integration rule</span>{" "}
-          <span className="text-muted-foreground">{mapping.integration_rule}</span>
+          <span className="text-muted-foreground">
+            {mapping.integration_rule}
+          </span>
         </p>
       )}
       {mapping.match_keys.length > 0 && (
@@ -442,7 +520,9 @@ function BranchSql({ branch }: { branch: MappingBranch }) {
         <div key={label} className="flex flex-col gap-0.5">
           <dt className={sectionLabel}>{label}</dt>
           <dd>
-            <code className={cn(monoClasses, "break-words whitespace-pre-wrap")}>
+            <code
+              className={cn(monoClasses, "break-words whitespace-pre-wrap")}
+            >
               {value}
             </code>
           </dd>
@@ -473,7 +553,9 @@ interface Save {
   error: Error | null;
 }
 
-function TableColumnRow(props: RowProps & { workspaceId: string; tableId: string }) {
+function TableColumnRow(
+  props: RowProps & { workspaceId: string; tableId: string },
+) {
   const save = useSaveColumnMapping(
     props.workspaceId,
     props.tableId,
@@ -583,7 +665,9 @@ function ColumnRow({
       <span className="flex min-w-0 flex-wrap items-center gap-2">
         <span className={cn(monoClasses, "font-medium")}>{name}</span>
         {dataType && (
-          <span className={cn(monoClasses, "text-muted-foreground")}>{dataType}</span>
+          <span className={cn(monoClasses, "text-muted-foreground")}>
+            {dataType}
+          </span>
         )}
         {pii && <Badge variant="danger">PII</Badge>}
       </span>
@@ -609,7 +693,8 @@ function ColumnRow({
       </span>
     </>
   );
-  const rowClasses = "flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm";
+  const rowClasses =
+    "flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm";
 
   return (
     <li className={cn(unmapped && "bg-warning-subtle")}>
@@ -624,7 +709,10 @@ function ColumnRow({
           {summary}
           <ChevronDown
             aria-hidden
-            className={cn("size-4 text-subtle-foreground", !open && "-rotate-90")}
+            className={cn(
+              "size-4 text-subtle-foreground",
+              !open && "-rotate-90",
+            )}
           />
         </button>
       ) : (

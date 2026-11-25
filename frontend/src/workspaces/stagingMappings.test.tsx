@@ -146,48 +146,120 @@ describe("the Staging Mappings page", () => {
     expect(within(card("To review")).getByText("1")).toBeInTheDocument();
   });
 
-  it("badges each table and column, and links hashed rows to the PII page", async () => {
+  it("groups the tree by Source System and marks each table's state", async () => {
     renderApp(backend(MAPPINGS), PATH);
 
-    const group = await screen.findByRole("button", {
-      name: /^stg_cbs_customers/,
+    const tree = await screen.findByRole("list", {
+      name: "Staging tables by Source System",
     });
-    expect(within(group).getByText("1 hashed")).toBeInTheDocument();
-    expect(within(group).getByText("1 to review")).toBeInTheDocument();
-    expect(within(group).getByText("Core Banking")).toBeInTheDocument();
-    expect(screen.getByText("Truncated")).toBeInTheDocument();
-    expect(screen.getAllByText("Audit", { selector: "span.bg-transparent" })[0]).toBeInTheDocument();
-    expect(screen.getAllByText("none").length).toBeGreaterThan(0);
+    const group = within(tree).getByRole("button", { name: /^Core Banking/ });
+    expect(group).toHaveAttribute("aria-expanded", "true");
+    expect(group).toHaveTextContent("2");
+    const row = (name: string) =>
+      within(tree).getByRole("button", { name }).closest("li")!;
+    expect(
+      within(row("stg_cbs_customers")).getByRole("img", { name: "To review" }),
+    ).toBeInTheDocument();
+    expect(
+      within(row("stg_cbs_accounts")).getByRole("img", { name: "Copied direct" }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list", { name: "Legend" })).getByText("Has hashed"),
+    ).toBeInTheDocument();
+    // No filter, so no per-table column count.
+    expect(row("stg_cbs_customers")).not.toHaveTextContent("4");
 
-    fireEvent.click(screen.getByRole("link", { name: "Change in PII" }));
+    fireEvent.click(group);
+    expect(
+      within(tree).queryByRole("button", { name: "stg_cbs_customers" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("badges the selected table and its columns, and links hashed rows to the PII page", async () => {
+    renderApp(backend(MAPPINGS), PATH);
+
+    const region = await screen.findByRole("region", {
+      name: "Mappings of stg_cbs_customers",
+    });
+    expect(
+      within(region).getByRole("heading", { name: "stg_cbs_customers" }),
+    ).toBeInTheDocument();
+    expect(within(region).getByText("1 hashed")).toBeInTheDocument();
+    expect(within(region).getByText("1 to review")).toBeInTheDocument();
+    expect(within(region).getByText("Core Banking")).toBeInTheDocument();
+    expect(within(region).getByText(/4 columns/)).toBeInTheDocument();
+    expect(within(region).getByText("dbo.customers")).toBeInTheDocument();
+    expect(within(region).getByText("Truncated")).toBeInTheDocument();
+    expect(
+      within(region).getAllByText("Audit", { selector: "span.bg-transparent" })[0],
+    ).toBeInTheDocument();
+    expect(within(region).getAllByText("none").length).toBeGreaterThan(0);
+
+    fireEvent.click(within(region).getByRole("link", { name: "Change in PII" }));
     expect(currentLocation()).toBe(
       `/workspaces/${WORKSPACE_ID}?folder=${encodeURIComponent(`systems/${SYSTEM_ID}/pii`)}`,
     );
   });
 
-  it("filters by segment and by text, hiding groups without a match", async () => {
+  it("shows the clicked table's columns", async () => {
     renderApp(backend(MAPPINGS), PATH);
-    await screen.findAllByText("customer_id");
+    await screen.findByRole("region", { name: "Mappings of stg_cbs_customers" });
+
+    fireEvent.click(screen.getByRole("button", { name: "stg_cbs_accounts" }));
+    const region = screen.getByRole("region", { name: "Mappings of stg_cbs_accounts" });
+    expect(within(region).getAllByText("account_id").length).toBeGreaterThan(0);
+    expect(screen.queryByText("customer_id")).not.toBeInTheDocument();
+  });
+
+  it("narrows the tree by segment, counts matches and falls back to the first visible table", async () => {
+    renderApp(backend(MAPPINGS), PATH);
+    await screen.findByRole("region", { name: "Mappings of stg_cbs_customers" });
 
     expect(screen.getByRole("button", { name: /^Hasheds*1$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^To reviews*1$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Audits*2$/ })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "stg_cbs_accounts" }));
     fireEvent.click(screen.getByRole("button", { name: /^Hashed/ }));
-    expect(screen.getAllByText("email").length).toBeGreaterThan(0);
-    expect(screen.queryAllByText("customer_id")).toHaveLength(0);
-    expect(screen.queryByText("__never__")).not.toBeInTheDocument();
+    const tree = screen.getByRole("list", { name: "Staging tables by Source System" });
     expect(
-      screen.queryByRole("button", { name: /^stg_cbs_accounts/ }),
+      within(tree).queryByRole("button", { name: "stg_cbs_accounts" }),
     ).not.toBeInTheDocument();
+    // The chosen table is filtered out, so the first visible one shows.
+    const region = screen.getByRole("region", { name: "Mappings of stg_cbs_customers" });
+    expect(within(region).getAllByText("email").length).toBeGreaterThan(0);
+    expect(within(region).queryByText("customer_id")).not.toBeInTheDocument();
+    expect(
+      within(within(tree).getByRole("button", { name: "stg_cbs_customers" }).closest("li")!)
+        .getByText("1"),
+    ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /^All/ }));
-    fireEvent.change(screen.getByLabelText("Filter by table or column"), {
-      target: { value: "account" },
+    // No column left: the right side says so.
+    fireEvent.change(screen.getByLabelText("Search by name"), {
+      target: { value: "nothing_here" },
     });
-    expect(screen.getAllByText("account_id").length).toBeGreaterThan(0);
-    expect(screen.queryAllByText("customer_id")).toHaveLength(0);
-    expect(screen.queryByText("__never__")).not.toBeInTheDocument();
+    expect(screen.getByText("No table matches.")).toBeInTheDocument();
+    expect(screen.getByText("No column matches this filter.")).toBeInTheDocument();
+  });
+
+  it("searches by table or column name in the tree, with no separate text filter", async () => {
+    renderApp(backend(MAPPINGS), PATH);
+    await screen.findByRole("region", { name: "Mappings of stg_cbs_customers" });
+
+    expect(screen.queryByLabelText("Filter by table or column")).not.toBeInTheDocument();
+    const search = screen.getByRole("searchbox", { name: "Search by name" });
+    expect(search).toHaveAttribute("placeholder", "A table or column");
+
+    fireEvent.change(search, { target: { value: "account" } });
+    const tree = screen.getByRole("list", { name: "Staging tables by Source System" });
+    expect(within(tree).queryByRole("button", { name: "stg_cbs_customers" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Mappings of stg_cbs_accounts" })).toBeInTheDocument();
+
+    // A column name finds its table; only matching columns show.
+    fireEvent.change(search, { target: { value: "full_name" } });
+    const region = screen.getByRole("region", { name: "Mappings of stg_cbs_customers" });
+    expect(within(region).getAllByText("full_name").length).toBeGreaterThan(0);
+    expect(within(region).queryByText("customer_id")).not.toBeInTheDocument();
   });
 
   it("offers XLSX and CSV downloads of the staging mapping sheet", async () => {
