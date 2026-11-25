@@ -89,7 +89,7 @@ const LENGTH_TYPES = ["char", "string", "binary"];
 
 type Reference = Pick<DwTableSummary, "id" | "name" | "layer">;
 
-function typeText(type: DwColumn["data_type"]): string {
+export function typeText(type: DwColumn["data_type"]): string {
   if (type.length != null) {
     return `${type.type}(${type.length})`;
   }

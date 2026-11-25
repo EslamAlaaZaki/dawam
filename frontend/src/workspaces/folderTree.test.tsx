@@ -265,7 +265,7 @@ describe("the folder tree", () => {
   });
 
   it("opens the folder named in the URL, so a link or a reload lands on it", async () => {
-    open("viewer", "?folder=dw/staging/mappings");
+    open("viewer", "?folder=dw/core/mappings");
     await tree();
 
     expect(
@@ -278,7 +278,7 @@ describe("the folder tree", () => {
     expect(selected[0]).toHaveAttribute("aria-level", "4");
     expect(
       screen.getByText(
-        "The Staging Layer's mappings will appear here once it exists.",
+        "The Core Layer's mappings will appear here once it exists.",
       ),
     ).toBeInTheDocument();
   });

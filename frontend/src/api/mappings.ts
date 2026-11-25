@@ -28,6 +28,33 @@ export const TABLE_LEVEL_MAPPING_TYPES: MappingType[] = [
   "unmapped",
 ];
 
+export type StagingMappingList = components["schemas"]["StagingMappingList"];
+export type StagingMappingTable = components["schemas"]["StagingMappingListTable"];
+export type StagingMappingColumn = components["schemas"]["StagingMappingListColumn"];
+
+/** The Staging Layer's mappings: per Staging Table, each column's source column. */
+export function useStagingMappings(workspaceId: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["workspace", workspaceId, "dw-staging-mappings"] as const,
+    queryFn: async () => {
+      const { data, error, response } = await client.GET(
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/mappings",
+        { params: { path: { workspace_id: workspaceId } } },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+  });
+}
+
+/** Where a member downloads the Staging Layer's mapping sheet (any member). */
+export function stagingMappingSheetUrl(workspaceId: string, format: "xlsx" | "csv"): string {
+  return `/api/v1/workspaces/${workspaceId}/data-warehouse/mapping-sheet?layer=staging&format=${format}`;
+}
+
 const key = (workspaceId: string, tableId: string) =>
   ["workspace", workspaceId, "dw-mapping", tableId] as const;
 
