@@ -1448,6 +1448,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Staging Mappings
+         * @description Every Staging Table with its columns, each column's mapping (`direct`, `hashed`, or
+         *     `system` for an audit column), the source column it reads (name and data type), review
+         *     flags and status, plus totals for the Layer (any member). Empty before the Data Warehouse
+         *     is set up.
+         */
+        get: operations["listStagingMappings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/data-warehouse/approvals": {
         parameters: {
             query?: never;
@@ -6508,6 +6531,11 @@ export interface components {
              * @description `covered` of `total`, 0-100; 0 when `total` is 0.
              */
             percent: number;
+            /**
+             * System
+             * @description System columns (DAWAM-generated, so always covered), not counted in `total`.
+             */
+            system: number;
         };
         /** CoverageReport */
         CoverageReport: {
@@ -11990,6 +12018,131 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** StagingMappingList */
+        StagingMappingList: {
+            /**
+             * Tables
+             * @description Ordered by table name.
+             */
+            tables: components["schemas"]["StagingMappingListTable"][];
+            /** @description For the whole Layer. */
+            totals: components["schemas"]["StagingMappingTotals"];
+        };
+        /** StagingMappingListColumn */
+        StagingMappingListColumn: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Column Name */
+            column_name: string;
+            data_type: components["schemas"]["DwDataType"];
+            /**
+             * Is System
+             * @description An audit column: DAWAM's, with no source column.
+             */
+            is_system: boolean;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "sk" | "nk" | "fk" | "measure" | "attribute" | "degenerate_dimension" | "audit" | "scd_valid_from" | "scd_valid_to" | "scd_current_flag" | "row_hash";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "present" | "source_removed";
+            /** Review Flags */
+            review_flags: components["schemas"]["ReviewFlag"][];
+            /**
+             * Mapping Type
+             * @description `system` for an audit column.
+             * @enum {string}
+             */
+            mapping_type: "direct" | "hashed" | "system";
+            /**
+             * Source Column Name
+             * @description Null for an audit column.
+             */
+            source_column_name: string | null;
+            /**
+             * Source Data Type
+             * @description The source column's data type as extracted; null for an audit column.
+             */
+            source_data_type: string | null;
+            /**
+             * Is Pii
+             * @description Its source column is accepted PII: it can be switched between `direct` and `hashed` (`PUT .../staging/columns/{id}/mapping`).
+             */
+            is_pii: boolean;
+            /**
+             * Mapping Version
+             * @description The mapping's version, to send when switching it; null without a mapping.
+             */
+            mapping_version: number | null;
+        };
+        /** StagingMappingListTable */
+        StagingMappingListTable: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "present" | "source_removed";
+            /** Review Flags */
+            review_flags: components["schemas"]["ReviewFlag"][];
+            /**
+             * System Id
+             * @description The Source System; null if it is gone.
+             */
+            system_id: string | null;
+            /** System Name */
+            system_name: string | null;
+            /** System Code */
+            system_code: string | null;
+            /**
+             * Source Db Schema
+             * @description The source table's database schema.
+             */
+            source_db_schema: string | null;
+            /** Source Table Name */
+            source_table_name: string | null;
+            /**
+             * Columns
+             * @description By ordinal.
+             */
+            columns: components["schemas"]["StagingMappingListColumn"][];
+        };
+        /** StagingMappingTotals */
+        StagingMappingTotals: {
+            /** Tables */
+            tables: number;
+            /** Columns */
+            columns: number;
+            /** Direct */
+            direct: number;
+            /** Hashed */
+            hashed: number;
+            /** Audit */
+            audit: number;
+            /**
+             * To Review
+             * @description Columns with at least one review flag, or `source_removed`.
+             */
+            to_review: number;
+            /**
+             * Pii
+             * @description Columns whose source column is accepted PII.
+             */
+            pii: number;
+        };
         /** StagingResult */
         StagingResult: {
             /** Tables Created */
@@ -12308,6 +12461,11 @@ export interface components {
              */
             layer: "core" | "mart";
             coverage: components["schemas"]["CoverageOut"];
+            /**
+             * Branch Count
+             * @description The table's mapping branches; 0 for a table-level mapping.
+             */
+            branch_count: number;
         };
         /** TableEnhancements */
         TableEnhancements: {
@@ -16253,8 +16411,8 @@ export interface operations {
             query?: {
                 /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
                 format?: "xlsx" | "csv";
-                /** @description One Layer's mappings; omit for Core and Mart. */
-                layer?: ("core" | "mart") | null;
+                /** @description One Layer's mappings; omit for Core and Mart (never Staging). */
+                layer?: ("staging" | "core" | "mart") | null;
             };
             header?: never;
             path: {
@@ -16609,6 +16767,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StagingColumnMapping"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listStagingMappings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagingMappingList"];
                 };
             };
             /** @description Validation error */
@@ -21521,8 +21719,8 @@ export interface operations {
             query?: {
                 /** @description `xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet). */
                 format?: "xlsx" | "csv";
-                /** @description One Layer's mappings; omit for Core and Mart. */
-                layer?: ("core" | "mart") | null;
+                /** @description One Layer's mappings; omit for Core and Mart (never Staging). */
+                layer?: ("staging" | "core" | "mart") | null;
             };
             header?: never;
             path: {

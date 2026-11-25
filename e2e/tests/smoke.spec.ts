@@ -167,14 +167,17 @@ test("the main path: sign in to lineage", async ({ page }) => {
   });
 
   await test.step("map a core column to staging", async () => {
-    await page.getByRole("button", { name: "dim_customer" }).click();
-    await page.getByRole("button", { name: "Mappings", exact: true }).click();
-    await page.getByLabel("Type of name", { exact: true }).selectOption("direct");
-    await page.getByLabel("SQL for name", { exact: true }).fill(`${STAGING_CUSTOMERS}.name`);
-    await page.getByRole("button", { name: "Save name", exact: true }).click();
-    // The inputs cell is derived by the server from the saved SQL.
+    await page.goto(`/workspaces/${workspaceId}?folder=dw/core/mappings`);
+    await page.getByRole("list", { name: "Core tables" }).getByRole("button", { name: /dim_customer/ }).click();
+    await page.getByRole("button", { name: "Edit mapping of name", exact: true }).click();
+    const form = page.getByRole("form", { name: "Mapping of name", exact: true });
+    await form.getByRole("radio", { name: "Direct", exact: true }).click();
+    await form.getByLabel("SQL expression").fill(`${STAGING_CUSTOMERS}.name`);
+    await form.getByRole("button", { name: "Save mapping", exact: true }).click();
+    // The dialog closes and the row shows the saved SQL.
+    await expect(form).toBeHidden();
     await expect(
-      page.locator("td").filter({ hasText: `${STAGING_CUSTOMERS}.name` }),
+      page.getByRole("list", { name: "Column mappings" }).getByText(`${STAGING_CUSTOMERS}.name`),
     ).toBeVisible();
   });
 

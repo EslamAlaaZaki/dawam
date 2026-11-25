@@ -41,6 +41,9 @@ class CoverageOut(BaseModel):
     total: int = Field(description="Columns that need a mapping (system columns excluded).")
     covered: int = Field(description="Of those, mapped in every branch (or not available there).")
     percent: int = Field(description="`covered` of `total`, 0-100; 0 when `total` is 0.")
+    system: int = Field(
+        description="System columns (DAWAM-generated, so always covered), not counted in `total`."
+    )
 
 
 class TableCoverageOut(BaseModel):
@@ -50,6 +53,9 @@ class TableCoverageOut(BaseModel):
     table_name: str
     layer: Literal["core", "mart"]
     coverage: CoverageOut
+    branch_count: int = Field(
+        description="The table's mapping branches; 0 for a table-level mapping."
+    )
 
 
 class LayerCoverageOut(BaseModel):

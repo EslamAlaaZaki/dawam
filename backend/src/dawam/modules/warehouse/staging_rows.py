@@ -7,6 +7,7 @@ their Staging Tables, mappings and lineage edges; ``write_rows`` inserts them.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from dawam.modules.sources import StagingSystem, StagingTable
 
+from .pii_hashing import HASHED_TYPE, hashed_sql
 from .platforms import SAFE_IDENTIFIER, TargetPlatform
 from .staging_naming import Flag, NameInput, column_names, table_names
 from .staging_types import translate_type
@@ -60,9 +62,11 @@ def build_staging(
     systems: list[StagingSystem],
     taken: set[str],
     now: datetime,
+    pii: Collection[uuid.UUID] = frozenset(),
 ) -> tuple[_Rows, list[StagingFlag]]:
     """The rows (not yet written) of a Staging Table for every table of ``systems``, named
-    among themselves and the ``taken`` names."""
+    among themselves and the ``taken`` names. A column whose source column is in ``pii``
+    (accepted PII) is ``hashed`` from the start; an Editor can switch it back to direct."""
     names = table_names(
         platform,
         tables=[
@@ -92,6 +96,7 @@ def build_staging(
                 table,
                 names[str(table.id)],
                 now,
+                pii,
             )
     return rows, flags
 
@@ -124,6 +129,7 @@ def _stage_table(
     table: StagingTable,
     named: Any,
     now: datetime,
+    pii: Collection[uuid.UUID],
 ) -> None:
     table_id = uuid.uuid4()
     rows.tables.append(
@@ -231,16 +237,19 @@ def _stage_table(
     for column in table.columns:
         translated = translate_type(platform, column.data_type, engine=system.engine)
         column_name = column_named[str(column.id)]
-        all_flags = [*column_name.flags, *translated.flags]
+        sql = f"{source_prefix}.{_quote(column.name)}"
+        hashed = column.id in pii
+        # A hashed column holds the 64-character hash, so the source type and its flags go.
+        all_flags = [*column_name.flags, *(() if hashed else translated.flags)]
         add_column(
             column_name.name,
-            translated.data_type,
+            dict(HASHED_TYPE) if hashed else translated.data_type,
             column.is_nullable,
             role="attribute",
             source_column_id=column.id,
             review=_dict(all_flags),
-            mapping_type="direct",
-            sql=f"{source_prefix}.{_quote(column.name)}",
+            mapping_type="hashed" if hashed else "direct",
+            sql=hashed_sql(platform, sql) if hashed else sql,
         )
         for flag in all_flags:
             flags.append(

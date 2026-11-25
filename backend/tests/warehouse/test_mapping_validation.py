@@ -172,12 +172,19 @@ def test_coverage_is_counted_per_table_layer_and_warehouse(warehouse, model):
 
     layers = {layer["layer"]: layer for layer in report["layers"]}
     # Core ``customer`` is not mapped from Staging: its two columns are uncovered too.
-    assert layers["core"]["coverage"] == {"total": 2, "covered": 0, "percent": 0}
-    assert layers["mart"]["coverage"] == {"total": 3, "covered": 1, "percent": 33}
+    pick = lambda c: {k: c[k] for k in ("total", "covered", "percent")}  # noqa: E731
+    assert pick(layers["core"]["coverage"]) == {"total": 2, "covered": 0, "percent": 0}
+    assert pick(layers["mart"]["coverage"]) == {"total": 3, "covered": 1, "percent": 33}
     mart_table = layers["mart"]["tables"][0]
     assert mart_table["table_name"] == "dim_customer"
     assert mart_table["coverage"]["covered"] == 1
-    assert report["coverage"] == {"total": 5, "covered": 1, "percent": 20}
+    assert mart_table["branch_count"] == 0
+    assert pick(report["coverage"]) == {"total": 5, "covered": 1, "percent": 20}
+    # System columns are counted apart, never in ``total``.
+    assert layers["core"]["coverage"]["system"] > 0
+    assert report["coverage"]["system"] == sum(
+        layer["coverage"]["system"] for layer in report["layers"]
+    )
 
 
 def test_coverage_is_branch_aware(warehouse, model):
@@ -194,8 +201,19 @@ def test_coverage_is_branch_aware(warehouse, model):
         for layer in coverage(warehouse)["layers"]
         for t in layer["tables"]
     }["dim_customer"]
+    branches = {
+        t["table_name"]: t["branch_count"]
+        for layer in coverage(warehouse)["layers"]
+        for t in layer["tables"]
+    }
 
-    assert mart == {"total": 3, "covered": 1, "percent": 33}  # only ``name`` is in both
+    # only ``name`` is in both
+    assert {k: mart[k] for k in ("total", "covered", "percent")} == {
+        "total": 3,
+        "covered": 1,
+        "percent": 33,
+    }
+    assert branches["dim_customer"] == 2
 
 
 def test_a_layer_with_everything_covered_completes_dw_modeling_progress(warehouse, model):

@@ -22,6 +22,8 @@ import {
   type DwTable,
   type DwTableSummary,
 } from "../api/dwModel";
+import { piiMarkLabel, usePiiMarks } from "../api/piiView";
+import { typeText } from "../lib/typeText";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -38,8 +40,8 @@ import {
 } from "../components/ui/table";
 import { StarPanel } from "../diagrams/StarPanel";
 import { Loading } from "../shell/Loading";
+import { PiiIcon } from "./mappingParts";
 import { StagingModelPanel } from "./StagingModelPanel";
-import { MappingsGrid } from "./MappingsGrid";
 import {
   Actions,
   DetailList,
@@ -89,16 +91,6 @@ const LENGTH_TYPES = ["char", "string", "binary"];
 
 type Reference = Pick<DwTableSummary, "id" | "name" | "layer">;
 
-function typeText(type: DwColumn["data_type"]): string {
-  if (type.length != null) {
-    return `${type.type}(${type.length})`;
-  }
-  if (type.precision != null) {
-    return `${type.type}(${type.precision}${type.scale != null ? `,${type.scale}` : ""})`;
-  }
-  return type.type;
-}
-
 function tableDetail(
   table: Pick<DwTableSummary, "kind" | "grain" | "scd_type" | "is_conformed">,
 ) {
@@ -124,9 +116,12 @@ function whole(value: FormDataEntryValue | null): number | undefined {
 export function ModelPanel({
   workspace,
   layer,
+  onOpenMappings,
 }: {
   workspace: Workspace;
   layer: DwLayer;
+  /** Opens the Layer's Mappings page with this table selected. */
+  onOpenMappings: (tableId: string) => void;
 }) {
   const tables = useDwTables(workspace.id, layer);
   // A Mart fact may point at Core conformed dimensions, so Core's tables are needed too.
@@ -147,6 +142,7 @@ export function ModelPanel({
             tableId={tableId}
             references={[]}
             editable={false}
+            onOpenMappings={onOpenMappings}
             onClose={onClose}
           />
         )}
@@ -256,6 +252,7 @@ export function ModelPanel({
             tableId={openId}
             references={references}
             editable={editable}
+            onOpenMappings={onOpenMappings}
             onClose={() => setOpenId(null)}
           />
         )}
@@ -392,20 +389,22 @@ function TableDetails({
   tableId,
   references,
   editable,
+  onOpenMappings,
   onClose,
 }: {
   workspace: Workspace;
   tableId: string;
   references: Reference[];
   editable: boolean;
+  onOpenMappings: (tableId: string) => void;
   onClose: () => void;
 }) {
   const table = useDwTable(workspace.id, tableId);
   const removeColumn = useDeleteDwColumn(workspace.id, tableId);
   const removeTable = useDeleteDwTable(workspace.id, tableId);
+  const piiMarks = usePiiMarks(workspace.id);
   // Deleting a table is a soft delete, for owners only; it is purged from the deleted list.
   const canDelete = allows(workspace, "objects.delete");
-  const [showMappings, setShowMappings] = useState(false);
 
   if (table.isPending) {
     return <Loading />;
@@ -440,18 +439,16 @@ function TableDetails({
           Columns
         </span>
         {t.layer !== "staging" && (
-          <button
-            type="button"
-            aria-expanded={showMappings}
-            className={`-mb-px cursor-pointer border-b-2 py-2.5 font-medium hover:text-foreground ${
-              showMappings
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground"
-            }`}
-            onClick={() => setShowMappings((open) => !open)}
+          <a
+            href={`?${new URLSearchParams({ folder: `dw/${t.layer}/mappings`, table: t.id })}`}
+            className="-mb-px border-b-2 border-transparent py-2.5 font-medium text-primary hover:underline"
+            onClick={(event) => {
+              event.preventDefault();
+              onOpenMappings(t.id);
+            }}
           >
-            {showMappings ? "Hide mappings" : "Mappings"}
-          </button>
+            Open in Mappings
+          </a>
         )}
       </div>
       <div className="flex flex-col gap-4 p-4">
@@ -504,79 +501,85 @@ function TableDetails({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {t.columns.map((column) => (
-                <TableRow key={column.id}>
-                  <TableCell className={monoClasses}>
-                    {column.name}
-                    {column.naming_violations.map((v) => (
-                      <Badge
-                        key={v.code}
-                        variant="warning"
-                        role="status"
-                        className="ml-2 font-sans"
-                      >
-                        {v.message}
-                      </Badge>
-                    ))}
-                  </TableCell>
-                  <TableCell className={`${monoClasses} text-muted-foreground`}>
-                    {typeText(column.data_type)}
-                    {column.is_nullable ? "" : " not null"}
-                  </TableCell>
-                  <TableCell>
-                    {column.role === "sk" || column.role === "nk" ? (
-                      <Badge variant="pk">{ROLE_LABELS[column.role]}</Badge>
-                    ) : column.role === "fk" ? (
-                      <Badge variant="fk">{ROLE_LABELS[column.role]}</Badge>
-                    ) : (
-                      <Badge
-                        variant={column.role === "audit" ? "info" : "neutral"}
-                      >
-                        {ROLE_LABELS[column.role]}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {[
-                      column.additivity && ADDITIVITY_LABELS[column.additivity],
-                      column.references_table_id &&
-                        `→ ${names.get(column.references_table_id) ?? "another table"}${
-                          column.role_name ? ` (${column.role_name})` : ""
-                        }`,
-                      column.scd_type_override != null &&
-                        `SCD ${column.scd_type_override}`,
-                      column.is_system && "DAWAM",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ") || "—"}
-                  </TableCell>
-                  {editable && (
-                    <TableCell>
-                      {!column.is_system && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          aria-label={`Delete ${column.name}`}
-                          disabled={removeColumn.isPending}
-                          onClick={() => removeColumn.mutate(column.id)}
+              {t.columns.map((column) => {
+                // Staging marks its PII columns, as the Source System pages do.
+                const pii =
+                  t.layer === "staging" ? piiMarks.get(column.id) : undefined;
+                return (
+                  <TableRow key={column.id}>
+                    <TableCell className={monoClasses}>
+                      {pii?.kind === "derived" && (
+                        <span className="me-1.5 inline-flex align-middle">
+                          <PiiIcon label={piiMarkLabel(pii)} />
+                        </span>
+                      )}
+                      {column.name}
+                      {column.naming_violations.map((v) => (
+                        <Badge
+                          key={v.code}
+                          variant="warning"
+                          role="status"
+                          className="ml-2 font-sans"
                         >
-                          Delete
-                        </Button>
+                          {v.message}
+                        </Badge>
+                      ))}
+                    </TableCell>
+                    <TableCell
+                      className={`${monoClasses} text-muted-foreground`}
+                    >
+                      {typeText(column.data_type)}
+                      {column.is_nullable ? "" : " not null"}
+                    </TableCell>
+                    <TableCell>
+                      {column.role === "sk" || column.role === "nk" ? (
+                        <Badge variant="pk">{ROLE_LABELS[column.role]}</Badge>
+                      ) : column.role === "fk" ? (
+                        <Badge variant="fk">{ROLE_LABELS[column.role]}</Badge>
+                      ) : (
+                        <Badge
+                          variant={column.role === "audit" ? "info" : "neutral"}
+                        >
+                          {ROLE_LABELS[column.role]}
+                        </Badge>
                       )}
                     </TableCell>
-                  )}
-                </TableRow>
-              ))}
+                    <TableCell className="text-muted-foreground">
+                      {[
+                        column.additivity &&
+                          ADDITIVITY_LABELS[column.additivity],
+                        column.references_table_id &&
+                          `→ ${names.get(column.references_table_id) ?? "another table"}${
+                            column.role_name ? ` (${column.role_name})` : ""
+                          }`,
+                        column.scd_type_override != null &&
+                          `SCD ${column.scd_type_override}`,
+                        column.is_system && "DAWAM",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </TableCell>
+                    {editable && (
+                      <TableCell>
+                        {!column.is_system && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            aria-label={`Delete ${column.name}`}
+                            disabled={removeColumn.isPending}
+                            onClick={() => removeColumn.mutate(column.id)}
+                          >
+                            Delete
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableCard>
-        {t.layer !== "staging" && showMappings && (
-          <MappingsGrid
-            workspaceId={workspace.id}
-            tableId={t.id}
-            editable={editable}
-          />
-        )}
         {(removeColumn.isError || removeTable.isError) && (
           <ErrorText>
             {removeColumn.error?.message ?? removeTable.error?.message}

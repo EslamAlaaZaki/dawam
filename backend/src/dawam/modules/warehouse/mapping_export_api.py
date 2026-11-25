@@ -18,6 +18,7 @@ from .mapping_export import CSV_MIME, XLSX_MIME, MappingExportService
 from .mapping_service import MappingService
 from .model_service import ModelService
 from .service import DataWarehouseService
+from .staging_mappings import StagingMappingsService
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/data-warehouse", tags=["data-warehouse"])
 
@@ -26,8 +27,8 @@ SheetFormat = Annotated[
     Query(description="`xlsx` (a Mapping and a Branches sheet) or `csv` (the Mapping sheet)."),
 ]
 SheetLayer = Annotated[
-    Literal["core", "mart"] | None,
-    Query(description="One Layer's mappings; omit for Core and Mart."),
+    Literal["core", "mart", "staging"] | None,
+    Query(description="One Layer's mappings; omit for Core and Mart (never Staging)."),
 ]
 
 
@@ -40,6 +41,7 @@ def mapping_export_service(request: Request) -> MappingExportService:
         DataWarehouseService(state.engine, workspaces=workspaces, clock=clock),
         ModelService(state.engine, workspaces=workspaces, clock=clock),
         MappingService(state.engine, workspaces=workspaces, clock=clock),
+        staging=StagingMappingsService(state.engine, workspaces=workspaces),
     )
 
 

@@ -320,6 +320,73 @@ describe("the Staging model", () => {
     ).toHaveLength(1);
   });
 
+  it("marks a PII column of the open Staging Table", async () => {
+    const column = (id: string, name: string) => ({
+      id,
+      table_id: CUSTOMERS.id,
+      name,
+      ordinal: 1,
+      data_type: { type: "string", length: 40 },
+      is_nullable: true,
+      role: "attribute",
+      additivity: null,
+      scd_type_override: null,
+      references_table_id: null,
+      role_name: null,
+      description: "",
+      semantic_type: null,
+      is_system: false,
+      version: 1,
+      naming_violations: [],
+      review_flags: [],
+      status: "present",
+    });
+    const EMAIL = "c0000000-0000-4000-8000-000000000001";
+    renderApp(
+      backend("viewer", [CUSTOMERS], (r) => {
+        if (r.path === `${API}/data-warehouse/tables/${CUSTOMERS.id}`) {
+          return json({
+            ...CUSTOMERS,
+            naming_violations: [],
+            unknown_member: null,
+            columns: [
+              column(EMAIL, "email"),
+              column("c0000000-0000-4000-8000-000000000002", "segment"),
+            ],
+          });
+        }
+        if (r.path === `${API}/data-warehouse/pii`) {
+          return json({
+            columns: [
+              {
+                id: EMAIL,
+                type: "dw_column",
+                label: "stg_cbs_banking_customers.email",
+                layer: "staging",
+                pseudonymised: true,
+                pii_note: null,
+              },
+            ],
+            tables: [],
+            source_columns: [],
+            kpis: [],
+          });
+        }
+        return undefined;
+      }),
+      PATH,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "stg_cbs_banking_customers" }),
+    );
+
+    expect(
+      await screen.findByRole("img", { name: "PII-derived, pseudonymised" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: /PII-derived/ })).toHaveLength(1);
+  });
+
   it("has no button in the empty state for a viewer", async () => {
     renderApp(backend("viewer", []), PATH);
 

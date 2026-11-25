@@ -58,6 +58,7 @@ class StagingSystem:
     engine: str | None
     """The Connection's engine; ``None`` for a system fed only by Schema Imports."""
     tables: list[StagingTable]
+    name: str = ""
 
 
 class StagingSourceService:
@@ -79,7 +80,12 @@ class StagingSourceService:
         them to flag their Staging Tables)."""
         with Session(self._engine) as db:
             systems = db.execute(
-                sa.select(SourceSystemRecord.id, SourceSystemRecord.code, ConnectionRecord.engine)
+                sa.select(
+                    SourceSystemRecord.id,
+                    SourceSystemRecord.code,
+                    ConnectionRecord.engine,
+                    SourceSystemRecord.name,
+                )
                 .outerjoin(
                     ConnectionRecord, ConnectionRecord.source_system_id == SourceSystemRecord.id
                 )
@@ -91,9 +97,9 @@ class StagingSourceService:
                 .order_by(SourceSystemRecord.code)
             ).all()
             result: list[StagingSystem] = []
-            for system_id, code, engine in systems:
+            for system_id, code, engine, name in systems:
                 tables = self._tables(db, system_id, include_removed)
-                result.append(StagingSystem(system_id, code, engine, tables))
+                result.append(StagingSystem(system_id, code, engine, tables, name))
             return result
 
     def _tables(
@@ -277,6 +283,26 @@ def source_column_labels(
         column_id: ".".join(part for part in (system, schema, table, column) if part)
         for column_id, system, schema, table, column in rows
     }
+
+
+def source_column_type(
+    db: Session, workspace_id: uuid.UUID, column_id: uuid.UUID
+) -> tuple[str, str | None] | None:
+    """A source column's extracted data type and its Source System's engine (null without a
+    Connection), if it is a column of the Workspace; in the caller's session, no permission
+    check. Staging translates the type again from these."""
+    row = db.execute(
+        sa.select(SrcColumnRecord.current_definition, ConnectionRecord.engine)
+        .join(SrcTableRecord, SrcTableRecord.id == SrcColumnRecord.table_id)
+        .join(SrcDbSchemaRecord, SrcDbSchemaRecord.id == SrcTableRecord.db_schema_id)
+        .join(SourceSystemRecord, SourceSystemRecord.id == SrcDbSchemaRecord.source_system_id)
+        .outerjoin(ConnectionRecord, ConnectionRecord.source_system_id == SourceSystemRecord.id)
+        .where(SrcColumnRecord.id == column_id, SourceSystemRecord.workspace_id == workspace_id)
+    ).first()
+    if row is None:
+        return None
+    definition, engine = row
+    return str((definition or {}).get("data_type") or ""), engine
 
 
 def source_table_names(db: Session, system_id: uuid.UUID) -> dict[str, str]:

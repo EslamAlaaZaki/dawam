@@ -4441,6 +4441,7 @@
               "anyOf": [
                 {
                   "enum": [
+                    "staging",
                     "core",
                     "mart"
                   ],
@@ -4450,10 +4451,10 @@
                   "type": "null"
                 }
               ],
-              "description": "One Layer's mappings; omit for Core and Mart.",
+              "description": "One Layer's mappings; omit for Core and Mart (never Staging).",
               "title": "Layer"
             },
-            "description": "One Layer's mappings; omit for Core and Mart."
+            "description": "One Layer's mappings; omit for Core and Mart (never Staging)."
           }
         ],
         "responses": {
@@ -4960,6 +4961,61 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StagingColumnMapping"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/mappings": {
+      "get": {
+        "tags": [
+          "data-warehouse",
+          "data-warehouse-staging"
+        ],
+        "summary": "List Staging Mappings",
+        "description": "Every Staging Table with its columns, each column's mapping (`direct`, `hashed`, or\n`system` for an audit column), the source column it reads (name and data type), review\nflags and status, plus totals for the Layer (any member). Empty before the Data Warehouse\nis set up.",
+        "operationId": "listStagingMappings",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagingMappingList"
                 }
               }
             }
@@ -13105,6 +13161,7 @@
               "anyOf": [
                 {
                   "enum": [
+                    "staging",
                     "core",
                     "mart"
                   ],
@@ -13114,10 +13171,10 @@
                   "type": "null"
                 }
               ],
-              "description": "One Layer's mappings; omit for Core and Mart.",
+              "description": "One Layer's mappings; omit for Core and Mart (never Staging).",
               "title": "Layer"
             },
-            "description": "One Layer's mappings; omit for Core and Mart."
+            "description": "One Layer's mappings; omit for Core and Mart (never Staging)."
           }
         ],
         "responses": {
@@ -21993,13 +22050,19 @@
             "type": "integer",
             "title": "Percent",
             "description": "`covered` of `total`, 0-100; 0 when `total` is 0."
+          },
+          "system": {
+            "type": "integer",
+            "title": "System",
+            "description": "System columns (DAWAM-generated, so always covered), not counted in `total`."
           }
         },
         "type": "object",
         "required": [
           "total",
           "covered",
-          "percent"
+          "percent",
+          "system"
         ],
         "title": "CoverageOut"
       },
@@ -34386,6 +34449,301 @@
         ],
         "title": "StagingFlag"
       },
+      "StagingMappingList": {
+        "properties": {
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/StagingMappingListTable"
+            },
+            "type": "array",
+            "title": "Tables",
+            "description": "Ordered by table name."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/StagingMappingTotals",
+            "description": "For the whole Layer."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tables",
+          "totals"
+        ],
+        "title": "StagingMappingList"
+      },
+      "StagingMappingListColumn": {
+        "properties": {
+          "column_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Column Id"
+          },
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          },
+          "data_type": {
+            "$ref": "#/components/schemas/DwDataType"
+          },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System",
+            "description": "An audit column: DAWAM's, with no source column."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "sk",
+              "nk",
+              "fk",
+              "measure",
+              "attribute",
+              "degenerate_dimension",
+              "audit",
+              "scd_valid_from",
+              "scd_valid_to",
+              "scd_current_flag",
+              "row_hash"
+            ],
+            "title": "Role"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "source_removed"
+            ],
+            "title": "Status"
+          },
+          "review_flags": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewFlag"
+            },
+            "type": "array",
+            "title": "Review Flags"
+          },
+          "mapping_type": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "hashed",
+              "system"
+            ],
+            "title": "Mapping Type",
+            "description": "`system` for an audit column."
+          },
+          "source_column_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Column Name",
+            "description": "Null for an audit column."
+          },
+          "source_data_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Data Type",
+            "description": "The source column's data type as extracted; null for an audit column."
+          },
+          "is_pii": {
+            "type": "boolean",
+            "title": "Is Pii",
+            "description": "Its source column is accepted PII: it can be switched between `direct` and `hashed` (`PUT .../staging/columns/{id}/mapping`)."
+          },
+          "mapping_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping Version",
+            "description": "The mapping's version, to send when switching it; null without a mapping."
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_id",
+          "column_name",
+          "data_type",
+          "is_system",
+          "role",
+          "status",
+          "review_flags",
+          "mapping_type",
+          "source_column_name",
+          "source_data_type",
+          "is_pii",
+          "mapping_version"
+        ],
+        "title": "StagingMappingListColumn"
+      },
+      "StagingMappingListTable": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "source_removed"
+            ],
+            "title": "Status"
+          },
+          "review_flags": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewFlag"
+            },
+            "type": "array",
+            "title": "Review Flags"
+          },
+          "system_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Id",
+            "description": "The Source System; null if it is gone."
+          },
+          "system_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Name"
+          },
+          "system_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Code"
+          },
+          "source_db_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Db Schema",
+            "description": "The source table's database schema."
+          },
+          "source_table_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Table Name"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/StagingMappingListColumn"
+            },
+            "type": "array",
+            "title": "Columns",
+            "description": "By ordinal."
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "table_name",
+          "status",
+          "review_flags",
+          "system_id",
+          "system_name",
+          "system_code",
+          "source_db_schema",
+          "source_table_name",
+          "columns"
+        ],
+        "title": "StagingMappingListTable"
+      },
+      "StagingMappingTotals": {
+        "properties": {
+          "tables": {
+            "type": "integer",
+            "title": "Tables"
+          },
+          "columns": {
+            "type": "integer",
+            "title": "Columns"
+          },
+          "direct": {
+            "type": "integer",
+            "title": "Direct"
+          },
+          "hashed": {
+            "type": "integer",
+            "title": "Hashed"
+          },
+          "audit": {
+            "type": "integer",
+            "title": "Audit"
+          },
+          "to_review": {
+            "type": "integer",
+            "title": "To Review",
+            "description": "Columns with at least one review flag, or `source_removed`."
+          },
+          "pii": {
+            "type": "integer",
+            "title": "Pii",
+            "description": "Columns whose source column is accepted PII."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tables",
+          "columns",
+          "direct",
+          "hashed",
+          "audit",
+          "to_review",
+          "pii"
+        ],
+        "title": "StagingMappingTotals"
+      },
       "StagingResult": {
         "properties": {
           "tables_created": {
@@ -35030,6 +35388,11 @@
           },
           "coverage": {
             "$ref": "#/components/schemas/CoverageOut"
+          },
+          "branch_count": {
+            "type": "integer",
+            "title": "Branch Count",
+            "description": "The table's mapping branches; 0 for a table-level mapping."
           }
         },
         "type": "object",
@@ -35037,7 +35400,8 @@
           "table_id",
           "table_name",
           "layer",
-          "coverage"
+          "coverage",
+          "branch_count"
         ],
         "title": "TableCoverageOut"
       },

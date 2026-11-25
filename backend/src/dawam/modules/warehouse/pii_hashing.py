@@ -17,7 +17,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -25,12 +25,14 @@ from sqlalchemy.orm import Session
 from dawam.modules.activity import record_activity
 from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
-from dawam.modules.sources import accepted_pii_column_ids
+from dawam.modules.sources import accepted_pii_column_ids, source_column_type
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
 
 from .platforms import TargetPlatform
+from .staging_naming import TYPE_FLAGS
+from .staging_types import translate_type
 from .tables import (
     DELETED,
     ColumnMappingRecord,
@@ -41,6 +43,37 @@ from .tables import (
 
 SALT_PLACEHOLDER = ":pii_salt"
 """The bind parameter the loading process fills with the salt; never a value."""
+
+HASHED_TYPE: dict[str, Any] = {"type": "char", "length": 64, "precision": None, "scale": None}
+"""A hashed staging column's type: SHA-256 as 64 lower-case hex characters, whatever the
+source column's type was."""
+
+
+def hashed_column(column: DwColumnRecord) -> None:
+    """Give a staging column the hashed type. Its type flags go: the hash fits exactly."""
+    column.data_type = dict(HASHED_TYPE)
+    column.review_flags = [f for f in column.review_flags if f.get("code") not in TYPE_FLAGS]
+
+
+def unhashed_column(
+    db: Session, workspace_id: uuid.UUID, platform: TargetPlatform, column: DwColumnRecord
+) -> None:
+    """Give a staging column its source column's type again, translated as generation does,
+    with that translation's type flags."""
+    if column.source_column_id is None:
+        return
+    found = source_column_type(db, workspace_id, column.source_column_id)
+    if found is None:
+        return
+    source_type, engine = found
+    translated = translate_type(platform, source_type, engine=engine)
+    column.data_type = translated.data_type
+    kept = [f for f in column.review_flags if f.get("code") not in TYPE_FLAGS]
+    column.review_flags = [
+        *kept,
+        *({"code": f.code, "message": f.message} for f in translated.flags),
+    ]
+
 
 _TEMPLATES: dict[TargetPlatform, tuple[str, str]] = {
     "postgresql": (
@@ -158,6 +191,7 @@ class PiiHashingService:
                     if column.source_column_id not in accepted_pii_column_ids(db, workspace_id):
                         raise _invalid("Only an accepted PII column can be hashed.")
                     sql = hashed_sql(platform, record.sql_expression)
+                    hashed_column(column)
                 else:
                     try:
                         sql = unhashed_sql(platform, record.sql_expression)
@@ -166,7 +200,11 @@ class PiiHashingService:
                             "This hashed expression was not made for the current target "
                             "platform; regenerate the column's staging mapping."
                         ) from None
+                    unhashed_column(db, workspace_id, platform, column)
                 now = self._clock()
+                # The column's type follows the mapping: char(64) hashed, the source's direct.
+                column.version += 1
+                column.updated_at = now
                 old = {"mapping_type": record.mapping_type, "sql_expression": record.sql_expression}
                 record.mapping_type = mapping_type
                 record.sql_expression = sql

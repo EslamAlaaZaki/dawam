@@ -48,6 +48,8 @@ import { SourceErDiagram } from "./SourceErDiagram";
 import { SourceSchemaPanel } from "./SourceSchemaPanel";
 import { PiiPanel } from "./PiiPanel";
 import { ProfilingPanel } from "./ProfilingPanel";
+import { LayerMappingsPanel } from "./LayerMappingsPanel";
+import { StagingMappingsPanel } from "./StagingMappingsPanel";
 import { StagingOverviewPanel } from "./StagingOverviewPanel";
 import { SourceSummaryPanel } from "./SourceSummaryPanel";
 import { MembersPanel } from "./MembersPanel";
@@ -141,7 +143,7 @@ function ChatResizer({
  */
 export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspace(workspaceId);
-  const { folder, wanted, select, warehouse, systems, systemList } =
+  const { folder, wanted, table, select, warehouse, systems, systemList } =
     useWorkspaceFolders(workspaceId, workspace.data?.name ?? "");
   const [assistantOpen, setAssistantOpen] = useState(false);
   // The chat's width once the member has dragged it; null keeps the default. Not kept
@@ -236,6 +238,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   // `dw/<layer>/model`: a Layer's tables.
   const modelLayer = (["staging", "core", "mart"] as const).find(
     (layer) => folder.id === `dw/${layer}/model`,
+  );
+
+  // `dw/core/mappings` and `dw/mart/mappings`: a Layer's column mappings.
+  const mappingsLayer = (["core", "mart"] as const).find(
+    (layer) => folder.id === `dw/${layer}/mappings`,
   );
 
   function ask(asked: Omit<AssistantRequest, "nonce">) {
@@ -374,11 +381,27 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               key={folder.id}
               workspace={workspace.data}
               layer={modelLayer}
+              onOpenMappings={(tableId) =>
+                select(`dw/${modelLayer}/mappings`, tableId)
+              }
             />
           ) : folder.id === "dw/staging" ? (
             <StagingOverviewPanel
               workspace={workspace.data}
               onOpen={(child) => select(`dw/staging/${child}`)}
+            />
+          ) : folder.id === "dw/staging/mappings" ? (
+            <StagingMappingsPanel
+              workspace={workspace.data}
+              onOpenModel={() => select("dw/staging/model")}
+            />
+          ) : mappingsLayer ? (
+            <LayerMappingsPanel
+              // Another Layer starts with its own table selected.
+              key={`${folder.id}:${table ?? ""}`}
+              workspace={workspace.data}
+              layer={mappingsLayer}
+              initialTableId={table}
             />
           ) : folder.id === "dw/score" ? (
             <FailedChecksPanel workspace={workspace.data} onAsk={ask} />

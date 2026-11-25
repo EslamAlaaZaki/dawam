@@ -27,7 +27,7 @@ from dawam.modules.audit import record_audit
 from dawam.modules.auth import User
 from dawam.modules.changesets import ChangeSetDetail, ChangeSetService
 from dawam.modules.notifications import NotificationService
-from dawam.modules.sources import StagingSourceService, StagingSystem
+from dawam.modules.sources import StagingSourceService, StagingSystem, accepted_pii_column_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 from dawam.platform.clock import Clock
 from dawam.platform.errors import ApiError
@@ -326,7 +326,14 @@ class StagingService:
     ) -> StagingResult:
         now = self._clock()
         rows, flags = build_staging(
-            user.id, warehouse_id, platform, audit_names, systems, taken, now
+            user.id,
+            warehouse_id,
+            platform,
+            audit_names,
+            systems,
+            taken,
+            now,
+            accepted_pii_column_ids(db, workspace_id),
         )
         write_rows(db, rows)
         if rows.tables:

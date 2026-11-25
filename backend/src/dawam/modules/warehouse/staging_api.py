@@ -18,7 +18,9 @@ from dawam.modules.changesets import ChangeSetDetail, ChangeSetService, ObjectHa
 from dawam.modules.notifications import NotificationService
 from dawam.modules.workspaces import WorkspaceService
 
+from .model_api import ColumnRole, DwDataType, ReviewFlag
 from .pii_hashing import PiiHashingService
+from .staging_mappings import StagingMappingsService
 from .staging_service import StagingService
 
 router = APIRouter(
@@ -59,6 +61,16 @@ def pii_hashing_service(request: Request) -> PiiHashingService:
 
 
 PiiHashingServiceDep = Annotated[PiiHashingService, Depends(pii_hashing_service)]
+
+
+def staging_mappings_service(request: Request) -> StagingMappingsService:
+    state = request.app.state
+    return StagingMappingsService(
+        state.engine, workspaces=WorkspaceService(state.engine, clock=state.services.clock)
+    )
+
+
+StagingMappingsServiceDep = Annotated[StagingMappingsService, Depends(staging_mappings_service)]
 
 
 class StagingFlag(BaseModel):
@@ -201,3 +213,76 @@ def set_staging_column_mapping(
             version=body.version,
         )
     )
+
+
+class StagingMappingListColumn(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_id: uuid.UUID
+    column_name: str
+    data_type: DwDataType
+    is_system: bool = Field(description="An audit column: DAWAM's, with no source column.")
+    role: ColumnRole
+    status: Literal["present", "source_removed"]
+    review_flags: list[ReviewFlag]
+    mapping_type: Literal["direct", "hashed", "system"] = Field(
+        description="`system` for an audit column."
+    )
+    source_column_name: str | None = Field(description="Null for an audit column.")
+    source_data_type: str | None = Field(
+        description="The source column's data type as extracted; null for an audit column."
+    )
+    is_pii: bool = Field(
+        description="Its source column is accepted PII: it can be switched between `direct` "
+        "and `hashed` (`PUT .../staging/columns/{id}/mapping`)."
+    )
+    mapping_version: int | None = Field(
+        description="The mapping's version, to send when switching it; null without a mapping."
+    )
+
+
+class StagingMappingListTable(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    table_id: uuid.UUID
+    table_name: str
+    status: Literal["present", "source_removed"]
+    review_flags: list[ReviewFlag]
+    system_id: uuid.UUID | None = Field(description="The Source System; null if it is gone.")
+    system_name: str | None
+    system_code: str | None
+    source_db_schema: str | None = Field(description="The source table's database schema.")
+    source_table_name: str | None
+    columns: list[StagingMappingListColumn] = Field(description="By ordinal.")
+
+
+class StagingMappingTotals(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    tables: int
+    columns: int
+    direct: int
+    hashed: int
+    audit: int
+    to_review: int = Field(
+        description="Columns with at least one review flag, or `source_removed`."
+    )
+    pii: int = Field(description="Columns whose source column is accepted PII.")
+
+
+class StagingMappingList(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    tables: list[StagingMappingListTable] = Field(description="Ordered by table name.")
+    totals: StagingMappingTotals = Field(description="For the whole Layer.")
+
+
+@router.get("/mappings", operation_id="listStagingMappings")
+def list_staging_mappings(
+    workspace_id: uuid.UUID, user: CurrentUser, mappings: StagingMappingsServiceDep
+) -> StagingMappingList:
+    """Every Staging Table with its columns, each column's mapping (`direct`, `hashed`, or
+    `system` for an audit column), the source column it reads (name and data type), review
+    flags and status, plus totals for the Layer (any member). Empty before the Data Warehouse
+    is set up."""
+    return StagingMappingList.model_validate(mappings.read(user, workspace_id))

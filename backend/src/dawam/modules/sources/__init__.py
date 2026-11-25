@@ -218,6 +218,7 @@ from .staging_source_service import (
     StagingSystem,
     StagingTable,
     source_column_labels,
+    source_column_type,
     source_table_names,
     workspace_source_table_names,
 )
@@ -308,6 +309,7 @@ __all__ = [
     "router",
     "shown_cell",
     "source_column_labels",
+    "source_column_type",
     "source_system_contents",
     "source_system_names",
     "source_table_names",

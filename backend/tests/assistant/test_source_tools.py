@@ -649,7 +649,7 @@ def test_run_validation_returns_problems_and_coverage(roles, model, fake_llm):
 
     result = payload(seen)
     assert status == "ok"
-    assert result["coverage"]["coverage"] == {"total": 1, "covered": 0, "percent": 0}
+    assert result["coverage"]["coverage"] == {"total": 1, "covered": 0, "percent": 0, "system": 4}
     assert [p["code"] for p in result["problems"]] == ["unmapped_column"]
 
 
