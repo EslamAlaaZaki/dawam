@@ -6531,6 +6531,11 @@ export interface components {
              * @description `covered` of `total`, 0-100; 0 when `total` is 0.
              */
             percent: number;
+            /**
+             * System
+             * @description System columns (DAWAM-generated, so always covered), not counted in `total`.
+             */
+            system: number;
         };
         /** CoverageReport */
         CoverageReport: {
@@ -12441,6 +12446,11 @@ export interface components {
              */
             layer: "core" | "mart";
             coverage: components["schemas"]["CoverageOut"];
+            /**
+             * Branch Count
+             * @description The table's mapping branches; 0 for a table-level mapping.
+             */
+            branch_count: number;
         };
         /** TableEnhancements */
         TableEnhancements: {

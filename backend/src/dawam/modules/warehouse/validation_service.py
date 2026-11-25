@@ -58,11 +58,14 @@ class Problem:
 
 @dataclass(frozen=True)
 class Coverage:
-    """Mappable columns (``total``) and how many are ``covered``; ``percent`` is 0-100."""
+    """Mappable columns (``total``) and how many are ``covered``; ``percent`` is 0-100.
+    ``system`` counts the DAWAM-generated columns, which need no mapping and are not in
+    ``total``."""
 
     total: int
     covered: int
     percent: int
+    system: int = 0
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,7 @@ class TableCoverage:
     table_name: str
     layer: str
     coverage: Coverage
+    branch_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -94,8 +98,8 @@ class ValidationReport:
     coverage: CoverageReport
 
 
-def _coverage(total: int, covered: int) -> Coverage:
-    return Coverage(total, covered, 100 * covered // total if total else 0)
+def _coverage(total: int, covered: int, system: int = 0) -> Coverage:
+    return Coverage(total, covered, 100 * covered // total if total else 0, system)
 
 
 class ValidationService:
@@ -233,7 +237,13 @@ class ValidationService:
         layers: list[LayerCoverage] = []
         for layer in ("core", "mart"):
             tables = [
-                TableCoverage(v.table_id, v.table_name, v.layer, _coverage(*self._count(v)))
+                TableCoverage(
+                    v.table_id,
+                    v.table_name,
+                    v.layer,
+                    _coverage(*self._count(v)),
+                    len(v.branches),
+                )
                 for v in views
                 if v.layer == layer and v.kind != "generated"
             ]
@@ -244,6 +254,7 @@ class ValidationService:
                     _coverage(
                         sum(t.coverage.total for t in tables),
                         sum(t.coverage.covered for t in tables),
+                        sum(t.coverage.system for t in tables),
                     ),
                 )
             )
@@ -252,13 +263,15 @@ class ValidationService:
             _coverage(
                 sum(layer.coverage.total for layer in layers),
                 sum(layer.coverage.covered for layer in layers),
+                sum(layer.coverage.system for layer in layers),
             ),
         )
 
     @staticmethod
-    def _count(view: TableMappingView) -> tuple[int, int]:
+    def _count(view: TableMappingView) -> tuple[int, int, int]:
         mappable = [c for c in view.coverage if not c.system]
-        return len(mappable), sum(c.covered for c in mappable)
+        system = len(view.coverage) - len(mappable)
+        return len(mappable), sum(c.covered for c in mappable), system
 
     def _problems(self, workspace_id: uuid.UUID, views: list[TableMappingView]) -> list[Problem]:
         if not views:

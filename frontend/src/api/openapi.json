@@ -22050,13 +22050,19 @@
             "type": "integer",
             "title": "Percent",
             "description": "`covered` of `total`, 0-100; 0 when `total` is 0."
+          },
+          "system": {
+            "type": "integer",
+            "title": "System",
+            "description": "System columns (DAWAM-generated, so always covered), not counted in `total`."
           }
         },
         "type": "object",
         "required": [
           "total",
           "covered",
-          "percent"
+          "percent",
+          "system"
         ],
         "title": "CoverageOut"
       },
@@ -35357,6 +35363,11 @@
           },
           "coverage": {
             "$ref": "#/components/schemas/CoverageOut"
+          },
+          "branch_count": {
+            "type": "integer",
+            "title": "Branch Count",
+            "description": "The table's mapping branches; 0 for a table-level mapping."
           }
         },
         "type": "object",
@@ -35364,7 +35375,8 @@
           "table_id",
           "table_name",
           "layer",
-          "coverage"
+          "coverage",
+          "branch_count"
         ],
         "title": "TableCoverageOut"
       },

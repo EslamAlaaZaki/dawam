@@ -13,6 +13,7 @@ import {
   useSaveBranchColumnMapping,
   useSaveColumnMapping,
   useTableMapping,
+  useValidation,
   type ColumnMapping,
   type MappingBranch,
   type MappingType,
@@ -110,6 +111,7 @@ export function LayerMappingsPanel({
 }) {
   const tables = useDwTables(workspace.id, layer);
   const coverage = useCoverage(workspace.id);
+  const validation = useValidation(workspace.id);
   const [chosen, setChosen] = useState<string | null>(initialTableId ?? null);
   const [search, setSearch] = useState("");
   const [closed, setClosed] = useState<Set<string>>(new Set());
@@ -166,6 +168,26 @@ export function LayerMappingsPanel({
   const fullyMapped = layerCoverage?.tables.filter(
     (t) => t.coverage.total > 0 && t.coverage.covered === t.coverage.total,
   ).length;
+  // As in the prototype, the Layer card counts every column: system columns are DAWAM's,
+  // so always covered, on top of the mappable ones the API counts.
+  const system = total?.system ?? 0;
+  const allColumns = (total?.total ?? 0) + system;
+  const allCovered = (total?.covered ?? 0) + system;
+  const segments = [
+    { label: "mapped", count: total?.covered ?? 0, className: "bg-success" },
+    { label: "system", count: system, className: "bg-subtle-foreground" },
+    {
+      label: "unmapped",
+      count: (total?.total ?? 0) - (total?.covered ?? 0),
+      className: "bg-warning",
+    },
+  ];
+  const multiSystem =
+    layerCoverage?.tables.filter((t) => t.branch_count >= 2).length ?? 0;
+  const aggregates = list.filter((t) => t.is_aggregate).length;
+  const typeWarnings = validation.data?.problems.filter(
+    (p) => p.layer === layer && TYPE_WARNINGS.has(p.code),
+  ).length;
 
   const needle = search.trim().toLowerCase();
   const searching = needle !== "";
@@ -198,53 +220,64 @@ export function LayerMappingsPanel({
       {total && (
         <section
           aria-label="Coverage"
-          className="grid grid-cols-1 items-center gap-6 rounded-lg border border-border bg-surface-raised p-5 sm:grid-cols-[minmax(16rem,1.4fr)_minmax(9rem,1fr)]"
+          className="grid grid-cols-1 items-center gap-6 rounded-lg border border-border bg-surface-raised p-5 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1.4fr)_repeat(3,minmax(8.75rem,1fr))]"
         >
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2.5 sm:col-span-2 xl:col-span-1">
             <span className="text-xs font-medium text-subtle-foreground">
               Layer coverage
             </span>
             <span className="text-3xl font-semibold tabular-nums">
-              {Math.round(total.percent)}%{" "}
+              {allColumns > 0 ? Math.floor((100 * allCovered) / allColumns) : 0}
+              %{" "}
               <span className="text-base font-normal text-muted-foreground">
-                {total.covered} of {total.total} columns
+                {allCovered} of {allColumns} columns
               </span>
             </span>
             <span
               aria-hidden
               className="flex h-2 gap-0.5 overflow-hidden rounded-sm"
             >
-              <span
-                className="bg-success"
-                style={{ flexGrow: total.covered }}
-              />
-              <span
-                className="bg-warning"
-                style={{ flexGrow: total.total - total.covered }}
-              />
+              {segments
+                .filter(({ count }) => count > 0)
+                .map(({ label, count, className }) => (
+                  <span
+                    key={label}
+                    className={className}
+                    style={{ flexGrow: count }}
+                  />
+                ))}
             </span>
             <ul className="flex flex-wrap gap-4 text-xs text-muted-foreground tabular-nums">
-              <li className="flex items-center gap-1.5">
-                <span aria-hidden className="size-2 rounded-xs bg-success" />
-                {total.covered} mapped
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span aria-hidden className="size-2 rounded-xs bg-warning" />
-                {total.total - total.covered} unmapped
-              </li>
+              {segments.map(({ label, count, className }) => (
+                <li key={label} className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className={cn("size-2 rounded-xs", className)}
+                  />
+                  {count} {label}
+                </li>
+              ))}
             </ul>
           </div>
-          <div className="flex flex-col gap-1 sm:border-s sm:border-border sm:ps-6">
-            <span className="text-xs font-medium text-subtle-foreground">
-              {copy.name} tables
-            </span>
-            <span className="text-2xl font-semibold tabular-nums">
-              {list.length}
-            </span>
-            <span className="text-sm text-subtle-foreground tabular-nums">
-              {fullyMapped ?? 0} fully mapped
-            </span>
-          </div>
+          <Tile label={`${copy.name} tables`} value={list.length}>
+            {fullyMapped ?? 0} fully mapped
+          </Tile>
+          {layer === "core" ? (
+            <Tile label="Multi-system" value={multiSystem}>
+              tables with 2+ branches
+            </Tile>
+          ) : (
+            <Tile label="Aggregates" value={aggregates}>
+              with GROUP BY
+            </Tile>
+          )}
+          <Tile
+            label="Warnings"
+            value={typeWarnings ?? "–"}
+            className={typeWarnings ? "text-warning-strong" : undefined}
+          >
+            type may not fit
+          </Tile>
         </section>
       )}
       {list.length === 0 ? (
@@ -306,6 +339,43 @@ export function LayerMappingsPanel({
         </MappingsExplorer>
       )}
     </section>
+  );
+}
+
+/** Validation warnings that a value's data type may not fit its target column. */
+const TYPE_WARNINGS = new Set([
+  "may_truncate",
+  "may_lose_precision",
+  "may_fail_conversion",
+  "nullable_into_required",
+]);
+
+/** One figure of the Coverage card, set off by a rule on wide screens. */
+function Tile({
+  label,
+  value,
+  className,
+  children,
+}: {
+  label: string;
+  value: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="flex flex-col gap-1 xl:border-s xl:border-border xl:ps-6"
+    >
+      <span className="text-xs font-medium text-subtle-foreground">
+        {label}
+      </span>
+      <span className={cn("text-2xl font-semibold tabular-nums", className)}>
+        {value}
+      </span>
+      <span className="text-sm text-subtle-foreground">{children}</span>
+    </div>
   );
 }
 
