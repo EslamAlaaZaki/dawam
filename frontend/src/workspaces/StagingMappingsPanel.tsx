@@ -47,6 +47,13 @@ const DOTS = {
   direct: { label: "Copied direct", className: "bg-success" },
 };
 
+/** The Coverage bar's segments: every staging column is direct, hashed or audit. */
+const SEGMENTS = [
+  { key: "direct", label: "direct", className: "bg-success" },
+  { key: "hashed", label: "hashed", className: "bg-danger" },
+  { key: "audit", label: "audit", className: "bg-subtle-foreground" },
+] as const;
+
 const reviewLabels = (column: StagingMappingColumn): string[] => [
   ...column.review_flags.map((f) => FLAG_LABELS[f.code] ?? f.code),
   ...(column.status === "source_removed" ? ["Source removed"] : []),
@@ -194,35 +201,43 @@ export function StagingMappingsPanel({
     }
   }
 
-  const share = (n: number) =>
-    totals.columns > 0 ? `${(n / totals.columns) * 100}%` : "0%";
-
   return (
     <section aria-labelledby="folder-title" className="flex flex-col gap-6">
       {head(true, exportMenu)}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Coverage">
-          <Big>100%</Big>
-          <span className="text-sm text-muted-foreground tabular-nums">
-            {totals.columns} / {totals.columns} columns
-          </span>
+          <Big>
+            100%{" "}
+            <span className="text-base font-normal text-muted-foreground">
+              {totals.columns} / {totals.columns} columns
+            </span>
+          </Big>
+          {/* Every column is covered: the bar is split by how, with no empty track. */}
           <span
             aria-hidden
-            className="flex h-1.5 overflow-hidden rounded-full bg-muted"
+            className="flex h-1.5 gap-0.5 overflow-hidden rounded-sm"
           >
-            <span
-              className="bg-success"
-              style={{ width: share(totals.direct) }}
-            />
-            <span
-              className="bg-danger"
-              style={{ width: share(totals.hashed) }}
-            />
-            <span
-              className="bg-subtle-foreground"
-              style={{ width: share(totals.audit) }}
-            />
+            {SEGMENTS.filter(({ key }) => totals[key] > 0).map(
+              ({ key, className }) => (
+                <span
+                  key={key}
+                  className={className}
+                  style={{ flexGrow: totals[key] }}
+                />
+              ),
+            )}
           </span>
+          <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
+            {SEGMENTS.map(({ key, label, className }) => (
+              <li key={key} className="flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className={cn("size-2 rounded-xs", className)}
+                />
+                {totals[key]} {label}
+              </li>
+            ))}
+          </ul>
         </Stat>
         <Stat label="Copied direct">
           <Big>{totals.direct}</Big>
