@@ -8,8 +8,7 @@ import type { components } from "./schema";
 export type TableMapping = components["schemas"]["TableMapping"];
 export type ColumnMapping = components["schemas"]["ColumnMapping"];
 export type MappingType = ColumnMapping["mapping_type"];
-export type SaveColumnMappingRequest =
-  components["schemas"]["SaveColumnMappingRequest"];
+export type SaveColumnMappingRequest = components["schemas"]["SaveColumnMappingRequest"];
 
 export const MAPPING_TYPE_LABELS: Record<MappingType, string> = {
   direct: "Direct",
@@ -30,10 +29,8 @@ export const TABLE_LEVEL_MAPPING_TYPES: MappingType[] = [
 ];
 
 export type StagingMappingList = components["schemas"]["StagingMappingList"];
-export type StagingMappingTable =
-  components["schemas"]["StagingMappingListTable"];
-export type StagingMappingColumn =
-  components["schemas"]["StagingMappingListColumn"];
+export type StagingMappingTable = components["schemas"]["StagingMappingListTable"];
+export type StagingMappingColumn = components["schemas"]["StagingMappingListColumn"];
 
 /** The Staging Layer's mappings: per Staging Table, each column's source column. */
 export function useStagingMappings(workspaceId: string) {
@@ -54,10 +51,7 @@ export function useStagingMappings(workspaceId: string) {
 }
 
 /** Where a member downloads the Staging Layer's mapping sheet (any member). */
-export function stagingMappingSheetUrl(
-  workspaceId: string,
-  format: "xlsx" | "csv",
-): string {
+export function stagingMappingSheetUrl(workspaceId: string, format: "xlsx" | "csv"): string {
   return `/api/v1/workspaces/${workspaceId}/data-warehouse/mapping-sheet?layer=staging&format=${format}`;
 }
 
@@ -138,11 +132,7 @@ export function useTableMapping(workspaceId: string, tableId: string) {
  * Save one column's mapping; fails with `invalid_mapping` (422) or `version_conflict`
  * (409). SQL that does not parse is saved, flagged in `validation`.
  */
-export function useSaveColumnMapping(
-  workspaceId: string,
-  tableId: string,
-  columnId: string,
-) {
+export function useSaveColumnMapping(workspaceId: string, tableId: string, columnId: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({

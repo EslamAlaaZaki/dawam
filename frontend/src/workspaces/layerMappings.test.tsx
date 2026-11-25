@@ -31,10 +31,7 @@ function workspace(role: "viewer" | "editor") {
     description: "",
     domain: "",
     role,
-    permissions:
-      role === "viewer"
-        ? ["workspace.view"]
-        : ["dw_schema.edit", "workspace.view"],
+    permissions: role === "viewer" ? ["workspace.view"] : ["dw_schema.edit", "workspace.view"],
     status: "active",
     archived_at: null,
     require_distinct_approver: false,
@@ -79,35 +76,13 @@ const COVERAGE = {
     {
       layer: "core",
       tables: [
-        {
-          table_id: CUSTOMER,
-          table_name: "dim_customer",
-          layer: "core",
-          coverage: { total: 2, covered: 1, percent: 50, system: 1 },
-          branch_count: 0,
-        },
-        {
-          table_id: SALES,
-          table_name: "fact_sales",
-          layer: "core",
-          coverage: { total: 4, covered: 4, percent: 100, system: 1 },
-          branch_count: 2,
-        },
-        {
-          table_id: DATE,
-          table_name: "dim_date",
-          layer: "core",
-          coverage: { total: 0, covered: 0, percent: 0, system: 0 },
-          branch_count: 0,
-        },
+        { table_id: CUSTOMER, table_name: "dim_customer", layer: "core", coverage: { total: 2, covered: 1, percent: 50, system: 1 }, branch_count: 0 },
+        { table_id: SALES, table_name: "fact_sales", layer: "core", coverage: { total: 4, covered: 4, percent: 100, system: 1 }, branch_count: 2 },
+        { table_id: DATE, table_name: "dim_date", layer: "core", coverage: { total: 0, covered: 0, percent: 0, system: 0 }, branch_count: 0 },
       ],
       coverage: { total: 6, covered: 5, percent: 83, system: 2 },
     },
-    {
-      layer: "mart",
-      tables: [],
-      coverage: { total: 0, covered: 0, percent: 0, system: 0 },
-    },
+    { layer: "mart", tables: [], coverage: { total: 0, covered: 0, percent: 0, system: 0 } },
   ],
   coverage: { total: 6, covered: 5, percent: 83, system: 2 },
 };
@@ -138,14 +113,7 @@ const VALIDATION = {
   coverage: COVERAGE,
 };
 
-function col(
-  id: string,
-  name: string,
-  type: string,
-  version: number,
-  sql = "",
-  extra = {},
-) {
+function col(id: string, name: string, type: string, version: number, sql = "", extra = {}) {
   return {
     id: type === "unmapped" ? null : `m-${id}`,
     column_id: id,
@@ -187,12 +155,7 @@ const CUSTOMER_MAPPING = mapping(CUSTOMER, "dim_customer", {
     col(COL_EMAIL, "email", "direct", 2, "stg_cbs_customers.email", {
       validation: {
         unparsed: false,
-        errors: [
-          {
-            code: "type_truncation",
-            message: "varchar(80) is cut to varchar(40)",
-          },
-        ],
+        errors: [{ code: "type_truncation", message: "varchar(80) is cut to varchar(40)" }],
       },
     }),
     col(COL_LOADED, "_loaded_at", "system", 1),
@@ -271,19 +234,11 @@ function backend(options: Options = {}) {
       case `GET ${API}`:
         return json(workspace(options.role ?? "viewer"));
       case `GET ${API}/progress`:
-        return json({
-          source_analysis: [],
-          kpis: { status: "not_started" },
-          dw_modeling: [],
-        });
+        return json({ source_analysis: [], kpis: { status: "not_started" }, dw_modeling: [] });
       case `GET ${API}/members`:
         return json({ items: [] });
       case `GET ${DW}`:
-        return json({
-          set_up: true,
-          target_platform: "postgresql",
-          version: 1,
-        });
+        return json({ set_up: true, target_platform: "postgresql", version: 1 });
       case `GET ${API}/systems`:
         return json({ items: [], next_cursor: null });
       case `GET ${DW}/coverage`:
@@ -293,10 +248,7 @@ function backend(options: Options = {}) {
       case `GET ${DW}/tables`:
         return json({
           items: [
-            summary(CUSTOMER, "dim_customer", "dimension", {
-              scd_type: 2,
-              is_conformed: true,
-            }),
+            summary(CUSTOMER, "dim_customer", "dimension", { scd_type: 2, is_conformed: true }),
             summary(SALES, "fact_sales", "fact"),
             summary(DATE, "dim_date", "generated"),
           ],
@@ -330,9 +282,7 @@ describe("the Core and Mart Mappings page", () => {
   it("shows the Layer's coverage and its tables", async () => {
     renderApp(backend(), core());
 
-    expect(
-      await screen.findByRole("heading", { name: /Core mappings/ }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Core mappings/ })).toBeInTheDocument();
     expect(screen.getByText("In progress")).toBeInTheDocument();
     const coverage = screen.getByRole("region", { name: "Coverage" });
     // System columns count as covered on the Layer card: (5 + 2) of (6 + 2).
@@ -341,41 +291,31 @@ describe("the Core and Mart Mappings page", () => {
     expect(within(coverage).getByText("5 mapped")).toBeInTheDocument();
     expect(within(coverage).getByText("2 system")).toBeInTheDocument();
     expect(within(coverage).getByText("1 unmapped")).toBeInTheDocument();
-    expect(
-      within(coverage).getByRole("group", { name: "Core tables" }),
-    ).toHaveTextContent("3");
+    expect(within(coverage).getByRole("group", { name: "Core tables" })).toHaveTextContent("3");
     expect(within(coverage).getByText("1 fully mapped")).toBeInTheDocument();
-    expect(
-      within(coverage).getByRole("group", { name: "Multi-system" }),
-    ).toHaveTextContent("1tables with 2+ branches");
+    expect(within(coverage).getByRole("group", { name: "Multi-system" })).toHaveTextContent(
+      "1tables with 2+ branches",
+    );
     expect(await within(coverage).findByText("2")).toBeInTheDocument();
-    expect(
-      within(coverage).getByRole("group", { name: "Warnings" }),
-    ).toHaveTextContent("2type may not fit");
+    expect(within(coverage).getByRole("group", { name: "Warnings" })).toHaveTextContent(
+      "2type may not fit",
+    );
 
     const tree = screen.getByRole("list", { name: "Core tables" });
-    expect(
-      within(tree).getByRole("button", { name: /^Dimensions/ }),
-    ).toHaveAttribute("aria-expanded", "true");
-    expect(
-      within(tree).getByRole("button", { name: /^Facts/ }),
-    ).toBeInTheDocument();
+    expect(within(tree).getByRole("button", { name: /^Dimensions/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(within(tree).getByRole("button", { name: /^Facts/ })).toBeInTheDocument();
     const customer = within(tree).getByRole("button", { name: "dim_customer" });
     expect(customer).toHaveAttribute("aria-current", "true");
-    const row = (name: string) =>
-      within(tree).getByRole("button", { name }).closest("li")!;
+    const row = (name: string) => within(tree).getByRole("button", { name }).closest("li")!;
     expect(row("dim_customer")).toHaveTextContent("50%");
-    expect(
-      within(row("dim_customer")).getByRole("img", { name: "Partly mapped" }),
-    ).toBeInTheDocument();
+    expect(within(row("dim_customer")).getByRole("img", { name: "Partly mapped" })).toBeInTheDocument();
     expect(row("fact_sales")).toHaveTextContent("100%");
-    expect(
-      within(row("fact_sales")).getByRole("img", { name: "Fully mapped" }),
-    ).toBeInTheDocument();
+    expect(within(row("fact_sales")).getByRole("img", { name: "Fully mapped" })).toBeInTheDocument();
     expect(row("dim_date")).not.toHaveTextContent("%");
-    expect(
-      within(row("dim_date")).getByRole("img", { name: "Generated" }),
-    ).toBeInTheDocument();
+    expect(within(row("dim_date")).getByRole("img", { name: "Generated" })).toBeInTheDocument();
     const legend = screen.getByRole("list", { name: "Legend" });
     expect(within(legend).getByText("Generated")).toBeInTheDocument();
   });
@@ -385,57 +325,31 @@ describe("the Core and Mart Mappings page", () => {
 
     const tree = await screen.findByRole("list", { name: "Core tables" });
     fireEvent.click(within(tree).getByRole("button", { name: /^Facts/ }));
-    expect(
-      within(tree).queryByRole("button", { name: "fact_sales" }),
-    ).not.toBeInTheDocument();
+    expect(within(tree).queryByRole("button", { name: "fact_sales" })).not.toBeInTheDocument();
 
     // A search forces matching groups open and hides the others.
-    fireEvent.change(screen.getByLabelText("Search by name"), {
-      target: { value: "sales" },
-    });
-    expect(
-      within(tree).getByRole("button", { name: "fact_sales" }),
-    ).toBeInTheDocument();
-    expect(
-      within(tree).queryByRole("button", { name: "dim_customer" }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(tree).queryByRole("button", { name: /^Dimensions/ }),
-    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search by name"), { target: { value: "sales" } });
+    expect(within(tree).getByRole("button", { name: "fact_sales" })).toBeInTheDocument();
+    expect(within(tree).queryByRole("button", { name: "dim_customer" })).not.toBeInTheDocument();
+    expect(within(tree).queryByRole("button", { name: /^Dimensions/ })).not.toBeInTheDocument();
 
     // The chosen table is hidden by the search, so the first match shows.
-    expect(
-      screen.getByRole("region", { name: "Mappings of fact_sales" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Mappings of fact_sales" })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Search by name"), {
-      target: { value: "zzz" },
-    });
+    fireEvent.change(screen.getByLabelText("Search by name"), { target: { value: "zzz" } });
     expect(screen.getAllByText("No table matches.")).toHaveLength(2);
-    expect(
-      screen.queryByRole("region", { name: /^Mappings of/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /^Mappings of/ })).not.toBeInTheDocument();
   });
 
   it("selects a table and shows its columns, validation and the unmapped state", async () => {
     renderApp(backend(), core());
 
-    const region = await screen.findByRole("region", {
-      name: "Mappings of dim_customer",
-    });
-    expect(
-      await within(region).findByText("1 of 2 columns covered"),
-    ).toBeInTheDocument();
-    const rows = await within(region).findByRole("list", {
-      name: "Column mappings",
-    });
+    const region = await screen.findByRole("region", { name: "Mappings of dim_customer" });
+    expect(await within(region).findByText("1 of 2 columns covered")).toBeInTheDocument();
+    const rows = await within(region).findByRole("list", { name: "Column mappings" });
     expect(within(rows).getByText("Not mapped yet")).toBeInTheDocument();
-    expect(
-      within(rows).getByText("stg_cbs_customers.email"),
-    ).toBeInTheDocument();
-    expect(
-      within(rows).getByText("varchar(80) is cut to varchar(40)"),
-    ).toBeInTheDocument();
+    expect(within(rows).getByText("stg_cbs_customers.email")).toBeInTheDocument();
+    expect(within(rows).getByText("varchar(80) is cut to varchar(40)")).toBeInTheDocument();
     expect(within(rows).getByText("Unmapped")).toBeInTheDocument();
     // The type and the PII badge come from the table's column.
     expect(await within(rows).findByText("PII")).toBeInTheDocument();
@@ -457,36 +371,26 @@ describe("the Core and Mart Mappings page", () => {
   it("shows a branch tab per branch with its read-only SQL, and the integration rule", async () => {
     renderApp(backend(), core(`&table=${SALES}`));
 
-    const region = await screen.findByRole("region", {
-      name: "Mappings of fact_sales",
-    });
-    expect(
-      await within(region).findByText("Prefer the Core Banking value"),
-    ).toBeInTheDocument();
+    const region = await screen.findByRole("region", { name: "Mappings of fact_sales" });
+    expect(await within(region).findByText("Prefer the Core Banking value")).toBeInTheDocument();
     expect(within(region).getByText("customer_nk")).toBeInTheDocument();
     const sql = within(region).getByLabelText("Branch SQL");
     expect(sql).toHaveTextContent("FROM stg_cbs_sales s");
     expect(sql).toHaveTextContent("WHERE s.deleted = 0");
     expect(within(region).getByText("s.amount")).toBeInTheDocument();
 
-    fireEvent.mouseDown(within(region).getByRole("tab", { name: "Web Shop" }), {
-      button: 0,
-    });
-    expect(
-      await within(region).findByLabelText("Branch SQL"),
-    ).toHaveTextContent("FROM stg_web_orders o");
+    fireEvent.mouseDown(within(region).getByRole("tab", { name: "Web Shop" }), { button: 0 });
+    expect(await within(region).findByLabelText("Branch SQL")).toHaveTextContent(
+      "FROM stg_web_orders o",
+    );
     expect(within(region).getByText("Not mapped yet")).toBeInTheDocument();
   });
 
   it("shows a generated table as needing no mapping", async () => {
     renderApp(backend(), core(`&table=${DATE}`));
 
-    expect(
-      await screen.findByText("Generated table, no mapping needed"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("list", { name: "Column mappings" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText("Generated table, no mapping needed")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Column mappings" })).not.toBeInTheDocument();
   });
 
   it("keeps rows read-only for a viewer", async () => {
@@ -500,25 +404,13 @@ describe("the Core and Mart Mappings page", () => {
     renderApp(backend({ role: "editor" }), core());
 
     const rows = await screen.findByRole("list", { name: "Column mappings" });
-    expect(
-      within(rows).queryByRole("button", { name: /_loaded_at/ }),
-    ).not.toBeInTheDocument();
+    expect(within(rows).queryByRole("button", { name: /_loaded_at/ })).not.toBeInTheDocument();
 
-    fireEvent.click(
-      within(rows).getByRole("button", { name: "Edit mapping of full_name" }),
-    );
-    expect(
-      screen.getByRole("form", { name: "Mapping of full_name" }),
-    ).toBeInTheDocument();
-    fireEvent.click(
-      within(rows).getByRole("button", { name: "Edit mapping of email" }),
-    );
-    expect(
-      screen.queryByRole("form", { name: "Mapping of full_name" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("form", { name: "Mapping of email" }),
-    ).toBeInTheDocument();
+    fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of full_name" }));
+    expect(screen.getByRole("form", { name: "Mapping of full_name" })).toBeInTheDocument();
+    fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of email" }));
+    expect(screen.queryByRole("form", { name: "Mapping of full_name" })).not.toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "Mapping of email" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("form")).not.toBeInTheDocument();
@@ -531,30 +423,22 @@ describe("the Core and Mart Mappings page", () => {
     );
     const rows = await screen.findByRole("list", { name: "Column mappings" });
 
-    fireEvent.click(
-      within(rows).getByRole("button", { name: "Edit mapping of full_name" }),
-    );
+    fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of full_name" }));
     const form = screen.getByRole("form", { name: "Mapping of full_name" });
-    fireEvent.change(within(form).getByLabelText("Mapping type"), {
-      target: { value: "direct" },
-    });
+    fireEvent.change(within(form).getByLabelText("Mapping type"), { target: { value: "direct" } });
     fireEvent.change(within(form).getByLabelText("SQL expression"), {
       target: { value: "stg_cbs_customers.name" },
     });
     fireEvent.click(within(form).getByRole("button", { name: "Save mapping" }));
 
-    await waitFor(() =>
-      expect(requests.some((r) => r.method === "PUT")).toBe(true),
-    );
+    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
     expect(requests.find((r) => r.method === "PUT")?.body).toEqual({
       mapping_type: "direct",
       rule_text: "",
       sql_expression: "stg_cbs_customers.name",
       version: 0,
     });
-    await waitFor(() =>
-      expect(screen.queryByRole("form")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
   });
 
   it("saves a branch mapping through the branch column endpoint", async () => {
@@ -562,40 +446,23 @@ describe("the Core and Mart Mappings page", () => {
       backend({ role: "editor", saveBranch: () => json(SALES_MAPPING) }),
       core(`&table=${SALES}`),
     );
-    const region = await screen.findByRole("region", {
-      name: "Mappings of fact_sales",
+    const region = await screen.findByRole("region", { name: "Mappings of fact_sales" });
+    fireEvent.mouseDown(await within(region).findByRole("tab", { name: "Web Shop" }), {
+      button: 0,
     });
-    fireEvent.mouseDown(
-      await within(region).findByRole("tab", { name: "Web Shop" }),
-      {
-        button: 0,
-      },
-    );
 
-    fireEvent.click(
-      await within(region).findByRole("button", {
-        name: "Edit mapping of amount",
-      }),
-    );
+    fireEvent.click(await within(region).findByRole("button", { name: "Edit mapping of amount" }));
     const form = screen.getByRole("form", { name: "Mapping of amount" });
     // A branch can mark a column NULL.
-    expect(
-      within(form).getByRole("option", { name: "Not in this branch (NULL)" }),
-    ).toBeInTheDocument();
-    fireEvent.change(within(form).getByLabelText("Mapping type"), {
-      target: { value: "direct" },
-    });
+    expect(within(form).getByRole("option", { name: "Not in this branch (NULL)" })).toBeInTheDocument();
+    fireEvent.change(within(form).getByLabelText("Mapping type"), { target: { value: "direct" } });
     fireEvent.change(within(form).getByLabelText("SQL expression"), {
       target: { value: "o.total" },
     });
     fireEvent.click(within(form).getByRole("button", { name: "Save mapping" }));
 
-    await waitFor(() =>
-      expect(requests.some((r) => r.method === "PUT")).toBe(true),
-    );
-    expect(requests.find((r) => r.method === "PUT")?.path).toContain(
-      `/branches/${BRANCH_B}/`,
-    );
+    await waitFor(() => expect(requests.some((r) => r.method === "PUT")).toBe(true));
+    expect(requests.find((r) => r.method === "PUT")?.path).toContain(`/branches/${BRANCH_B}/`);
     expect(requests.find((r) => r.method === "PUT")?.body).toMatchObject({
       mapping_type: "direct",
       sql_expression: "o.total",
@@ -605,26 +472,12 @@ describe("the Core and Mart Mappings page", () => {
 
   it("does not carry a branch's edits over to another branch's row", async () => {
     renderApp(backend({ role: "editor" }), core(`&table=${SALES}`));
-    const region = await screen.findByRole("region", {
-      name: "Mappings of fact_sales",
-    });
+    const region = await screen.findByRole("region", { name: "Mappings of fact_sales" });
 
-    fireEvent.click(
-      await within(region).findByRole("button", {
-        name: "Edit mapping of amount",
-      }),
-    );
-    fireEvent.change(screen.getByLabelText("SQL expression"), {
-      target: { value: "edited" },
-    });
-    fireEvent.mouseDown(within(region).getByRole("tab", { name: "Web Shop" }), {
-      button: 0,
-    });
-    fireEvent.click(
-      await within(region).findByRole("button", {
-        name: "Edit mapping of amount",
-      }),
-    );
+    fireEvent.click(await within(region).findByRole("button", { name: "Edit mapping of amount" }));
+    fireEvent.change(screen.getByLabelText("SQL expression"), { target: { value: "edited" } });
+    fireEvent.mouseDown(within(region).getByRole("tab", { name: "Web Shop" }), { button: 0 });
+    fireEvent.click(await within(region).findByRole("button", { name: "Edit mapping of amount" }));
 
     const form = screen.getByRole("form", { name: "Mapping of amount" });
     expect(within(form).getByLabelText("Mapping type")).toHaveValue("unmapped");
@@ -636,8 +489,7 @@ describe("the Core and Mart Mappings page", () => {
     const requests = renderApp(
       backend({
         role: "editor",
-        saveTable: () =>
-          apiError(409, "version_conflict", "Someone else changed this."),
+        saveTable: () => apiError(409, "version_conflict", "Someone else changed this."),
         tableMapping: () => {
           reads += 1;
           return json({
@@ -652,68 +504,47 @@ describe("the Core and Mart Mappings page", () => {
       core(),
     );
     const rows = await screen.findByRole("list", { name: "Column mappings" });
-    fireEvent.click(
-      within(rows).getByRole("button", { name: "Edit mapping of full_name" }),
-    );
+    fireEvent.click(within(rows).getByRole("button", { name: "Edit mapping of full_name" }));
     const form = screen.getByRole("form", { name: "Mapping of full_name" });
-    fireEvent.change(within(form).getByLabelText("SQL expression"), {
-      target: { value: "my draft" },
-    });
+    fireEvent.change(within(form).getByLabelText("SQL expression"), { target: { value: "my draft" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save mapping" }));
 
-    expect(
-      await within(form).findByText("Someone else changed this."),
-    ).toBeInTheDocument();
+    expect(await within(form).findByText("Someone else changed this.")).toBeInTheDocument();
     const mappingGets = () =>
-      requests.filter(
-        (r) =>
-          r.method === "GET" && r.path === `${DW}/tables/${CUSTOMER}/mapping`,
-      );
+      requests.filter((r) => r.method === "GET" && r.path === `${DW}/tables/${CUSTOMER}/mapping`);
     await waitFor(() => expect(mappingGets().length).toBeGreaterThan(1));
     const after = screen.getByRole("form", { name: "Mapping of full_name" });
-    expect(within(after).getByLabelText("SQL expression")).toHaveValue(
-      "my draft",
-    );
-    expect(
-      within(after).getByText("Someone else changed this."),
-    ).toBeInTheDocument();
+    expect(within(after).getByLabelText("SQL expression")).toHaveValue("my draft");
+    expect(within(after).getByText("Someone else changed this.")).toBeInTheDocument();
   });
 
   it("offers XLSX and CSV downloads for the Layer", async () => {
     renderApp(backend(), core());
 
-    openMenu(
-      await screen.findByRole("button", { name: /Export mapping sheet/ }),
+    openMenu(await screen.findByRole("button", { name: /Export mapping sheet/ }));
+    expect(await screen.findByRole("menuitem", { name: /Download XLSX/ })).toHaveAttribute(
+      "href",
+      `${DW}/mapping-sheet?layer=core&format=xlsx`,
     );
-    expect(
-      await screen.findByRole("menuitem", { name: /Download XLSX/ }),
-    ).toHaveAttribute("href", `${DW}/mapping-sheet?layer=core&format=xlsx`);
-    expect(
-      screen.getByRole("menuitem", { name: /Download CSV/ }),
-    ).toHaveAttribute("href", `${DW}/mapping-sheet?layer=core&format=csv`);
+    expect(screen.getByRole("menuitem", { name: /Download CSV/ })).toHaveAttribute(
+      "href",
+      `${DW}/mapping-sheet?layer=core&format=csv`,
+    );
   });
 
   it("uses the Mart wording and Layer for the Mart page", async () => {
     renderApp(backend(), `${PATH}?folder=dw/mart/mappings`);
 
-    expect(
-      await screen.findByRole("heading", { name: /Mart mappings/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/How every Mart column is built from the Core Layer/),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Mart mappings/ })).toBeInTheDocument();
+    expect(screen.getByText(/How every Mart column is built from the Core Layer/)).toBeInTheDocument();
   });
 
   it("links from the Model page to the Mappings page with the table selected", async () => {
     renderApp(backend(), `${PATH}?folder=dw/core/model`);
 
     fireEvent.click(await screen.findByRole("button", { name: "fact_sales" }));
-    expect(
-      screen.queryByRole("button", { name: "Mappings" }),
-    ).not.toBeInTheDocument();
-    fireEvent.click(
-      await screen.findByRole("link", { name: "Open in Mappings" }),
-    );
+    expect(screen.queryByRole("button", { name: "Mappings" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("link", { name: "Open in Mappings" }));
 
     expect(currentLocation()).toBe(
       `${PATH}?${new URLSearchParams({ folder: "dw/core/mappings", table: SALES })}`,
