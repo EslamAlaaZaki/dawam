@@ -12071,6 +12071,16 @@ export interface components {
              * @description The source column's data type as extracted; null for an audit column.
              */
             source_data_type: string | null;
+            /**
+             * Is Pii
+             * @description Its source column is accepted PII: it can be switched between `direct` and `hashed` (`PUT .../staging/columns/{id}/mapping`).
+             */
+            is_pii: boolean;
+            /**
+             * Mapping Version
+             * @description The mapping's version, to send when switching it; null without a mapping.
+             */
+            mapping_version: number | null;
         };
         /** StagingMappingListTable */
         StagingMappingListTable: {
@@ -12127,6 +12137,11 @@ export interface components {
              * @description Columns with at least one review flag, or `source_removed`.
              */
             to_review: number;
+            /**
+             * Pii
+             * @description Columns whose source column is accepted PII.
+             */
+            pii: number;
         };
         /** StagingResult */
         StagingResult: {

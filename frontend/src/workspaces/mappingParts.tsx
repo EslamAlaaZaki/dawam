@@ -1,6 +1,12 @@
 "use client";
 
-import { ArrowRight, ChevronDown, Download, Search } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronDown,
+  Download,
+  Search,
+  ShieldAlert,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "../components/ui/button";
@@ -86,6 +92,20 @@ export function ExportSheetMenu({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+/** A PII column, marked with the Source System pages' icon (never colour alone). */
+export function PiiIcon({ label = "Accepted PII" }: { label?: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className="inline-flex self-center"
+    >
+      <ShieldAlert aria-hidden className="size-3.5 text-tag-pii" />
+    </span>
   );
 }
 

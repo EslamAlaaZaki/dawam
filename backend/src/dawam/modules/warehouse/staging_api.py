@@ -232,6 +232,13 @@ class StagingMappingListColumn(BaseModel):
     source_data_type: str | None = Field(
         description="The source column's data type as extracted; null for an audit column."
     )
+    is_pii: bool = Field(
+        description="Its source column is accepted PII: it can be switched between `direct` "
+        "and `hashed` (`PUT .../staging/columns/{id}/mapping`)."
+    )
+    mapping_version: int | None = Field(
+        description="The mapping's version, to send when switching it; null without a mapping."
+    )
 
 
 class StagingMappingListTable(BaseModel):
@@ -260,6 +267,7 @@ class StagingMappingTotals(BaseModel):
     to_review: int = Field(
         description="Columns with at least one review flag, or `source_removed`."
     )
+    pii: int = Field(description="Columns whose source column is accepted PII.")
 
 
 class StagingMappingList(BaseModel):

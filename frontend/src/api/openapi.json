@@ -34555,6 +34555,23 @@
             ],
             "title": "Source Data Type",
             "description": "The source column's data type as extracted; null for an audit column."
+          },
+          "is_pii": {
+            "type": "boolean",
+            "title": "Is Pii",
+            "description": "Its source column is accepted PII: it can be switched between `direct` and `hashed` (`PUT .../staging/columns/{id}/mapping`)."
+          },
+          "mapping_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping Version",
+            "description": "The mapping's version, to send when switching it; null without a mapping."
           }
         },
         "type": "object",
@@ -34568,7 +34585,9 @@
           "review_flags",
           "mapping_type",
           "source_column_name",
-          "source_data_type"
+          "source_data_type",
+          "is_pii",
+          "mapping_version"
         ],
         "title": "StagingMappingListColumn"
       },
@@ -34706,6 +34725,11 @@
             "type": "integer",
             "title": "To Review",
             "description": "Columns with at least one review flag, or `source_removed`."
+          },
+          "pii": {
+            "type": "integer",
+            "title": "Pii",
+            "description": "Columns whose source column is accepted PII."
           }
         },
         "type": "object",
@@ -34715,7 +34739,8 @@
           "direct",
           "hashed",
           "audit",
-          "to_review"
+          "to_review",
+          "pii"
         ],
         "title": "StagingMappingTotals"
       },

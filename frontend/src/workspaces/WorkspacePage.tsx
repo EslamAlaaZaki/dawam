@@ -393,7 +393,6 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
           ) : folder.id === "dw/staging/mappings" ? (
             <StagingMappingsPanel
               workspace={workspace.data}
-              onOpenPii={(systemId) => select(`systems/${systemId}/pii`)}
               onOpenModel={() => select("dw/staging/model")}
             />
           ) : mappingsLayer ? (

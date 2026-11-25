@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from dawam.modules.auth import User
-from dawam.modules.sources import StagingSourceService
+from dawam.modules.sources import StagingSourceService, accepted_pii_column_ids
 from dawam.modules.workspaces import Action, WorkspaceService
 
 from .tables import (
@@ -44,6 +44,10 @@ class StagingMappingColumn:
     sql_expression: str
     source_column_name: str | None
     source_data_type: str | None
+    is_pii: bool = False
+    """Its source column is accepted PII, so it can be hashed."""
+    mapping_version: int | None = None
+    """The mapping's version, for switching it between direct and hashed."""
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,7 @@ class StagingMappingTotals:
     hashed: int
     audit: int
     to_review: int
+    pii: int = 0
 
 
 @dataclass(frozen=True)
@@ -127,6 +132,7 @@ class StagingMappingsService:
                 )
                 .order_by(DwColumnRecord.table_id, DwColumnRecord.ordinal, DwColumnRecord.name)
             ).all()
+            pii = accepted_pii_column_ids(db, workspace_id)
             for column, mapping in rows:
                 source = source_columns.get(column.source_column_id)
                 mapping_type = mapping.mapping_type if mapping else "direct"
@@ -143,6 +149,8 @@ class StagingMappingsService:
                         sql_expression=mapping.sql_expression if mapping else "",
                         source_column_name=source[0] if source else None,
                         source_data_type=source[1] if source else None,
+                        is_pii=column.source_column_id in pii,
+                        mapping_version=mapping.version if mapping else None,
                     )
                 )
             result = []
@@ -179,4 +187,5 @@ def _totals(tables: list[StagingMappingTable]) -> StagingMappingTotals:
         hashed=sum(1 for c in columns if c.mapping_type == "hashed"),
         audit=sum(1 for c in columns if c.mapping_type == "system"),
         to_review=sum(1 for c in columns if c.review_flags or c.status == SOURCE_REMOVED),
+        pii=sum(1 for c in columns if c.is_pii),
     )

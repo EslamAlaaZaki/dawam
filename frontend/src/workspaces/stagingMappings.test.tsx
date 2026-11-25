@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { openMenu } from "../test/menus";
@@ -56,6 +56,8 @@ function column(
     mapping_type,
     source_column_name: mapping_type === "system" ? null : name,
     source_data_type: mapping_type === "system" ? null : "varchar(40)",
+    is_pii: mapping_type === "hashed",
+    mapping_version: mapping_type === "system" ? null : 1,
     ...extra,
   };
 }
@@ -77,6 +79,8 @@ const MAPPINGS = {
         column("email", "hashed"),
         column("full_name", "direct", {
           review_flags: [{ code: "truncated", message: "cut" }],
+          // Accepted PII left direct: shown as not hashed.
+          is_pii: true,
         }),
         column("_loaded_at", "system"),
       ],
@@ -94,16 +98,38 @@ const MAPPINGS = {
       columns: [column("account_id", "direct"), column("_loaded_at", "system")],
     },
   ],
-  totals: { tables: 2, columns: 6, direct: 3, hashed: 1, audit: 2, to_review: 1 },
+  totals: {
+    tables: 2,
+    columns: 6,
+    direct: 3,
+    hashed: 1,
+    audit: 2,
+    to_review: 1,
+    pii: 2,
+  },
 };
 
-function backend(mappings: object) {
+function backend(mappings: object, role: "viewer" | "editor" = "viewer") {
   return (r: ApiRequest) => {
+    if (
+      r.method === "PUT" &&
+      r.path.startsWith(`${API}/data-warehouse/staging/columns/`)
+    ) {
+      return json({});
+    }
     switch (`${r.method} ${r.path}`) {
       case "GET /api/v1/me":
         return json(ADA);
       case `GET ${API}`:
-        return json(WORKSPACE);
+        return json(
+          role === "viewer"
+            ? WORKSPACE
+            : {
+                ...WORKSPACE,
+                role,
+                permissions: ["dw_schema.edit", "workspace.view"],
+              },
+        );
       case `GET ${API}/progress`:
         return json({
           source_analysis: [],
@@ -113,7 +139,11 @@ function backend(mappings: object) {
       case `GET ${API}/members`:
         return json({ items: [] });
       case `GET ${API}/data-warehouse`:
-        return json({ set_up: true, target_platform: "postgresql", version: 1 });
+        return json({
+          set_up: true,
+          target_platform: "postgresql",
+          version: 1,
+        });
       case `GET ${API}/systems`:
         return json({ items: [], next_cursor: null });
       case `GET ${API}/data-warehouse/staging/mappings`:
@@ -161,10 +191,14 @@ describe("the Staging Mappings page", () => {
       within(row("stg_cbs_customers")).getByRole("img", { name: "To review" }),
     ).toBeInTheDocument();
     expect(
-      within(row("stg_cbs_accounts")).getByRole("img", { name: "Copied direct" }),
+      within(row("stg_cbs_accounts")).getByRole("img", {
+        name: "Copied direct",
+      }),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole("list", { name: "Legend" })).getByText("Has hashed"),
+      within(screen.getByRole("list", { name: "Legend" })).getByText(
+        "Has hashed",
+      ),
     ).toBeInTheDocument();
     // No filter, so no per-table column count.
     expect(row("stg_cbs_customers")).not.toHaveTextContent("4");
@@ -175,7 +209,7 @@ describe("the Staging Mappings page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("badges the selected table and its columns, and links hashed rows to the PII page", async () => {
+  it("badges the selected table and its columns, and marks PII", async () => {
     renderApp(backend(MAPPINGS), PATH);
 
     const region = await screen.findByRole("region", {
@@ -191,47 +225,106 @@ describe("the Staging Mappings page", () => {
     expect(within(region).getByText("dbo.customers")).toBeInTheDocument();
     expect(within(region).getByText("Truncated")).toBeInTheDocument();
     expect(
-      within(region).getAllByText("Audit", { selector: "span.bg-transparent" })[0],
+      within(region).getAllByText("Audit", {
+        selector: "span.bg-transparent",
+      })[0],
     ).toBeInTheDocument();
     expect(within(region).getAllByText("none").length).toBeGreaterThan(0);
 
-    fireEvent.click(within(region).getByRole("link", { name: "Change in PII" }));
-    expect(currentLocation()).toBe(
-      `/workspaces/${WORKSPACE_ID}?folder=${encodeURIComponent(`systems/${SYSTEM_ID}/pii`)}`,
+    // email (hashed) and full_name (direct) are accepted PII; a viewer only sees the state.
+    expect(
+      within(region).getAllByRole("img", { name: "Accepted PII" }),
+    ).toHaveLength(2);
+    expect(within(region).getByText("PII not hashed")).toBeInTheDocument();
+    expect(within(region).getByText("Hashed")).toBeInTheDocument();
+    expect(within(region).queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(
+      within(region).queryByRole("link", { name: "Change in PII" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/of 2 PII columns/)).toBeInTheDocument();
+  });
+
+  it("lets an editor switch a PII column between hashed and direct", async () => {
+    const requests = renderApp(backend(MAPPINGS, "editor"), PATH);
+
+    const region = await screen.findByRole("region", {
+      name: "Mappings of stg_cbs_customers",
+    });
+    const email = within(region).getByRole("radiogroup", {
+      name: "Mapping of email",
+    });
+    expect(
+      within(email).getByRole("radio", { name: "Hashed" }),
+    ).toHaveAttribute("aria-checked", "true");
+    // Only PII columns can be switched.
+    expect(
+      within(region).queryByRole("radiogroup", {
+        name: "Mapping of customer_id",
+      }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(email).getByRole("radio", { name: "Direct" }));
+
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === "PUT")).toBe(true),
     );
+    const put = requests.find((r) => r.method === "PUT")!;
+    expect(put.path).toBe(
+      `${API}/data-warehouse/staging/columns/${MAPPINGS.tables[0]!.columns[1]!.column_id}/mapping`,
+    );
+    expect(put.body).toEqual({ mapping_type: "direct", version: 1 });
   });
 
   it("shows the clicked table's columns", async () => {
     renderApp(backend(MAPPINGS), PATH);
-    await screen.findByRole("region", { name: "Mappings of stg_cbs_customers" });
+    await screen.findByRole("region", {
+      name: "Mappings of stg_cbs_customers",
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "stg_cbs_accounts" }));
-    const region = screen.getByRole("region", { name: "Mappings of stg_cbs_accounts" });
+    const region = screen.getByRole("region", {
+      name: "Mappings of stg_cbs_accounts",
+    });
     expect(within(region).getAllByText("account_id").length).toBeGreaterThan(0);
     expect(screen.queryByText("customer_id")).not.toBeInTheDocument();
   });
 
   it("narrows the tree by segment, counts matches and falls back to the first visible table", async () => {
     renderApp(backend(MAPPINGS), PATH);
-    await screen.findByRole("region", { name: "Mappings of stg_cbs_customers" });
+    await screen.findByRole("region", {
+      name: "Mappings of stg_cbs_customers",
+    });
 
-    expect(screen.getByRole("button", { name: /^Hasheds*1$/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^To reviews*1$/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Audits*2$/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Hasheds*1$/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^To reviews*1$/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Audits*2$/ }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "stg_cbs_accounts" }));
     fireEvent.click(screen.getByRole("button", { name: /^Hashed/ }));
-    const tree = screen.getByRole("list", { name: "Staging tables by Source System" });
+    const tree = screen.getByRole("list", {
+      name: "Staging tables by Source System",
+    });
     expect(
       within(tree).queryByRole("button", { name: "stg_cbs_accounts" }),
     ).not.toBeInTheDocument();
     // The chosen table is filtered out, so the first visible one shows.
-    const region = screen.getByRole("region", { name: "Mappings of stg_cbs_customers" });
+    const region = screen.getByRole("region", {
+      name: "Mappings of stg_cbs_customers",
+    });
     expect(within(region).getAllByText("email").length).toBeGreaterThan(0);
     expect(within(region).queryByText("customer_id")).not.toBeInTheDocument();
     expect(
-      within(within(tree).getByRole("button", { name: "stg_cbs_customers" }).closest("li")!)
-        .getByText("1"),
+      within(
+        within(tree)
+          .getByRole("button", { name: "stg_cbs_customers" })
+          .closest("li")!,
+      ).getByText("1"),
     ).toBeInTheDocument();
 
     // No column left: the right side says so.
@@ -239,7 +332,9 @@ describe("the Staging Mappings page", () => {
       target: { value: "nothing_here" },
     });
     expect(screen.getByText("No table matches.")).toBeInTheDocument();
-    expect(screen.getByText("No column matches this filter.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No column matches this filter."),
+    ).toBeInTheDocument();
 
     // With the filter back on All, only the search misses.
     fireEvent.click(screen.getByRole("button", { name: /^All/ }));
@@ -248,20 +343,32 @@ describe("the Staging Mappings page", () => {
 
   it("searches by table or column name in the tree, with no separate text filter", async () => {
     renderApp(backend(MAPPINGS), PATH);
-    await screen.findByRole("region", { name: "Mappings of stg_cbs_customers" });
+    await screen.findByRole("region", {
+      name: "Mappings of stg_cbs_customers",
+    });
 
-    expect(screen.queryByLabelText("Filter by table or column")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Filter by table or column"),
+    ).not.toBeInTheDocument();
     const search = screen.getByRole("searchbox", { name: "Search by name" });
     expect(search).toHaveAttribute("placeholder", "A table or column");
 
     fireEvent.change(search, { target: { value: "account" } });
-    const tree = screen.getByRole("list", { name: "Staging tables by Source System" });
-    expect(within(tree).queryByRole("button", { name: "stg_cbs_customers" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Mappings of stg_cbs_accounts" })).toBeInTheDocument();
+    const tree = screen.getByRole("list", {
+      name: "Staging tables by Source System",
+    });
+    expect(
+      within(tree).queryByRole("button", { name: "stg_cbs_customers" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Mappings of stg_cbs_accounts" }),
+    ).toBeInTheDocument();
 
     // A column name finds its table; only matching columns show.
     fireEvent.change(search, { target: { value: "full_name" } });
-    const region = screen.getByRole("region", { name: "Mappings of stg_cbs_customers" });
+    const region = screen.getByRole("region", {
+      name: "Mappings of stg_cbs_customers",
+    });
     expect(within(region).getAllByText("full_name").length).toBeGreaterThan(0);
     expect(within(region).queryByText("customer_id")).not.toBeInTheDocument();
   });
@@ -278,7 +385,9 @@ describe("the Staging Mappings page", () => {
       `${API}/data-warehouse/mapping-sheet?layer=staging&format=xlsx`,
     );
     expect(
-      screen.getByRole("menuitem", { name: /Download CSV/ }).getAttribute("href"),
+      screen
+        .getByRole("menuitem", { name: /Download CSV/ })
+        .getAttribute("href"),
     ).toBe(`${API}/data-warehouse/mapping-sheet?layer=staging&format=csv`);
   });
 
@@ -286,12 +395,21 @@ describe("the Staging Mappings page", () => {
     renderApp(
       backend({
         tables: [],
-        totals: { tables: 0, columns: 0, direct: 0, hashed: 0, audit: 0, to_review: 0 },
+        totals: {
+          tables: 0,
+          columns: 0,
+          direct: 0,
+          hashed: 0,
+          audit: 0,
+          to_review: 0,
+        },
       }),
       PATH,
     );
 
-    expect(await screen.findByText("No staging mappings yet")).toBeInTheDocument();
+    expect(
+      await screen.findByText("No staging mappings yet"),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Open Model/ }));
     expect(currentLocation()).toBe(
       `/workspaces/${WORKSPACE_ID}?folder=dw%2Fstaging%2Fmodel`,

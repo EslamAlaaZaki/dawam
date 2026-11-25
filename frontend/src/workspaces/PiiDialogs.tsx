@@ -377,7 +377,7 @@ export function RemovePiiDialog({
           <p className="m-0 text-sm text-muted-foreground">
             The staging mapping{" "}
             <span className={monoClasses}>{target.hashed_mapping}</span> hashes it. Switch it
-            back to direct in Mappings first, then remove PII.
+            to Direct in Data Warehouse › Staging › Mappings first, then remove PII.
           </p>
         ) : (
           <>

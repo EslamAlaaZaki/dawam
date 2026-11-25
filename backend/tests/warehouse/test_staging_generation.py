@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pytest
 import sqlalchemy as sa
 
+from dawam.modules.warehouse.pii_hashing import hashed_sql
 from dawam.modules.warehouse.staging_naming import stable_hash
 from tests.roles import RoleClients
 
@@ -193,6 +194,32 @@ def test_every_source_column_gets_a_direct_mapping_and_a_lineage_edge(warehouse:
     assert amount.from_id == ids["orders"]["columns"]["amount"]
     assert (load_ts.mapping_type, load_ts.kind) == ("system", None)
     assert source_system.sql_expression == "'crm'"
+
+
+def test_an_accepted_pii_column_is_hashed_from_the_start(warehouse: RoleClients):
+    from tests.lineage.test_lineage import accept_pii
+
+    system = add_system(warehouse)
+    ids = seed(warehouse, system, "dbo", {"orders": [("email", "varchar(80)"), ("note", "text")]})
+    accept_pii(warehouse, str(ids["orders"]["columns"]["email"]))
+    generate(warehouse)
+
+    rows = dict(
+        query(
+            warehouse,
+            "select c.name, m.mapping_type from column_mappings m"
+            " join dw_columns c on c.id = m.dw_column_id",
+        )
+    )
+
+    assert rows["email"] == "hashed"
+    assert rows["note"] == "direct"
+    [sql] = query(
+        warehouse,
+        "select m.sql_expression from column_mappings m join dw_columns c"
+        " on c.id = m.dw_column_id where c.name = 'email'",
+    )
+    assert sql[0] == hashed_sql("postgresql", "dbo.orders.email")
 
 
 def test_the_lineage_of_a_staging_column_reaches_its_source_column(warehouse: RoleClients):

@@ -419,7 +419,7 @@ describe("the PII folder", () => {
     const dialog = await screen.findByRole("dialog");
 
     expect(dialog).toHaveTextContent("stg_crm_contacts.iban");
-    expect(dialog).toHaveTextContent("Switch it back to direct in Mappings first");
+    expect(dialog).toHaveTextContent("Switch it to Direct in Data Warehouse › Staging › Mappings first");
     expect(within(dialog).queryByRole("button", { name: "Remove PII" })).toBeNull();
   });
 

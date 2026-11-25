@@ -22,6 +22,7 @@ import {
   type DwTable,
   type DwTableSummary,
 } from "../api/dwModel";
+import { piiMarkLabel, usePiiMarks } from "../api/piiView";
 import { typeText } from "../lib/typeText";
 import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
@@ -39,6 +40,7 @@ import {
 } from "../components/ui/table";
 import { StarPanel } from "../diagrams/StarPanel";
 import { Loading } from "../shell/Loading";
+import { PiiIcon } from "./mappingParts";
 import { StagingModelPanel } from "./StagingModelPanel";
 import {
   Actions,
@@ -400,6 +402,7 @@ function TableDetails({
   const table = useDwTable(workspace.id, tableId);
   const removeColumn = useDeleteDwColumn(workspace.id, tableId);
   const removeTable = useDeleteDwTable(workspace.id, tableId);
+  const piiMarks = usePiiMarks(workspace.id);
   // Deleting a table is a soft delete, for owners only; it is purged from the deleted list.
   const canDelete = allows(workspace, "objects.delete");
 
@@ -498,69 +501,82 @@ function TableDetails({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {t.columns.map((column) => (
-                <TableRow key={column.id}>
-                  <TableCell className={monoClasses}>
-                    {column.name}
-                    {column.naming_violations.map((v) => (
-                      <Badge
-                        key={v.code}
-                        variant="warning"
-                        role="status"
-                        className="ml-2 font-sans"
-                      >
-                        {v.message}
-                      </Badge>
-                    ))}
-                  </TableCell>
-                  <TableCell className={`${monoClasses} text-muted-foreground`}>
-                    {typeText(column.data_type)}
-                    {column.is_nullable ? "" : " not null"}
-                  </TableCell>
-                  <TableCell>
-                    {column.role === "sk" || column.role === "nk" ? (
-                      <Badge variant="pk">{ROLE_LABELS[column.role]}</Badge>
-                    ) : column.role === "fk" ? (
-                      <Badge variant="fk">{ROLE_LABELS[column.role]}</Badge>
-                    ) : (
-                      <Badge
-                        variant={column.role === "audit" ? "info" : "neutral"}
-                      >
-                        {ROLE_LABELS[column.role]}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {[
-                      column.additivity && ADDITIVITY_LABELS[column.additivity],
-                      column.references_table_id &&
-                        `→ ${names.get(column.references_table_id) ?? "another table"}${
-                          column.role_name ? ` (${column.role_name})` : ""
-                        }`,
-                      column.scd_type_override != null &&
-                        `SCD ${column.scd_type_override}`,
-                      column.is_system && "DAWAM",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ") || "—"}
-                  </TableCell>
-                  {editable && (
-                    <TableCell>
-                      {!column.is_system && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          aria-label={`Delete ${column.name}`}
-                          disabled={removeColumn.isPending}
-                          onClick={() => removeColumn.mutate(column.id)}
+              {t.columns.map((column) => {
+                // Staging marks its PII columns, as the Source System pages do.
+                const pii =
+                  t.layer === "staging" ? piiMarks.get(column.id) : undefined;
+                return (
+                  <TableRow key={column.id}>
+                    <TableCell className={monoClasses}>
+                      {pii?.kind === "derived" && (
+                        <span className="me-1.5 inline-flex align-middle">
+                          <PiiIcon label={piiMarkLabel(pii)} />
+                        </span>
+                      )}
+                      {column.name}
+                      {column.naming_violations.map((v) => (
+                        <Badge
+                          key={v.code}
+                          variant="warning"
+                          role="status"
+                          className="ml-2 font-sans"
                         >
-                          Delete
-                        </Button>
+                          {v.message}
+                        </Badge>
+                      ))}
+                    </TableCell>
+                    <TableCell
+                      className={`${monoClasses} text-muted-foreground`}
+                    >
+                      {typeText(column.data_type)}
+                      {column.is_nullable ? "" : " not null"}
+                    </TableCell>
+                    <TableCell>
+                      {column.role === "sk" || column.role === "nk" ? (
+                        <Badge variant="pk">{ROLE_LABELS[column.role]}</Badge>
+                      ) : column.role === "fk" ? (
+                        <Badge variant="fk">{ROLE_LABELS[column.role]}</Badge>
+                      ) : (
+                        <Badge
+                          variant={column.role === "audit" ? "info" : "neutral"}
+                        >
+                          {ROLE_LABELS[column.role]}
+                        </Badge>
                       )}
                     </TableCell>
-                  )}
-                </TableRow>
-              ))}
+                    <TableCell className="text-muted-foreground">
+                      {[
+                        column.additivity &&
+                          ADDITIVITY_LABELS[column.additivity],
+                        column.references_table_id &&
+                          `→ ${names.get(column.references_table_id) ?? "another table"}${
+                            column.role_name ? ` (${column.role_name})` : ""
+                          }`,
+                        column.scd_type_override != null &&
+                          `SCD ${column.scd_type_override}`,
+                        column.is_system && "DAWAM",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </TableCell>
+                    {editable && (
+                      <TableCell>
+                        {!column.is_system && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            aria-label={`Delete ${column.name}`}
+                            disabled={removeColumn.isPending}
+                            onClick={() => removeColumn.mutate(column.id)}
+                          >
+                            Delete
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableCard>

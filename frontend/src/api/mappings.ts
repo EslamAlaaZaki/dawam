@@ -50,6 +50,41 @@ export function useStagingMappings(workspaceId: string) {
   });
 }
 
+/**
+ * Switch a PII staging column between `hashed` and `direct` (owners and editors). 409
+ * `version_conflict` on a stale `version`. The listing and the PII view are reloaded.
+ */
+export function useSetStagingHashing(workspaceId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      columnId: string;
+      mapping_type: "direct" | "hashed";
+      version: number;
+    }) => {
+      const { data, error, response } = await client.PUT(
+        "/api/v1/workspaces/{workspace_id}/data-warehouse/staging/columns/{dw_column_id}/mapping",
+        {
+          params: { path: { workspace_id: workspaceId, dw_column_id: body.columnId } },
+          body: { mapping_type: body.mapping_type, version: body.version },
+        },
+      );
+      if (error) {
+        throw new ApiError(response.status, error.error);
+      }
+      return data;
+    },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["workspace", workspaceId, "dw-staging-mappings"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["workspace", workspaceId, "pii-view"] }),
+      ]),
+  });
+}
+
 /** Where a member downloads the Staging Layer's mapping sheet (any member). */
 export function stagingMappingSheetUrl(workspaceId: string, format: "xlsx" | "csv"): string {
   return `/api/v1/workspaces/${workspaceId}/data-warehouse/mapping-sheet?layer=staging&format=${format}`;

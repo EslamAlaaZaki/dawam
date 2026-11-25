@@ -186,6 +186,34 @@ def test_new_and_changed_source_columns_are_synced_into_existing_staging(
     assert tuple(mapping) == ("direct", "public.customers.email")
 
 
+def test_a_new_accepted_pii_source_column_is_synced_hashed(warehouse: RoleClients):
+    from dawam.modules.warehouse.pii_hashing import hashed_sql
+    from tests.lineage.test_lineage import accept_pii
+
+    system = add_system(warehouse)
+    ids = staged(warehouse, system)
+    email = uuid.uuid4()
+    run(
+        warehouse,
+        "insert into src_columns (id, table_id, name, current_definition, status, version)"
+        " values (:id, :t, 'email', cast(:d as json), 'present', 1)",
+        id=email,
+        t=ids["customers"]["id"],
+        d='{"data_type": "varchar(80)", "is_nullable": true}',
+    )
+    accept_pii(warehouse, str(email))
+
+    proposed = sync(warehouse, system)
+    accept(warehouse, proposed["change_set_id"])
+
+    [mapping] = query(
+        warehouse,
+        "select m.mapping_type, m.sql_expression from column_mappings m"
+        " join dw_columns c on c.id = m.dw_column_id where c.name = 'email'",
+    )
+    assert tuple(mapping) == ("hashed", hashed_sql("postgresql", "public.customers.email"))
+
+
 def test_a_user_override_is_a_conflict_not_overwritten(warehouse: RoleClients):
     system = add_system(warehouse)
     ids = staged(warehouse, system)

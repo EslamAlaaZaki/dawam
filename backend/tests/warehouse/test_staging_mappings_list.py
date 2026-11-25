@@ -59,7 +59,10 @@ def test_each_staging_table_lists_its_columns_with_their_source(graph, roles):
         "hashed": 0,
         "audit": 2,
         "to_review": 0,
+        "pii": 0,
     }
+    assert amount["is_pii"] is False
+    assert amount["mapping_version"] == 1
 
 
 def test_a_hashed_column_is_counted_as_hashed(graph, roles):
@@ -72,6 +75,10 @@ def test_a_hashed_column_is_counted_as_hashed(graph, roles):
     assert columns["status"]["mapping_type"] == "hashed"
     assert columns["amount"]["mapping_type"] == "direct"
     assert (body["totals"]["direct"], body["totals"]["hashed"]) == (1, 1)
+    # Accepted PII is marked, with the version the next switch sends.
+    assert (columns["status"]["is_pii"], columns["status"]["mapping_version"]) == (True, 2)
+    assert columns["amount"]["is_pii"] is False
+    assert body["totals"]["pii"] == 1
 
 
 def test_review_flags_and_removed_sources_count_as_to_review(graph, roles):

@@ -1,15 +1,16 @@
 "use client";
 
-import { ArrowRight, ChevronRight, Database, Table2 } from "lucide-react";
+import { ArrowRight, Database, LockKeyhole, Table2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import {
   stagingMappingSheetUrl,
+  useSetStagingHashing,
   useStagingMappings,
   type StagingMappingColumn,
   type StagingMappingTable,
 } from "../api/mappings";
-import type { Workspace } from "../api/workspaces";
+import { allows, type Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { typeText } from "../lib/typeText";
@@ -19,6 +20,7 @@ import {
   ExportSheetMenu,
   LayerStrip,
   MappingsExplorer,
+  PiiIcon,
   StateDot,
 } from "./mappingParts";
 import { EmptyState, ErrorText, h3Classes, monoClasses } from "./parts";
@@ -78,16 +80,14 @@ function tableState(table: StagingMappingTable) {
 
 /**
  * The Staging Layer's Mappings page: how each Staging column is copied from its source
- * column. DAWAM generates them; hashing changes only on the PII page, which `onOpenPii`
- * opens for a Source System. `onOpenModel` opens the Model page.
+ * column. DAWAM generates them, hashing accepted PII from the start; owners and editors
+ * switch a PII column between hashed and direct here. `onOpenModel` opens the Model page.
  */
 export function StagingMappingsPanel({
   workspace,
-  onOpenPii,
   onOpenModel,
 }: {
   workspace: Workspace;
-  onOpenPii: (systemId: string) => void;
   onOpenModel: () => void;
 }) {
   const mappings = useStagingMappings(workspace.id);
@@ -248,7 +248,10 @@ export function StagingMappingsPanel({
         </Stat>
         <Stat label="Hashed (PII)">
           <Big className="text-danger-strong">{totals.hashed}</Big>
-          <Note>salted SHA-256 of the source</Note>
+          <Note>
+            of {totals.pii} PII {totals.pii === 1 ? "column" : "columns"} ·
+            salted SHA-256
+          </Note>
         </Stat>
         <Stat label="To review">
           <Big className="text-warning-strong">{totals.to_review}</Big>
@@ -345,9 +348,9 @@ export function StagingMappingsPanel({
         >
           {selected ? (
             <TableDetail
+              workspace={workspace}
               table={selected.table}
               columns={selected.columns}
-              onOpenPii={onOpenPii}
             />
           ) : (
             <EmptyState
@@ -400,7 +403,7 @@ function Note({ children }: { children: ReactNode }) {
 
 /** The column grid: source column, arrow, staging column, mapping, review. */
 const gridCols =
-  "grid grid-cols-[minmax(0,1.25fr)_1.75rem_minmax(0,1.25fr)_6rem_minmax(0,1fr)] gap-3";
+  "grid grid-cols-[minmax(0,1.25fr)_1.75rem_minmax(0,1.25fr)_8.5rem_minmax(0,1fr)] gap-3";
 
 const ARROW: Record<StagingMappingColumn["mapping_type"], string> = {
   direct: "text-success",
@@ -408,16 +411,68 @@ const ARROW: Record<StagingMappingColumn["mapping_type"], string> = {
   system: "text-border-strong",
 };
 
+/** Hashed or direct, for a PII column an owner or editor can switch. */
+function HashSwitch({
+  column,
+  disabled,
+  onChange,
+}: {
+  column: StagingMappingColumn;
+  disabled: boolean;
+  onChange: (mappingType: "direct" | "hashed") => void;
+}) {
+  const option = (value: "hashed" | "direct", label: ReactNode) => {
+    const on = column.mapping_type === value;
+    return (
+      <button
+        type="button"
+        role="radio"
+        aria-checked={on}
+        disabled={disabled}
+        onClick={() => !on && onChange(value)}
+        className={cn(
+          "inline-flex h-5.5 cursor-pointer items-center gap-1 rounded-sm px-2 text-xs font-medium transition-colors disabled:cursor-wait",
+          on
+            ? value === "hashed"
+              ? "bg-surface-raised text-danger-strong ring-1 ring-danger-subtle"
+              : "bg-surface-raised text-foreground ring-1 ring-border"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {label}
+      </button>
+    );
+  };
+  return (
+    <span
+      role="radiogroup"
+      aria-label={`Mapping of ${column.column_name}`}
+      className="inline-flex gap-0.5 rounded-md bg-muted p-0.5"
+    >
+      {option(
+        "hashed",
+        <>
+          <LockKeyhole aria-hidden className="size-3" />
+          Hashed
+        </>,
+      )}
+      {option("direct", "Direct")}
+    </span>
+  );
+}
+
 /** The chosen table: its header, then the columns that pass the filter and search. */
 function TableDetail({
+  workspace,
   table,
   columns,
-  onOpenPii,
 }: {
+  workspace: Workspace;
   table: StagingMappingTable;
   columns: StagingMappingColumn[];
-  onOpenPii: (systemId: string) => void;
 }) {
+  const canSwitch = allows(workspace, "dw_schema.edit");
+  const switchHashing = useSetStagingHashing(workspace.id);
   const hashed = table.columns.filter(
     (c) => c.mapping_type === "hashed",
   ).length;
@@ -427,7 +482,6 @@ function TableDetail({
         .filter(Boolean)
         .join(".")
     : null;
-  const systemId = table.system_id;
   return (
     <section
       aria-label={`Mappings of ${table.table_name}`}
@@ -449,6 +503,11 @@ function TableDetail({
           {table.columns.length} columns
         </span>
       </div>
+      {switchHashing.isError && (
+        <div className="border-b border-border px-5 py-2">
+          <ErrorText>{switchHashing.error.message}</ErrorText>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <div
           role="table"
@@ -485,6 +544,7 @@ function TableDetail({
               >
                 {column.source_column_name ? (
                   <>
+                    {column.is_pii && <PiiIcon />}
                     <span className={cn(monoClasses, "break-all")}>
                       {column.source_column_name}
                     </span>
@@ -525,9 +585,28 @@ function TableDetail({
                 </span>
               </span>
               <span role="cell" className="flex">
-                {column.mapping_type === "direct" && <Badge>Direct</Badge>}
-                {column.mapping_type === "hashed" && (
-                  <Badge variant="danger">Hashed</Badge>
+                {column.mapping_type !== "system" &&
+                column.is_pii &&
+                canSwitch &&
+                column.mapping_version != null ? (
+                  <HashSwitch
+                    column={column}
+                    disabled={switchHashing.isPending}
+                    onChange={(mappingType) =>
+                      switchHashing.mutate({
+                        columnId: column.column_id,
+                        mapping_type: mappingType,
+                        version: column.mapping_version ?? 0,
+                      })
+                    }
+                  />
+                ) : (
+                  <>
+                    {column.mapping_type === "direct" && <Badge>Direct</Badge>}
+                    {column.mapping_type === "hashed" && (
+                      <Badge variant="danger">Hashed</Badge>
+                    )}
+                  </>
                 )}
                 {column.mapping_type === "system" && (
                   <Badge className="bg-transparent text-muted-foreground ring-1 ring-border-strong ring-inset">
@@ -541,18 +620,8 @@ function TableDetail({
                     {label}
                   </Badge>
                 ))}
-                {column.mapping_type === "hashed" && systemId && (
-                  <a
-                    href={`?${new URLSearchParams({ folder: `systems/${systemId}/pii` })}`}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      onOpenPii(systemId);
-                    }}
-                  >
-                    Change in PII
-                    <ChevronRight aria-hidden className="size-3" />
-                  </a>
+                {column.is_pii && column.mapping_type === "direct" && (
+                  <Badge variant="danger">PII not hashed</Badge>
                 )}
                 {column.mapping_type === "system" && (
                   <span className="text-xs text-muted-foreground">
