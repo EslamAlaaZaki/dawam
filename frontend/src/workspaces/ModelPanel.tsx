@@ -40,7 +40,6 @@ import {
 import { StarPanel } from "../diagrams/StarPanel";
 import { Loading } from "../shell/Loading";
 import { StagingModelPanel } from "./StagingModelPanel";
-import { MappingsGrid } from "./MappingsGrid";
 import {
   Actions,
   DetailList,
@@ -115,9 +114,12 @@ function whole(value: FormDataEntryValue | null): number | undefined {
 export function ModelPanel({
   workspace,
   layer,
+  onOpenMappings,
 }: {
   workspace: Workspace;
   layer: DwLayer;
+  /** Opens the Layer's Mappings page with this table selected. */
+  onOpenMappings: (tableId: string) => void;
 }) {
   const tables = useDwTables(workspace.id, layer);
   // A Mart fact may point at Core conformed dimensions, so Core's tables are needed too.
@@ -138,6 +140,7 @@ export function ModelPanel({
             tableId={tableId}
             references={[]}
             editable={false}
+            onOpenMappings={onOpenMappings}
             onClose={onClose}
           />
         )}
@@ -247,6 +250,7 @@ export function ModelPanel({
             tableId={openId}
             references={references}
             editable={editable}
+            onOpenMappings={onOpenMappings}
             onClose={() => setOpenId(null)}
           />
         )}
@@ -383,12 +387,14 @@ function TableDetails({
   tableId,
   references,
   editable,
+  onOpenMappings,
   onClose,
 }: {
   workspace: Workspace;
   tableId: string;
   references: Reference[];
   editable: boolean;
+  onOpenMappings: (tableId: string) => void;
   onClose: () => void;
 }) {
   const table = useDwTable(workspace.id, tableId);
@@ -396,7 +402,6 @@ function TableDetails({
   const removeTable = useDeleteDwTable(workspace.id, tableId);
   // Deleting a table is a soft delete, for owners only; it is purged from the deleted list.
   const canDelete = allows(workspace, "objects.delete");
-  const [showMappings, setShowMappings] = useState(false);
 
   if (table.isPending) {
     return <Loading />;
@@ -431,18 +436,16 @@ function TableDetails({
           Columns
         </span>
         {t.layer !== "staging" && (
-          <button
-            type="button"
-            aria-expanded={showMappings}
-            className={`-mb-px cursor-pointer border-b-2 py-2.5 font-medium hover:text-foreground ${
-              showMappings
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground"
-            }`}
-            onClick={() => setShowMappings((open) => !open)}
+          <a
+            href={`?${new URLSearchParams({ folder: `dw/${t.layer}/mappings`, table: t.id })}`}
+            className="-mb-px border-b-2 border-transparent py-2.5 font-medium text-primary hover:underline"
+            onClick={(event) => {
+              event.preventDefault();
+              onOpenMappings(t.id);
+            }}
           >
-            {showMappings ? "Hide mappings" : "Mappings"}
-          </button>
+            Open in Mappings
+          </a>
         )}
       </div>
       <div className="flex flex-col gap-4 p-4">
@@ -561,13 +564,6 @@ function TableDetails({
             </TableBody>
           </Table>
         </TableCard>
-        {t.layer !== "staging" && showMappings && (
-          <MappingsGrid
-            workspaceId={workspace.id}
-            tableId={t.id}
-            editable={editable}
-          />
-        )}
         {(removeColumn.isError || removeTable.isError) && (
           <ErrorText>
             {removeColumn.error?.message ?? removeTable.error?.message}

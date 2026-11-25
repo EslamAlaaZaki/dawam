@@ -33,13 +33,16 @@ export function useWorkspaceFolders(
     warehouse.data?.set_up && requested === "dw/setup" ? "dw" : requested;
   const folder = findFolder(root, wanted) ?? root;
 
-  function select(id: string) {
+  // A table the folder opens with (the Model page links to a Mappings page with one).
+  const table = searchParams.get("table");
+
+  function select(id: string, tableId?: string) {
     router.push(
       id === ""
         ? pathname
-        : `${pathname}?${new URLSearchParams({ folder: id })}`,
+        : `${pathname}?${new URLSearchParams({ folder: id, ...(tableId ? { table: tableId } : {}) })}`,
     );
   }
 
-  return { root, folder, wanted, select, warehouse, systems, systemList };
+  return { root, folder, wanted, table, select, warehouse, systems, systemList };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, ChevronDown, Download } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -12,16 +12,11 @@ import {
 import type { Workspace } from "../api/workspaces";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
 import { typeText } from "../lib/typeText";
 import { cn } from "../lib/utils";
 import { Loading } from "../shell/Loading";
+import { ExportSheetMenu, LayerStrip } from "./mappingParts";
 import { EmptyState, ErrorText, h3Classes, monoClasses } from "./parts";
 
 const FLAG_LABELS: Record<string, string> = {
@@ -54,12 +49,6 @@ const matches = (column: StagingMappingColumn, filter: Filter) =>
   (filter === "hashed" && column.mapping_type === "hashed") ||
   (filter === "audit" && column.mapping_type === "system") ||
   (filter === "review" && reviewLabels(column).length > 0);
-
-const layerStep = (active: boolean) =>
-  cn(
-    "rounded-md px-2 py-0.5 font-medium",
-    active ? "bg-primary-subtle text-primary" : "bg-muted text-muted-foreground",
-  );
 
 /**
  * The Staging Layer's Mappings page: how each Staging column is copied from its source
@@ -101,18 +90,7 @@ export function StagingMappingsPanel({
         </p>
         {extra}
       </div>
-      <ol
-        aria-label="Layers"
-        className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
-      >
-        <li className={layerStep(true)}>Source</li>
-        <ArrowRight aria-hidden className="size-3 text-primary" />
-        <li className={layerStep(true)}>Staging</li>
-        <ArrowRight aria-hidden className="size-3" />
-        <li className={layerStep(false)}>Core</li>
-        <ArrowRight aria-hidden className="size-3" />
-        <li className={layerStep(false)}>Mart</li>
-      </ol>
+      <LayerStrip active={["Source", "Staging"]} />
     </header>
   );
 
@@ -150,31 +128,7 @@ export function StagingMappingsPanel({
   }
 
   const exportMenu = (
-    <div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="secondary">
-            <Download aria-hidden />
-            Export mapping sheet
-            <ChevronDown aria-hidden className="text-subtle-foreground" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-48">
-          <DropdownMenuItem asChild>
-            <a href={stagingMappingSheetUrl(workspace.id, "xlsx")} download>
-              <Download aria-hidden />
-              Download XLSX
-            </a>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <a href={stagingMappingSheetUrl(workspace.id, "csv")} download>
-              <Download aria-hidden />
-              Download CSV
-            </a>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    <ExportSheetMenu url={(format) => stagingMappingSheetUrl(workspace.id, format)} />
   );
 
   const all = tables.flatMap((t) => t.columns);
