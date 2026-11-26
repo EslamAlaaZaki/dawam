@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Database } from "lucide-react";
+import { ArrowRight, Database, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
@@ -11,12 +11,14 @@ export function Card({
   name,
   label,
   folder,
+  icon: Icon = Database,
   onOpen,
   children,
 }: {
   name: string;
   label: string;
   folder: string;
+  icon?: LucideIcon;
   onOpen: () => void;
   children: ReactNode;
 }) {
@@ -32,7 +34,7 @@ export function Card({
     >
       <span className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground [&_svg]:size-4 [&_svg]:text-subtle-foreground">
-          <Database aria-hidden />
+          <Icon aria-hidden />
           {name}
         </span>
         <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap text-subtle-foreground transition-colors duration-120 group-hover:text-primary [&_svg]:size-3.5">

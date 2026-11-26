@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, CircleCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { PLATFORM_LABELS, useDataWarehouse } from "../api/dataWarehouse";
@@ -279,6 +279,7 @@ export function LayerOverviewPanel({
               : "Mappings: not available"
           }
           folder={`dw/${layer}/mappings`}
+          icon={ArrowLeftRight}
           onOpen={() => onOpen("mappings")}
         >
           {mapped ? (
@@ -312,6 +313,7 @@ export function LayerOverviewPanel({
               : "Evaluation: not scored"
           }
           folder={`dw/${layer}/evaluation`}
+          icon={CircleCheck}
           onOpen={() => onOpen("evaluation")}
         >
           {scored ? (
@@ -400,11 +402,12 @@ export function LayerOverviewPanel({
           </TableBox>
         </Section>
       )}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5 lg:items-start">
+        {facts.length > 0 && (
         <Section
           id="facts-title"
           title={layer === "core" ? "Facts and bridges" : "Facts"}
-          className="lg:col-span-3"
+          className={failed.length > 0 ? "lg:col-span-3" : "lg:col-span-5"}
         >
           <TableBox labelledBy="facts-title">
             <TableHeader>
@@ -444,11 +447,12 @@ export function LayerOverviewPanel({
             </TableBody>
           </TableBox>
         </Section>
+        )}
         {failed.length > 0 && (
           <Section
             id="checks-title"
             title="Top failed checks"
-            className="lg:col-span-2"
+            className={facts.length > 0 ? "lg:col-span-2" : "lg:col-span-5"}
             action={
               <a
                 href={`?${new URLSearchParams({ folder: `dw/${layer}/evaluation` })}`}
