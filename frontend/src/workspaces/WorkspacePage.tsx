@@ -50,6 +50,7 @@ import { PiiPanel } from "./PiiPanel";
 import { ProfilingPanel } from "./ProfilingPanel";
 import { LayerMappingsPanel } from "./LayerMappingsPanel";
 import { StagingMappingsPanel } from "./StagingMappingsPanel";
+import { LayerOverviewPanel } from "./LayerOverviewPanel";
 import { StagingOverviewPanel } from "./StagingOverviewPanel";
 import { SourceSummaryPanel } from "./SourceSummaryPanel";
 import { MembersPanel } from "./MembersPanel";
@@ -245,6 +246,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     (layer) => folder.id === `dw/${layer}/mappings`,
   );
 
+  // `dw/core` and `dw/mart`: a Layer's overview.
+  const overviewLayer = (["core", "mart"] as const).find(
+    (layer) => folder.id === `dw/${layer}`,
+  );
+
   function ask(asked: Omit<AssistantRequest, "nonce">) {
     setRequest((last) => ({ ...asked, nonce: (last?.nonce ?? 0) + 1 }));
     setAssistantUsed(true);
@@ -384,6 +390,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               onOpenMappings={(tableId) =>
                 select(`dw/${modelLayer}/mappings`, tableId)
               }
+            />
+          ) : overviewLayer ? (
+            <LayerOverviewPanel
+              key={overviewLayer}
+              workspace={workspace.data}
+              layer={overviewLayer}
+              onOpen={(child) => select(`dw/${overviewLayer}/${child}`)}
             />
           ) : folder.id === "dw/staging" ? (
             <StagingOverviewPanel
