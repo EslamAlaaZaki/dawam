@@ -12,6 +12,7 @@ export function Card({
   label,
   folder,
   icon: Icon = Database,
+  openLabel = "Open",
   onOpen,
   children,
 }: {
@@ -19,6 +20,8 @@ export function Card({
   label: string;
   folder: string;
   icon?: LucideIcon;
+  /** The link's visible text: "Open" unless it says what it opens. */
+  openLabel?: string;
   onOpen: () => void;
   children: ReactNode;
 }) {
@@ -38,7 +41,7 @@ export function Card({
           {name}
         </span>
         <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap text-subtle-foreground transition-colors duration-120 group-hover:text-primary [&_svg]:size-3.5">
-          Open
+          {openLabel}
           <ArrowRight aria-hidden />
         </span>
       </span>

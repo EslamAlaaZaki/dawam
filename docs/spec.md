@@ -307,6 +307,7 @@ Actors: **Visitor** (not signed in), **User**, **Admin**, **Owner**, **Editor**,
 97. As a member, I want to generate DDL for the DW Schema in the target platform's dialect, so that the design is deployable.
 98. As an editor, I want to ask for the DW Schema to be regenerated after a mandatory input changes (a new Snapshot, KPI changes, Source Schema enhancements such as classifications, SCD hints or relationships), receiving a Change Set against the current model that keeps every field I overrode unless I accept a change to it, so that regeneration never wipes my work.
 98a. As an editor, when I change a mapping by hand in a way that changes which inputs feed a table, I want the score recalculated and an offer to regenerate only that table, so that the model can follow my mapping decisions without a regeneration loop.
+98b. As a member, I want an overview page for the Data Warehouse and for each of its Core and Mart Layers (setup, score per Layer, mapping coverage, tables by kind, top failed checks), so that I can see how far the DW model is without opening each folder.
 
 ### Epic K: Mappings
 
