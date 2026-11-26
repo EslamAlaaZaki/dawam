@@ -240,7 +240,9 @@ describe("the Data Warehouse overview", () => {
   it("opens the setup dialog from Edit setup", async () => {
     renderApp(backend(), PATH);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Edit setup" }));
+    const edit = await screen.findByRole("button", { name: "Edit setup" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(edit);
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -256,7 +258,7 @@ describe("the Data Warehouse overview", () => {
     renderApp(backend(), PATH);
 
     const card = await screen.findByRole("link", {
-      name: /Score 84, grade B/,
+      name: "Score 84, grade B. Open Score",
     });
     expect(card).toHaveAttribute("href", "?folder=dw%2Fscore");
     expect(within(card).getByText("Data Warehouse score")).toBeInTheDocument();

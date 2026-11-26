@@ -28,7 +28,7 @@ export function Card({
   return (
     <a
       href={`?${new URLSearchParams({ folder })}`}
-      aria-label={`${label}. Open ${name}`}
+      aria-label={`${label}. ${openLabel === "Open" ? `Open ${name}` : openLabel}`}
       onClick={(event) => {
         event.preventDefault();
         onOpen();

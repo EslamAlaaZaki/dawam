@@ -313,7 +313,9 @@ export function DataWarehouseOverviewPanel({
                       {s && (
                         <span
                           className="block h-full rounded-pill bg-primary"
-                          style={{ width: `${s.score}%` }}
+                          style={{
+                            width: `${Math.min(100, Math.max(0, Math.round(s.score ?? 0)))}%`,
+                          }}
                         />
                       )}
                     </span>
