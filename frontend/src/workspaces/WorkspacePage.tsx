@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { Loading } from "../shell/Loading";
+import { DataWarehouseOverviewPanel } from "./DataWarehouseOverviewPanel";
 import { DataWarehouseSetup } from "./DataWarehouseSetup";
 import { AssistantPanel } from "./AssistantPanel";
 import { FailedChecksPanel, type AssistantRequest } from "./FailedChecksPanel";
@@ -50,6 +51,7 @@ import { PiiPanel } from "./PiiPanel";
 import { ProfilingPanel } from "./ProfilingPanel";
 import { LayerMappingsPanel } from "./LayerMappingsPanel";
 import { StagingMappingsPanel } from "./StagingMappingsPanel";
+import { LayerOverviewPanel } from "./LayerOverviewPanel";
 import { StagingOverviewPanel } from "./StagingOverviewPanel";
 import { SourceSummaryPanel } from "./SourceSummaryPanel";
 import { MembersPanel } from "./MembersPanel";
@@ -158,11 +160,28 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
   // The folder whose setup dialog was closed: it stays closed until another folder is
   // selected or the folder's button reopens it.
   const [setupDismissed, setSetupDismissed] = useState<string | null>(null);
+  // The setup dialog is open on `dw` when it was opened by "Edit setup" or by the Data
+  // Warehouse not being set up yet. Once set up, `dw` shows the overview and the dialog no
+  // longer opens by itself, but one that is open stays open until it is closed.
+  const [editingSetup, setEditingSetup] = useState(false);
   const [dismissedIn, setDismissedIn] = useState(folder.id);
   if (dismissedIn !== folder.id) {
     // A different folder was selected: adjust state during render, not in an effect.
+    const keepOpen =
+      dismissedIn === "dw/setup" &&
+      folder.id === "dw" &&
+      setupDismissed !== "dw/setup";
     setDismissedIn(folder.id);
     setSetupDismissed(null);
+    setEditingSetup(keepOpen);
+  } else if (
+    folder.id === "dw" &&
+    !editingSetup &&
+    setupDismissed === null &&
+    !warehouse.isPending &&
+    !warehouse.data?.set_up
+  ) {
+    setEditingSetup(true);
   }
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -245,6 +264,11 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     (layer) => folder.id === `dw/${layer}/mappings`,
   );
 
+  // `dw/core` and `dw/mart`: a Layer's overview.
+  const overviewLayer = (["core", "mart"] as const).find(
+    (layer) => folder.id === `dw/${layer}`,
+  );
+
   function ask(asked: Omit<AssistantRequest, "nonce">) {
     setRequest((last) => ({ ...asked, nonce: (last?.nonce ?? 0) + 1 }));
     setAssistantUsed(true);
@@ -303,10 +327,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
         <StageProgressPanel workspaceId={workspaceId} />
         <Dialog
           open={
-            (folder.id === "dw" || folder.id === "dw/setup") &&
+            (folder.id === "dw/setup" || (folder.id === "dw" && editingSetup)) &&
             setupDismissed !== folder.id
           }
-          onOpenChange={(open) => setSetupDismissed(open ? null : folder.id)}
+          onOpenChange={(open) => {
+            setSetupDismissed(open ? null : folder.id);
+            setEditingSetup(open);
+          }}
         >
           <DialogContent className="max-h-[calc(100%-2rem)] w-[min(640px,calc(100%-2rem))]">
             <DialogHeader>
@@ -330,6 +357,15 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               <MembersPanel workspace={workspace.data} />
               <DeletedObjectsPanel workspace={workspace.data} />
             </>
+          ) : folder.id === "dw" && warehouse.data?.set_up ? (
+            <DataWarehouseOverviewPanel
+              workspace={workspace.data}
+              onOpen={(child) => select(`dw/${child}`)}
+              onEdit={() => {
+                setSetupDismissed(null);
+                setEditingSetup(true);
+              }}
+            />
           ) : folder.id === "dw" || folder.id === "dw/setup" ? (
             <div className="flex flex-col items-start gap-3">
               <Hint>
@@ -384,6 +420,13 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
               onOpenMappings={(tableId) =>
                 select(`dw/${modelLayer}/mappings`, tableId)
               }
+            />
+          ) : overviewLayer ? (
+            <LayerOverviewPanel
+              key={overviewLayer}
+              workspace={workspace.data}
+              layer={overviewLayer}
+              onOpen={(child) => select(`dw/${overviewLayer}/${child}`)}
             />
           ) : folder.id === "dw/staging" ? (
             <StagingOverviewPanel

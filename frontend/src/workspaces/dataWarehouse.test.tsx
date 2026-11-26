@@ -241,6 +241,7 @@ describe("the Data Warehouse folder after setup", () => {
   it("keeps the platform to owners", async () => {
     open("editor", SET_UP);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Edit setup" }));
     const platform = await screen.findByLabelText("Target platform");
     expect(platform).toBeDisabled();
     expect(platform).toHaveValue("oracle");
@@ -253,6 +254,7 @@ describe("the Data Warehouse folder after setup", () => {
     const sent: Sent[] = [];
     open("owner", SET_UP, "dw", sent);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Edit setup" }));
     fireEvent.change(await screen.findByLabelText("Target platform"), {
       target: { value: "bigquery" },
     });
@@ -270,6 +272,7 @@ describe("the Data Warehouse folder after setup", () => {
     const sent: Sent[] = [];
     open("editor", SET_UP, "dw", sent);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Edit setup" }));
     fireEvent.change(await screen.findByLabelText("Fact prefix"), {
       target: { value: "fct_" },
     });
@@ -287,6 +290,7 @@ describe("the Data Warehouse folder after setup", () => {
     const sent: Sent[] = [];
     open("editor", SET_UP, "dw", sent);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Edit setup" }));
     fireEvent.change(await screen.findByLabelText("Fact prefix"), {
       target: { value: "fct_" },
     });
